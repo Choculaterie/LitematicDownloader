@@ -46,7 +46,7 @@ public class DetailScreen extends Screen {
     private static final long STATUS_MESSAGE_DURATION = 3000; // 3 seconds
 
     public DetailScreen(String schematicId) {
-        super(Text.literal("Schematic Details"));
+        super(Text.literal(""));
         this.schematicId = schematicId;
     }
 
@@ -335,7 +335,7 @@ public class DetailScreen extends Screen {
             this.totalContentHeight = lines.size() * 10;
 
             for (OrderedText line : lines) {
-                context.drawText(this.textRenderer, line, this.scrollAreaX, textY, 0xAAAAAA, false);
+                context.drawText(this.textRenderer, line, this.scrollAreaX, textY, 0xFFFFFF, false);
                 textY += 10;
             }
 

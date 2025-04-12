@@ -6,6 +6,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
 import java.io.File;
@@ -14,6 +15,9 @@ import java.util.List;
 
 public class LitematicDownloaderScreen extends Screen {
     private List<SchematicInfo> schematics = new ArrayList<>();
+    private List<SchematicInfo> filteredSchematics = new ArrayList<>();
+    private TextFieldWidget searchField;
+    private String searchTerm = "";
 
     // Scrolling related fields
     private int scrollOffset = 0;
@@ -40,7 +44,7 @@ public class LitematicDownloaderScreen extends Screen {
     private long lastClickTime = 0;
 
     public LitematicDownloaderScreen() {
-        super(Text.literal("Litematic Downloader V1.0"));
+        super(Text.literal(""));
     }
 
     @Override
@@ -66,6 +70,31 @@ public class LitematicDownloaderScreen extends Screen {
         scrollAreaWidth = contentWidth;
         scrollAreaHeight = this.height - scrollAreaY - 10;
 
+        // Add search field (centered with fixed width of 200)
+        int searchFieldWidth = 200;
+        this.searchField = new TextFieldWidget(
+                this.textRenderer,
+                (this.width - searchFieldWidth) / 2,
+                10,
+                searchFieldWidth,
+                20,
+                Text.literal("")
+        );
+        this.searchField.setMaxLength(50);
+        this.searchField.setPlaceholder(Text.literal("Search..."));
+        this.searchField.setChangedListener(this::onSearchChanged);
+        this.addSelectableChild(this.searchField);
+
+        // Add clear button (X) for the search field
+        this.addDrawableChild(ButtonWidget.builder(
+                        Text.literal("✕"),
+                        button -> {
+                            searchField.setText("");
+                            onSearchChanged("");
+                        })
+                .dimensions((this.width + searchFieldWidth) / 2 + 5, 10, 20, 20)
+                .build());
+
         // Calculate total content height (will be updated when schematics load)
         updateScrollbarDimensions();
 
@@ -73,8 +102,31 @@ public class LitematicDownloaderScreen extends Screen {
         loadSchematics();
     }
 
+    private void onSearchChanged(String searchText) {
+        this.searchTerm = searchText.toLowerCase();
+        this.filterSchematics();
+        this.scrollOffset = 0; // Reset scroll position on search
+        updateScrollbarDimensions();
+    }
+
+    private void filterSchematics() {
+        if (searchTerm.isEmpty()) {
+            // If search is empty, show all schematics
+            this.filteredSchematics = new ArrayList<>(this.schematics);
+            return;
+        }
+
+        // Filter schematics based on search term
+        this.filteredSchematics = this.schematics.stream()
+                .filter(schematic ->
+                        schematic.getName().toLowerCase().contains(searchTerm) ||
+                                schematic.getDescription().toLowerCase().contains(searchTerm) ||
+                                schematic.getUsername().toLowerCase().contains(searchTerm))
+                .toList();
+    }
+
     private void updateScrollbarDimensions() {
-        totalContentHeight = schematics.size() * itemHeight;
+        totalContentHeight = filteredSchematics.size() * itemHeight;
 
         // Reset scroll offset if it's now out of bounds
         if (totalContentHeight <= scrollAreaHeight) {
@@ -89,6 +141,7 @@ public class LitematicDownloaderScreen extends Screen {
             List<SchematicInfo> loadedSchematics = LitematicHttpClient.fetchSchematicList();
             MinecraftClient.getInstance().execute(() -> {
                 schematics = loadedSchematics;
+                filterSchematics(); // Apply any existing search filter
                 updateScrollbarDimensions();
             });
         }).start();
@@ -98,11 +151,22 @@ public class LitematicDownloaderScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         this.renderBackground(context, mouseX, mouseY, delta);
 
-        // Render widgets
+        // Render other widgets
         super.render(context, mouseX, mouseY, delta);
 
         // Render title
-        context.drawCenteredTextWithShadow(textRenderer, this.title, this.width / 2, 10, 0xFFFFFF);
+        context.drawCenteredTextWithShadow(textRenderer, this.title, this.width / 2 - searchField.getWidth()/4, 10, 0xFFFFFF);
+
+        // Render search field
+        this.searchField.render(context, mouseX, mouseY, delta);
+
+        context.drawTextWithShadow(
+                this.textRenderer,
+                Text.literal("🔍"),
+                searchField.getX() - 15,
+                searchField.getY() + 5,
+                0xAAAAAA
+        );
 
         // Create clipping region for schematic list
         context.enableScissor(
@@ -113,13 +177,18 @@ public class LitematicDownloaderScreen extends Screen {
         );
 
         // Draw schematics list
-        if (schematics.isEmpty()) {
-            context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No schematics found"),
-                    this.width / 2, scrollAreaY + 20, 0xCCCCCC);
+        if (filteredSchematics.isEmpty()) {
+            if (schematics.isEmpty()) {
+                context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No schematics found"),
+                        this.width / 2, scrollAreaY + 20, 0xCCCCCC);
+            } else {
+                context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No matches found"),
+                        this.width / 2, scrollAreaY + 20, 0xCCCCCC);
+            }
         } else {
             int y = scrollAreaY - scrollOffset;
-            for (int i = 0; i < schematics.size(); i++) {
-                SchematicInfo schematic = schematics.get(i);
+            for (int i = 0; i < filteredSchematics.size(); i++) {
+                SchematicInfo schematic = filteredSchematics.get(i);
 
                 // Only render if visible in the scroll area
                 if (y + itemHeight >= scrollAreaY && y <= scrollAreaY + scrollAreaHeight) {
@@ -283,6 +352,12 @@ public class LitematicDownloaderScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Check if clicked outside the search field to unfocus it
+        if (searchField.isFocused() &&
+                (mouseX < searchField.getX() || mouseX > searchField.getX() + searchField.getWidth() ||
+                        mouseY < searchField.getY() || mouseY > searchField.getY() + searchField.getHeight())) {
+            searchField.setFocused(false);
+        }
         // Handle scrollbar interaction
         if (button == 0 && totalContentHeight > scrollAreaHeight) {
             // Check if click is on scroll bar
@@ -309,8 +384,8 @@ public class LitematicDownloaderScreen extends Screen {
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
             int index = (int)((mouseY - scrollAreaY + scrollOffset) / itemHeight);
-            if (index >= 0 && index < schematics.size()) {
-                SchematicInfo schematic = schematics.get(index);
+            if (index >= 0 && index < filteredSchematics.size()) {
+                SchematicInfo schematic = filteredSchematics.get(index);
 
                 // Check for download button click
                 int buttonX = scrollAreaX + scrollAreaWidth - 30;

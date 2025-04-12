@@ -4,11 +4,12 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 
+import java.awt.*;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.*;
 import java.util.List;
 
 public class FileManagerScreen extends Screen {
@@ -33,8 +34,24 @@ public class FileManagerScreen extends Screen {
     private boolean isScrolling = false;
     private int lastMouseY;
 
+    // Drag and drop related fields
+    private File draggedFile = null;
+    private boolean isDragging = false;
+    private int dragStartX;
+    private int dragStartY;
+    private int dragCurrentX;
+    private int dragCurrentY;
+    private File dropTargetFolder = null;
+
+    // Search fields
+    private TextFieldWidget searchField;
+    private String searchTerm = "";
+    private List<File> allFiles = new ArrayList<>(); // Unfiltered file list
+    private boolean isRecursiveSearch = false; // Whether current results are from recursive search
+    private Map<File, String> filePathMap = new HashMap<>(); // Maps files to their relative paths
+
     public FileManagerScreen(Screen parentScreen) {
-        super(Text.literal("Schematic File Manager"));
+        super(Text.literal("")); //Title (removed because of search bar)
         this.parentScreen = parentScreen;
         this.maxVisibleItems = (MinecraftClient.getInstance().getWindow().getScaledHeight() - 100) / itemHeight;
         initializeRootPath();
@@ -78,6 +95,7 @@ public class FileManagerScreen extends Screen {
 
     private void loadFilesFromCurrentDirectory() {
         try {
+            allFiles.clear();
             displayedFiles.clear();
 
             File[] files = currentDirectory.listFiles();
@@ -89,19 +107,18 @@ public class FileManagerScreen extends Screen {
                     return f1.getName().compareToIgnoreCase(f2.getName());
                 });
 
-                // Add all directories
+                // Add all files and directories
                 for (File file : files) {
-                    if (file.isDirectory()) {
-                        displayedFiles.add(file);
-                    }
+                    allFiles.add(file);
                 }
+            }
 
-                // Add all .litematic files
-                for (File file : files) {
-                    if (file.isFile() && file.getName().toLowerCase().endsWith(".litematic")) {
-                        displayedFiles.add(file);
-                    }
-                }
+            // Apply filter
+            filterFiles();
+
+            // Reset recursive search state if not searching
+            if (searchTerm.isEmpty()) {
+                isRecursiveSearch = false;
             }
 
             // Reset scroll position when changing directories
@@ -111,11 +128,39 @@ public class FileManagerScreen extends Screen {
         }
     }
 
+    private void filterFiles() {
+        displayedFiles.clear();
+        filePathMap.clear();
+
+        if (isRecursiveSearch && !searchTerm.isEmpty()) {
+            // Perform recursive search
+            List<File> searchResults = new ArrayList<>();
+            searchAllFiles(new File(schematicsRootPath), searchResults, "");
+            displayedFiles.addAll(searchResults);
+        } else {
+            // Normal directory browsing - filter current directory only
+            for (File file : allFiles) {
+                if (searchTerm.isEmpty() || file.getName().toLowerCase().contains(searchTerm)) {
+                    displayedFiles.add(file);
+                }
+            }
+        }
+
+        // Sort results: directories first, then files
+        displayedFiles.sort((f1, f2) -> {
+            if (f1.isDirectory() && !f2.isDirectory()) return -1;
+            if (!f1.isDirectory() && f2.isDirectory()) return 1;
+            return f1.getName().compareToIgnoreCase(f2.getName());
+        });
+    }
+
     private void updateBreadcrumbs() {
         breadcrumbParts.clear();
+        breadcrumbItems.clear();
 
         // Add "schematic" as the root
         breadcrumbParts.add("schematics");
+        breadcrumbItems.add(new BreadcrumbItem("schematics", new File(schematicsRootPath)));
 
         // If we're in the root directory, we're done
         if (currentDirectory.getAbsolutePath().equals(schematicsRootPath)) {
@@ -130,14 +175,17 @@ public class FileManagerScreen extends Screen {
 
         if (!relativePath.isEmpty()) {
             String[] parts = relativePath.split(File.separator.replace("\\", "\\\\"));
+            StringBuilder pathBuilder = new StringBuilder(schematicsRootPath);
+
             for (String part : parts) {
                 if (!part.isEmpty()) {
                     breadcrumbParts.add(part);
+                    pathBuilder.append(File.separator).append(part);
+                    breadcrumbItems.add(new BreadcrumbItem(part, new File(pathBuilder.toString())));
                 }
             }
         }
     }
-
     private void navigateToFolder(File folder) {
         if (folder.isDirectory() && folder.exists()) {
             currentDirectory = folder;
@@ -202,7 +250,130 @@ public class FileManagerScreen extends Screen {
             showCreateFolderScreen();
         }).dimensions(this.width - 90, 10, 20, 20).build());
 
+        // Open in OS button
+        this.addDrawableChild(ButtonWidget.builder(Text.literal("📂"), button -> {
+            openFolderInOS(currentDirectory);
+        }).dimensions(this.width - 115, 10, 20, 20).build());
+
+        // Add search field
+        int searchFieldWidth = 200;
+        searchField = new TextFieldWidget(
+                this.textRenderer,
+                (this.width - searchFieldWidth) / 2,
+                10,
+                searchFieldWidth,
+                20,
+                Text.literal("")
+        );
+        searchField.setMaxLength(50);
+        searchField.setPlaceholder(Text.literal("Search files..."));
+        searchField.setText(searchTerm);
+        searchField.setChangedListener(this::onSearchChanged);
+        this.addSelectableChild(searchField);
+
+        // Add clear button (X) instead of toggle
+        this.addDrawableChild(ButtonWidget.builder(
+                        Text.literal("✕"),
+                        button -> {
+                            searchField.setText("");
+                            onSearchChanged("");
+                        })
+                .dimensions((this.width + searchFieldWidth) / 2 + 5, 10, 20, 20)
+                .build());
+
         updateScrollbarDimensions();
+    }
+
+    private void onSearchChanged(String newSearchTerm) {
+        searchTerm = newSearchTerm.toLowerCase().trim();
+
+        // If search is cleared, reset to normal directory view
+        if (searchTerm.isEmpty()) {
+            isRecursiveSearch = false;
+            loadFilesFromCurrentDirectory();
+        } else {
+            isRecursiveSearch = true;
+            filterFiles();
+        }
+
+        scrollOffset = 0; // Reset scroll position for new search results
+        updateScrollbarDimensions();
+    }
+
+    private void searchAllFiles(File directory, List<File> results, String relativePath) {
+        File[] files = directory.listFiles();
+        if (files != null) {
+            // First check if the current directory itself matches the search term
+            if (directory.getName().toLowerCase().contains(searchTerm) &&
+                    !directory.getAbsolutePath().equals(schematicsRootPath)) {
+                results.add(directory);
+                // Show parent path for directories (not their own name)
+                String parentPath = "schematic";
+                if (!relativePath.isEmpty()) {
+                    int lastSlash = relativePath.lastIndexOf('/');
+                    if (lastSlash >= 0) {
+                        parentPath = "schematic/" + relativePath.substring(0, lastSlash);
+                    }
+                }
+                filePathMap.put(directory, parentPath);
+            }
+
+            for (File file : files) {
+                String currentPath = relativePath.isEmpty() ? file.getName() : relativePath + "/" + file.getName();
+
+                if (file.isDirectory()) {
+                    // Add directory if it matches search term
+                    if (file.getName().toLowerCase().contains(searchTerm)) {
+                        results.add(file);
+                        // Don't include the directory's own name in the path
+                        String parentPath = relativePath.isEmpty() ? "schematic" : "schematic/" + relativePath;
+                        filePathMap.put(file, parentPath);
+                    }
+                    // Continue searching recursively
+                    searchAllFiles(file, results, currentPath);
+                } else if (file.isFile()) {
+                    // For files, only apply search term (no file type filter)
+                    if (file.getName().toLowerCase().contains(searchTerm)) {
+                        results.add(file);
+                        // Include "schematic" in the path
+                        String filePath = "schematic/" + relativePath;
+                        filePathMap.put(file, filePath);
+                    }
+                }
+            }
+        }
+    }
+
+    private void openFolderInOS(File folder) {
+        try {
+            if (folder.exists()) {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                    Desktop.getDesktop().open(folder);
+                } else {
+                    // Fallback to OS-specific commands
+                    String os = System.getProperty("os.name").toLowerCase();
+
+                    ProcessBuilder builder = new ProcessBuilder();
+                    if (os.contains("win")) {
+                        // Windows
+                        builder.command("explorer.exe", folder.getAbsolutePath());
+                    } else if (os.contains("mac") || os.contains("darwin")) {
+                        // macOS
+                        builder.command("open", folder.getAbsolutePath());
+                    } else if (os.contains("nix") || os.contains("nux")) {
+                        // Linux/Unix
+                        builder.command("xdg-open", folder.getAbsolutePath());
+                    } else {
+                        System.out.println("Cannot open folder: Unsupported OS");
+                        return;
+                    }
+
+                    builder.start();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void showCreateFolderScreen() {
@@ -259,6 +430,16 @@ public class FileManagerScreen extends Screen {
         // Call super.render() after our custom drawing so widgets appear on top
         super.render(context, mouseX, mouseY, delta);
 
+        searchField.render(context, mouseX, mouseY, delta);
+
+        context.drawTextWithShadow(
+                this.textRenderer,
+                Text.literal("🔍"),
+                searchField.getX() - 15,
+                searchField.getY() + 5,
+                0xAAAAAA
+        );
+
         // Draw title and standard UI elements first
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFFFFFF);
 
@@ -283,21 +464,34 @@ public class FileManagerScreen extends Screen {
             String part = breadcrumbParts.get(i);
             boolean isClickable = true; // All parts are clickable
 
+            // Store position information for drag and drop
+            BreadcrumbItem item = breadcrumbItems.get(i);
+            item.x = breadcrumbX;
+            item.width = this.textRenderer.getWidth(part);
+
             // Determine color based on if it's clickable and if mouse is hovering
             int color = isClickable ? pathColor : separatorColor;
             boolean isHovering = false;
 
             if (isClickable) {
-                int textWidth = this.textRenderer.getWidth(part);
+                int textWidth = item.width;
                 isHovering = mouseX >= breadcrumbX && mouseX <= breadcrumbX + textWidth &&
                         mouseY >= breadcrumbY && mouseY <= breadcrumbY + 10;
                 color = isHovering ? 0xFFFFFF : pathColor;
+
+                // Highlight for potential drop target
+                if (isDragging && draggedFile != null &&
+                        mouseX >= breadcrumbX && mouseX <= breadcrumbX + textWidth &&
+                        mouseY >= breadcrumbY - 5 && mouseY <= breadcrumbY + 15) {
+                    context.fill(breadcrumbX - 2, breadcrumbY - 2,
+                            breadcrumbX + textWidth + 2, breadcrumbY + 12,
+                            0x3300FF00); // Green highlight
+                }
             }
 
             // Draw this part
             context.drawTextWithShadow(this.textRenderer, Text.literal(part), breadcrumbX, breadcrumbY, color);
-            int partWidth = this.textRenderer.getWidth(part);
-            breadcrumbX += partWidth;
+            breadcrumbX += item.width;
 
             // Draw separator except for last item
             if (i < breadcrumbParts.size() - 1) {
@@ -323,14 +517,30 @@ public class FileManagerScreen extends Screen {
             for (int i = 0; i < displayedFiles.size(); i++) {
                 File file = displayedFiles.get(i);
 
+                // Calculate this item's height - increased for search results with paths
+                int currentItemHeight = itemHeight;
+                boolean hasPath = isRecursiveSearch && filePathMap.containsKey(file) &&
+                        !filePathMap.get(file).isEmpty();
+                if (hasPath) {
+                    currentItemHeight = itemHeight + 10; // Add more space for items with paths
+                }
+
                 // Only render if visible in the scroll area
-                if (y + itemHeight >= scrollAreaY && y <= scrollAreaY + scrollAreaHeight) {
+                if (y + currentItemHeight >= scrollAreaY && y <= scrollAreaY + scrollAreaHeight) {
                     // Draw folder icon or file icon
                     String icon = file.isDirectory() ? "📁 " : "📄 ";
 
-                    // Draw icon and name
+                    // Draw icon and name with vertical padding
                     context.drawTextWithShadow(this.textRenderer, Text.literal(icon + file.getName()),
-                            scrollAreaX + 10, y, 0xFFFFFF);
+                            scrollAreaX + 10, y + 4, 0xFFFFFF);
+
+                    // If this is a search result from a subfolder, show the folder path
+                    if (hasPath) {
+                        String path = filePathMap.get(file);
+                        String pathText = "📂 " + path;
+                        context.drawTextWithShadow(this.textRenderer, Text.literal(pathText),
+                                scrollAreaX + 10, y + 16, 0xAAAAAA);
+                    }
 
                     // For files, show file size
                     if (!file.isDirectory()) {
@@ -338,22 +548,47 @@ public class FileManagerScreen extends Screen {
                         String sizeText = fileSizeKB + " KB";
                         int sizeWidth = this.textRenderer.getWidth(sizeText);
                         context.drawTextWithShadow(this.textRenderer, Text.literal(sizeText),
-                                scrollAreaX + scrollAreaWidth - sizeWidth - 25, y, 0xCCCCCC);
+                                scrollAreaX + scrollAreaWidth - sizeWidth - 25, y + 4, 0xCCCCCC);
                     }
 
-                    // Draw delete button (X)
+                    // Draw delete button
                     int deleteX = scrollAreaX + scrollAreaWidth - 15;
-                    int deleteY = y;
+                    int deleteY = y + 5;
                     boolean isDeleteHovered = mouseX >= deleteX - 2 && mouseX <= deleteX + 8 &&
                             mouseY >= deleteY && mouseY <= deleteY + 10;
                     int deleteColor = isDeleteHovered ? 0xFF5555 : 0xAA5555;
-                    context.drawTextWithShadow(this.textRenderer, Text.literal("✕"), deleteX, deleteY, deleteColor);
+                    context.drawTextWithShadow(this.textRenderer, Text.literal("✕"), deleteX, deleteY - 1, deleteColor);
 
-                    // Draw separator line
-                    context.fill(scrollAreaX, y + itemHeight - 5, scrollAreaX + scrollAreaWidth - 10, y + itemHeight - 4, 0x22FFFFFF);
+                    // Draw separator line - placed lower for items with paths
+                    int separatorY = y + currentItemHeight - 5;
+                    context.fill(scrollAreaX, separatorY, scrollAreaX + scrollAreaWidth - 10,
+                            separatorY + 1, 0x22FFFFFF);
                 }
 
-                y += itemHeight;
+                y += currentItemHeight; // Use adjusted height for spacing
+            }
+            // Draw drag visual if dragging
+            if (isDragging && draggedFile != null) {
+                // Highlight drop target if any
+                if (dropTargetFolder != null) {
+                    int targetIndex = displayedFiles.indexOf(dropTargetFolder);
+                    if (targetIndex >= 0) {
+                        int targetY = scrollAreaY - scrollOffset + (targetIndex * itemHeight);
+                        context.fill(scrollAreaX, targetY,
+                                scrollAreaX + scrollAreaWidth -8, targetY + itemHeight - 5,
+                                0x3300FF00); // Green highlight
+                    }
+                }
+
+                // Draw dragged item name at cursor
+                String dragText = (draggedFile.isDirectory() ? "📁 " : "📄 ") + draggedFile.getName();
+                context.drawTextWithShadow(
+                        this.textRenderer,
+                        Text.literal(dragText),
+                        dragCurrentX + 10,
+                        dragCurrentY - 5,
+                        0xFFFFFF
+                );
             }
         }
 
@@ -383,8 +618,57 @@ public class FileManagerScreen extends Screen {
         }
     }
 
+    private List<BreadcrumbItem> breadcrumbItems = new ArrayList<>();
+
+    private static class BreadcrumbItem {
+        final String name;
+        final File directory;
+        int x;
+        int width;
+
+        BreadcrumbItem(String name, File directory) {
+            this.name = name;
+            this.directory = directory;
+        }
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Check if clicked outside the search field to unfocus it
+        if (searchField.isFocused() &&
+                (mouseX < searchField.getX() || mouseX > searchField.getX() + searchField.getWidth() ||
+                        mouseY < searchField.getY() || mouseY > searchField.getY() + searchField.getHeight())) {
+            searchField.setFocused(false);
+        }
+        // Start drag operation on left-click in the file area (not on scrollbar or delete button)
+        if (button == 0 && hasShiftDown() && mouseX >= scrollAreaX && mouseX < scrollAreaX + scrollAreaWidth - 20 &&
+                mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
+
+            // Calculate which item was clicked, accounting for variable item heights
+            if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
+                    mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
+
+                int y = scrollAreaY - scrollOffset;
+                for (int i = 0; i < displayedFiles.size(); i++) {
+                    File file = displayedFiles.get(i);
+
+                    // Calculate this item's height
+                    int currentItemHeight = itemHeight;
+                    if (isRecursiveSearch && filePathMap.containsKey(file) && !filePathMap.get(file).isEmpty()) {
+                        currentItemHeight = itemHeight + 10;
+                    }
+
+                    if (mouseY >= y && mouseY < y + currentItemHeight) {
+                        // Handle delete button check...
+                        // Handle directory navigation...
+                        // Rest of the click handling...
+                        break;
+                    }
+
+                    y += currentItemHeight;
+                }
+            }
+        }
         // Handle right click (button 1)
         if (button == 1 && mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
@@ -451,6 +735,10 @@ public class FileManagerScreen extends Screen {
                 } else if (clickedFile.isDirectory()) {
                     // Directory clicked - navigate into it
                     navigateToFolder(clickedFile);
+                    return true;
+                } else if (isRecursiveSearch && filePathMap.containsKey(clickedFile)) {
+                    // If this is a search result, navigate to its parent directory first
+                    navigateToFolder(clickedFile.getParentFile());
                     return true;
                 }
             }
@@ -581,17 +869,174 @@ public class FileManagerScreen extends Screen {
             return true;
         }
 
+        // Handle file dragging
+        if (isDragging && draggedFile != null) {
+            dragCurrentX = (int)mouseX;
+            dragCurrentY = (int)mouseY;
+
+            // Find potential drop target
+            dropTargetFolder = findDropTarget((int)mouseX, (int)mouseY);
+            return true;
+        }
+
         return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
     }
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        // Handle scrollbar release (existing code)
         if (button == 0 && isScrolling) {
             isScrolling = false;
             return true;
         }
 
+        // Handle file drop
+        if (button == 0 && isDragging && draggedFile != null) {
+            // Check if we're over a valid folder target
+            File targetFolder = findDropTarget((int)mouseX, (int)mouseY);
+            if (targetFolder != null && targetFolder.isDirectory() && !isSubdirectory(targetFolder, draggedFile)) {
+                // Move the file to the target folder
+                moveFile(draggedFile, targetFolder);
+            }
+
+            // Reset drag state
+            isDragging = false;
+            draggedFile = null;
+            dropTargetFolder = null;
+            loadFilesFromCurrentDirectory(); // Refresh the list
+            return true;
+        }
+
         return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    private File findDropTarget(int mouseX, int mouseY) {
+        // Check breadcrumbs first
+        int breadcrumbY = 40;
+        for (BreadcrumbItem item : breadcrumbItems) {
+            if (mouseX >= item.x && mouseX <= item.x + item.width &&
+                    mouseY >= breadcrumbY - 5 && mouseY <= breadcrumbY + 15) {
+                return item.directory;
+            }
+        }
+
+        // Only consider folders as drop targets in file list
+        if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
+                mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
+
+            int index = (int)((mouseY - scrollAreaY + scrollOffset) / itemHeight);
+            if (index >= 0 && index < displayedFiles.size()) {
+                File potentialTarget = displayedFiles.get(index);
+                if (potentialTarget.isDirectory() && !potentialTarget.equals(draggedFile)) {
+                    return potentialTarget;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isSubdirectory(File potentialParent, File potentialChild) {
+        if (potentialChild.isDirectory()) {
+            File parent = potentialChild;
+            while ((parent = parent.getParentFile()) != null) {
+                if (parent.equals(potentialParent)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void moveFile(File sourceFile, File targetFolder) {
+        try {
+            File destFile = new File(targetFolder, sourceFile.getName());
+
+            // Check if we're trying to move to the same location
+            if (sourceFile.getParentFile().equals(targetFolder)) {
+                return; // No need to move - already in correct folder
+            }
+            // Check if destination already exists
+            if (destFile.exists()) {
+                // Show confirmation dialog
+                MinecraftClient.getInstance().setScreen(new ConfirmationScreen(
+                        Text.literal("File Exists"),
+                        Text.literal("A file with name " + sourceFile.getName() + " already exists in the destination folder. Overwrite?"),
+                        (confirmed) -> {
+                            if (confirmed) {
+                                if (destFile.isDirectory()) {
+                                    // Recursively delete directory
+                                    List<File> filesToDelete = new ArrayList<>();
+                                    collectFilesToDelete(destFile, filesToDelete);
+                                    for (int i = filesToDelete.size() - 1; i >= 0; i--) {
+                                        filesToDelete.get(i).delete();
+                                    }
+                                } else {
+                                    destFile.delete();
+                                }
+                                performMove(sourceFile, destFile);
+                            }
+                            MinecraftClient.getInstance().setScreen(this);
+                        }
+                ));
+                return;
+            }
+
+            // Perform the move
+            performMove(sourceFile, destFile);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private boolean performMove(File sourceFile, File destFile) {
+        try {
+            boolean success = false;
+            if (sourceFile.isDirectory()) {
+                // For directories, create new directory and recursively copy files
+                if (destFile.mkdir()) {
+                    File[] files = sourceFile.listFiles();
+                    if (files != null) {
+                        success = true;
+                        for (File file : files) {
+                            if (!performMove(file, new File(destFile, file.getName()))) {
+                                success = false;
+                            }
+                        }
+                    }
+                    // Only delete source directory if copy succeeded
+                    if (success) {
+                        sourceFile.delete();
+                    }
+                }
+            } else {
+                // For files, use java.nio for atomic move if possible
+                try {
+                    java.nio.file.Files.move(
+                            sourceFile.toPath(),
+                            destFile.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                    );
+                    success = true;
+                } catch (Exception e) {
+                    // If move fails, try copy + delete
+                    try {
+                        java.nio.file.Files.copy(
+                                sourceFile.toPath(),
+                                destFile.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                        );
+                        success = sourceFile.delete();
+                    } catch (Exception copyEx) {
+                        e.printStackTrace();
+                        success = false;
+                    }
+                }
+            }
+            return success;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     @Override
