@@ -10,3 +10,4 @@ Things to fix:
 
 - Scroll bar glitchy when dragging it on start : Downloader Screen
 - More visible text for the description : Details Screen
+- Use Real Server For API Calls
