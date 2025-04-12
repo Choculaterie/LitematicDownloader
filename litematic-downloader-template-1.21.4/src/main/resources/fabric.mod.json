@@ -1,0 +1,41 @@
+{
+	"schemaVersion": 1,
+	"id": "litematic-downloader",
+	"version": "${version}",
+	"name": "Litematic Downloader",
+	"description": "Litematic Downloader allows you to download litematic files from choculaterie.com and import them into your world.",
+	"authors": [
+		"Choculat"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/litematic-downloader/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.choculaterie.LitematicDownloader"
+		],
+		"client": [
+			"com.choculaterie.LitematicDownloaderClient"
+		]
+	},
+	"mixins": [
+		"litematic-downloader.mixins.json",
+		{
+			"config": "litematic-downloader.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.16.13",
+		"minecraft": "~1.21.4",
+		"java": ">=21",
+		"fabric-api": "*"
+	},
+	"suggests": {
+		"another-mod": "*"
+	}
+}
