@@ -3,7 +3,7 @@
 	"id": "litematic-downloader",
 	"version": "${version}",
 	"name": "Litematic Downloader",
-	"description": "Litematic Downloader allows you to download litematic files from choculaterie.com and import them into your world.",
+	"description": "Downloader & file manager for Choculaterie's Litematic files.",
 	"authors": [
 		"Choculat"
 	],
