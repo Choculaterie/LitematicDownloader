@@ -32,6 +32,7 @@ public class LitematicDownloaderScreen extends Screen {
     private int totalContentHeight;
     private boolean isScrolling = false;
     private int lastMouseY;
+    private int scrollDragOffset = 0;
 
     // Status message fields
     private String statusMessage = null;
@@ -42,6 +43,9 @@ public class LitematicDownloaderScreen extends Screen {
     // For double click detection
     private int lastClickedIndex = -1;
     private long lastClickTime = 0;
+
+    private boolean isLoading = false;
+    private long loadingStartTime = 0;
 
     public LitematicDownloaderScreen() {
         super(Text.literal(""));
@@ -137,12 +141,23 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     private void loadSchematics() {
+        // Clear existing schematics immediately so loading animation will show
+        schematics = new ArrayList<>();
+        filteredSchematics = new ArrayList<>();
+        updateScrollbarDimensions();
+
+        // Set loading state
+        isLoading = true;
+        loadingStartTime = System.currentTimeMillis();
+
+        // Fetch schematics in background
         new Thread(() -> {
             List<SchematicInfo> loadedSchematics = LitematicHttpClient.fetchSchematicList();
             MinecraftClient.getInstance().execute(() -> {
                 schematics = loadedSchematics;
                 filterSchematics(); // Apply any existing search filter
                 updateScrollbarDimensions();
+                isLoading = false;
             });
         }).start();
     }
@@ -178,12 +193,20 @@ public class LitematicDownloaderScreen extends Screen {
 
         // Draw schematics list
         if (filteredSchematics.isEmpty()) {
-            if (schematics.isEmpty()) {
+            if (isLoading) {
+                // Calculate center of scroll area
+                int centerY = scrollAreaY + (scrollAreaHeight / 2);
+
+                // Draw loading animation centered in the scroll area
+                drawLoadingAnimation(context, this.width / 2, centerY - 15);
+                context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Loading..."),
+                        this.width / 2, centerY + 15, 0xCCCCCC);
+            } else if (schematics.isEmpty()) {
                 context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No schematics found"),
-                        this.width / 2, scrollAreaY + 20, 0xCCCCCC);
+                        this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xCCCCCC);
             } else {
                 context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No matches found"),
-                        this.width / 2, scrollAreaY + 20, 0xCCCCCC);
+                        this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xCCCCCC);
             }
         } else {
             int y = scrollAreaY - scrollOffset;
@@ -246,6 +269,34 @@ public class LitematicDownloaderScreen extends Screen {
                     this.height / 2 - 4,
                     statusColor
             );
+        }
+    }
+
+    private void drawLoadingAnimation(DrawContext context, int centerX, int centerY) {
+        int radius = 12;
+        int segments = 8;
+        int animationDuration = 1600; // Full rotation time in ms
+
+        // Calculate current angle based on time
+        long currentTime = System.currentTimeMillis();
+        long elapsedTime = currentTime - loadingStartTime;
+        float rotation = (elapsedTime % animationDuration) / (float) animationDuration;
+
+        // Draw each segment with fading color
+        for (int i = 0; i < segments; i++) {
+            float angle = (float) (i * 2 * Math.PI / segments);
+            angle += rotation * 2 * Math.PI; // Rotate based on time
+
+            int x1 = centerX + (int)(Math.sin(angle) * (radius - 3));
+            int y1 = centerY + (int)(Math.cos(angle) * (radius - 3));
+            int x2 = centerX + (int)(Math.sin(angle) * radius);
+            int y2 = centerY + (int)(Math.cos(angle) * radius);
+
+            // Calculate color intensity based on position
+            int alpha = 255 - (i * 255 / segments);
+            int color = 0xFFFFFF | (alpha << 24);
+
+            context.fill(x1, y1, x2, y2, color);
         }
     }
 
@@ -365,6 +416,7 @@ public class LitematicDownloaderScreen extends Screen {
                     mouseY >= scrollBarY && mouseY <= scrollBarY + scrollBarHeight) {
                 isScrolling = true;
                 lastMouseY = (int) mouseY;
+                scrollDragOffset = (int)(mouseY - scrollBarY); // Store offset between mouse and scroll bar top
                 return true;
             }
 
@@ -487,9 +539,9 @@ public class LitematicDownloaderScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         if (isScrolling) {
-            // Calculate the relative position directly based on mouse position
-            float relativeY = (float)(mouseY - scrollAreaY) / scrollAreaHeight;
-            scrollOffset = (int)(relativeY * (totalContentHeight - scrollAreaHeight));
+            // Calculate scroll position based on mouse position adjusted by initial click offset
+            float dragPosition = (float)(mouseY - scrollDragOffset - scrollAreaY) / (scrollAreaHeight - scrollBarHeight);
+            scrollOffset = (int)(dragPosition * (totalContentHeight - scrollAreaHeight));
 
             // Ensure we stay within bounds
             scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));

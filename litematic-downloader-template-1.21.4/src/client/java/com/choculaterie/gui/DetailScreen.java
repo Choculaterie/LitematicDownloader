@@ -45,6 +45,8 @@ public class DetailScreen extends Screen {
     private long statusMessageDisplayTime = 0;
     private static final long STATUS_MESSAGE_DURATION = 3000; // 3 seconds
 
+    private long loadingStartTime = 0;
+
     public DetailScreen(String schematicId) {
         super(Text.literal(""));
         this.schematicId = schematicId;
@@ -121,8 +123,11 @@ public class DetailScreen extends Screen {
         this.addDrawableChild(this.downloadButton);
 
         System.out.println("Loading schematic details for ID: " + schematicId);
-        isLoading = true;
+
         errorMessage = null;
+
+        isLoading = true;
+        loadingStartTime = System.currentTimeMillis();
 
         // Fetch schematic details in a separate thread
         new Thread(() -> {
@@ -154,6 +159,35 @@ public class DetailScreen extends Screen {
                 });
             }
         }).start();
+    }
+
+    private void drawLoadingAnimation(DrawContext context, int centerX, int centerY) {
+        int radius = 12;
+        int segments = 8;
+        int animationDuration = 1600; // Full rotation time in ms
+
+        // Calculate current angle based on time
+        long currentTime = System.currentTimeMillis();
+        long elapsedTime = currentTime - loadingStartTime;
+        float rotation = (elapsedTime % animationDuration) / (float) animationDuration;
+
+        // Draw each segment with fading color
+        for (int i = 0; i < segments; i++) {
+            float angle = (float) (i * 2 * Math.PI / segments);
+            angle += rotation * 2 * Math.PI; // Rotate based on time
+
+            int x1 = centerX + (int)(Math.sin(angle) * (radius - 3));
+            int y1 = centerY + (int)(Math.cos(angle) * (radius - 3));
+            int x2 = centerX + (int)(Math.sin(angle) * radius);
+            int y2 = centerY + (int)(Math.cos(angle) * radius);
+
+            // Calculate color intensity based on position
+            int alpha = 255 - (i * 255 / segments);
+            int color = 0xFFFFFF | (alpha << 24);
+
+            // Use fill to simulate a line
+            context.fill(x1, y1, x2 + 1, y2 + 1, color);
+        }
     }
 
     // Add this helper method to handle the actual download
@@ -240,9 +274,12 @@ public class DetailScreen extends Screen {
 
         // Handle loading state and content rendering
         if (isLoading) {
+            // Draw loading animation centered in the screen
+            int centerY = this.height / 2;
+            drawLoadingAnimation(context, this.width / 2, centerY - 15);
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Loading..."),
-                    this.width / 2, this.height / 2, 0xFFFFFF);
-        } else if (errorMessage != null) {
+                    this.width / 2, centerY + 15, 0xCCCCCC);
+        }  else if (errorMessage != null) {
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(errorMessage),
                     this.width / 2, this.height / 2, 0xFF0000);
         } else if (schematicDetail != null) {

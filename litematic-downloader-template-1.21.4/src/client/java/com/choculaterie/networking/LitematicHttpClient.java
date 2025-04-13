@@ -23,7 +23,7 @@ import java.util.Base64;
 import java.util.List;
 
 public class LitematicHttpClient {
-    private static final String API_URL = "https://localhost:7282/api/LitematicDownloaderModAPI/GetAll";
+    private static final String API_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI/GetAll";
     private static final Gson gson = new Gson();
     private static final HttpClient client;
 
@@ -89,7 +89,7 @@ public class LitematicHttpClient {
 
     public static SchematicDetailInfo fetchSchematicDetail(String id) {
         try {
-            String url = "https://localhost:7282/api/LitematicDownloaderModAPI/Getbyid/" + id;
+            String url = "https://choculaterie.com/api/LitematicDownloaderModAPI/Getbyid/" + id;
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .GET()
@@ -170,7 +170,7 @@ public class LitematicHttpClient {
 
     public static String fetchAndDownloadSchematic(String id, String fileName) {
         try {
-            String url = "https://localhost:7282/api/LitematicDownloaderModAPI/GetLitematicFiles/" + id;
+            String url = "https://choculaterie.com/api/LitematicDownloaderModAPI/GetLitematicFiles/" + id;
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .GET()

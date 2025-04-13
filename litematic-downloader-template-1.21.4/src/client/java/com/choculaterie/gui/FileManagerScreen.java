@@ -303,36 +303,17 @@ public class FileManagerScreen extends Screen {
     private void searchAllFiles(File directory, List<File> results, String relativePath) {
         File[] files = directory.listFiles();
         if (files != null) {
-            // First check if the current directory itself matches the search term
-            if (directory.getName().toLowerCase().contains(searchTerm) &&
-                    !directory.getAbsolutePath().equals(schematicsRootPath)) {
-                results.add(directory);
-                // Show parent path for directories (not their own name)
-                String parentPath = "schematic";
-                if (!relativePath.isEmpty()) {
-                    int lastSlash = relativePath.lastIndexOf('/');
-                    if (lastSlash >= 0) {
-                        parentPath = "schematic/" + relativePath.substring(0, lastSlash);
-                    }
-                }
-                filePathMap.put(directory, parentPath);
-            }
+            // The directory itself is no longer added to search results
 
             for (File file : files) {
                 String currentPath = relativePath.isEmpty() ? file.getName() : relativePath + "/" + file.getName();
 
                 if (file.isDirectory()) {
-                    // Add directory if it matches search term
-                    if (file.getName().toLowerCase().contains(searchTerm)) {
-                        results.add(file);
-                        // Don't include the directory's own name in the path
-                        String parentPath = relativePath.isEmpty() ? "schematic" : "schematic/" + relativePath;
-                        filePathMap.put(file, parentPath);
-                    }
-                    // Continue searching recursively
+                    // No longer add directories to search results
+                    // Just continue searching recursively
                     searchAllFiles(file, results, currentPath);
                 } else if (file.isFile()) {
-                    // For files, only apply search term (no file type filter)
+                    // Only add files that match the search term
                     if (file.getName().toLowerCase().contains(searchTerm)) {
                         results.add(file);
                         // Include "schematic" in the path
@@ -640,33 +621,34 @@ public class FileManagerScreen extends Screen {
                         mouseY < searchField.getY() || mouseY > searchField.getY() + searchField.getHeight())) {
             searchField.setFocused(false);
         }
-        // Start drag operation on left-click in the file area (not on scrollbar or delete button)
+
+        // Start drag operation on left-click with shift in the file area
         if (button == 0 && hasShiftDown() && mouseX >= scrollAreaX && mouseX < scrollAreaX + scrollAreaWidth - 20 &&
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
             // Calculate which item was clicked, accounting for variable item heights
-            if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
-                    mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
+            int y = scrollAreaY - scrollOffset;
+            for (int i = 0; i < displayedFiles.size(); i++) {
+                File file = displayedFiles.get(i);
 
-                int y = scrollAreaY - scrollOffset;
-                for (int i = 0; i < displayedFiles.size(); i++) {
-                    File file = displayedFiles.get(i);
-
-                    // Calculate this item's height
-                    int currentItemHeight = itemHeight;
-                    if (isRecursiveSearch && filePathMap.containsKey(file) && !filePathMap.get(file).isEmpty()) {
-                        currentItemHeight = itemHeight + 10;
-                    }
-
-                    if (mouseY >= y && mouseY < y + currentItemHeight) {
-                        // Handle delete button check...
-                        // Handle directory navigation...
-                        // Rest of the click handling...
-                        break;
-                    }
-
-                    y += currentItemHeight;
+                // Calculate this item's height
+                int currentItemHeight = itemHeight;
+                if (isRecursiveSearch && filePathMap.containsKey(file) && !filePathMap.get(file).isEmpty()) {
+                    currentItemHeight = itemHeight + 10;
                 }
+
+                if (mouseY >= y && mouseY < y + currentItemHeight) {
+                    // Start dragging this file
+                    draggedFile = file;
+                    isDragging = true;
+                    dragStartX = (int)mouseX;
+                    dragStartY = (int)mouseY;
+                    dragCurrentX = dragStartX;
+                    dragCurrentY = dragStartY;
+                    return true;
+                }
+
+                y += currentItemHeight;
             }
         }
         // Handle right click (button 1)
