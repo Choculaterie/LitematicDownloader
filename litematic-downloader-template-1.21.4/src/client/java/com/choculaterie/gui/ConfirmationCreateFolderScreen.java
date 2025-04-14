@@ -100,6 +100,8 @@ public class ConfirmationCreateFolderScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         this.renderBackground(context, mouseX, mouseY, delta);
 
+        super.render(context, mouseX, mouseY, delta);
+        
         // Draw title
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, this.height / 2 - 40, 0xFFFFFF);
 
@@ -111,7 +113,7 @@ public class ConfirmationCreateFolderScreen extends Screen {
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(errorMessage), this.width / 2, this.height / 2 + 50, 0xFF5555);
         }
 
-        super.render(context, mouseX, mouseY, delta);
+
     }
 
     @Override
