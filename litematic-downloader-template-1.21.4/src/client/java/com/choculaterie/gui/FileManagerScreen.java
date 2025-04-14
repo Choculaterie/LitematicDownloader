@@ -158,7 +158,7 @@ public class FileManagerScreen extends Screen {
         breadcrumbParts.clear();
         breadcrumbItems.clear();
 
-        // Add "schematic" as the root
+        // Add "schematics" as the root
         breadcrumbParts.add("schematics");
         breadcrumbItems.add(new BreadcrumbItem("schematics", new File(schematicsRootPath)));
 
@@ -316,8 +316,8 @@ public class FileManagerScreen extends Screen {
                     // Only add files that match the search term
                     if (file.getName().toLowerCase().contains(searchTerm)) {
                         results.add(file);
-                        // Include "schematic" in the path
-                        String filePath = "schematic/" + relativePath;
+                        // Include "schematics" in the path
+                        String filePath = "schematics/" + relativePath;
                         filePathMap.put(file, filePath);
                     }
                 }
