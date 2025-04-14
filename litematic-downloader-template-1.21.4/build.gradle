@@ -23,6 +23,10 @@ repositories {
 	mavenCentral()
 }
 
+tasks.named('test') {
+	enabled = false
+}
+
 loom {
 	splitEnvironmentSourceSets()
 

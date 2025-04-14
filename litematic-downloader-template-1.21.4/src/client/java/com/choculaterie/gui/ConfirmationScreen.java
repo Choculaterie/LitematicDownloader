@@ -48,6 +48,8 @@ public class ConfirmationScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         this.renderBackground(context, mouseX, mouseY, delta);
 
+        super.render(context, mouseX, mouseY, delta);
+
         // Draw title and message
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, this.height / 2 - 30, 0xFFFFFF);
 
@@ -58,6 +60,6 @@ public class ConfirmationScreen extends Screen {
             y += 10;
         }
 
-        super.render(context, mouseX, mouseY, delta);
+
     }
 }

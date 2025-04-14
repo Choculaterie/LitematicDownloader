@@ -14,12 +14,12 @@ public class LitematicDownloaderClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
-		// Register keybinding (category, key code, key name)
+		// Register keybinding with translation key and miscellaneous category
 		keyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-				"key.litematic-downloader.open_gui", // Translation key
+				"key.litematic-downloader.open_menu", // Translation key
 				InputUtil.Type.KEYSYM,
-				GLFW.GLFW_KEY_L, // Default to 'L' key
-				"category.litematic-downloader.keybinds" // Category translation key
+				GLFW.GLFW_KEY_N, // Default to 'N' key
+				KeyBinding.MISC_CATEGORY // Use the built-in miscellaneous category
 		));
 
 		// Register tick event to check for keybinding presses
