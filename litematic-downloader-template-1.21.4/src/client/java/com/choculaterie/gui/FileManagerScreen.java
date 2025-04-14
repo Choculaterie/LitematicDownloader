@@ -866,7 +866,7 @@ public class FileManagerScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        // Handle scrollbar release (existing code)
+        // Handle scrollbar release
         if (button == 0 && isScrolling) {
             isScrolling = false;
             return true;
@@ -879,13 +879,17 @@ public class FileManagerScreen extends Screen {
             if (targetFolder != null && targetFolder.isDirectory() && !isSubdirectory(targetFolder, draggedFile)) {
                 // Move the file to the target folder
                 moveFile(draggedFile, targetFolder);
+                // Note: moveFile now handles the refresh
+            } else {
+                // If no valid drop, still refresh to ensure consistency
+                loadFilesFromCurrentDirectory();
+                updateScrollbarDimensions();
             }
 
             // Reset drag state
             isDragging = false;
             draggedFile = null;
             dropTargetFolder = null;
-            loadFilesFromCurrentDirectory(); // Refresh the list
             return true;
         }
 
@@ -937,6 +941,7 @@ public class FileManagerScreen extends Screen {
             if (sourceFile.getParentFile().equals(targetFolder)) {
                 return; // No need to move - already in correct folder
             }
+
             // Check if destination already exists
             if (destFile.exists()) {
                 // Show confirmation dialog
@@ -957,6 +962,8 @@ public class FileManagerScreen extends Screen {
                                 }
                                 performMove(sourceFile, destFile);
                             }
+                            loadFilesFromCurrentDirectory(); // Always refresh after dialog closes
+                            updateScrollbarDimensions();
                             MinecraftClient.getInstance().setScreen(this);
                         }
                 ));
@@ -965,8 +972,12 @@ public class FileManagerScreen extends Screen {
 
             // Perform the move
             performMove(sourceFile, destFile);
+            loadFilesFromCurrentDirectory(); // Refresh after direct move
+            updateScrollbarDimensions();
         } catch (Exception e) {
             e.printStackTrace();
+            loadFilesFromCurrentDirectory(); // Refresh even after error
+            updateScrollbarDimensions();
         }
     }
 
@@ -1023,9 +1034,24 @@ public class FileManagerScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Only handle scrolling if mouse is in the scroll area
+        // Handle scrolling if mouse is in the scroll area
         if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
+
+            if (totalContentHeight > scrollAreaHeight) {
+                // Calculate scroll amount (20 pixels per mouse wheel tick)
+                int scrollAmount = (int)(-verticalAmount * 20);
+
+                // Update scroll position
+                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight,
+                        scrollOffset + scrollAmount));
+                return true;
+            }
+        }
+        // Even if mouse is over the search field, allow scrolling the file list
+        else if (searchField.isVisible() && !searchField.isFocused() &&
+                mouseX >= searchField.getX() && mouseX <= searchField.getX() + searchField.getWidth() &&
+                mouseY >= searchField.getY() && mouseY <= searchField.getY() + searchField.getHeight()) {
 
             if (totalContentHeight > scrollAreaHeight) {
                 // Calculate scroll amount (20 pixels per mouse wheel tick)

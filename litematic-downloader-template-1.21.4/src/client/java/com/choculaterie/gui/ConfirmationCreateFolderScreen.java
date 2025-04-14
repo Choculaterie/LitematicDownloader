@@ -101,7 +101,7 @@ public class ConfirmationCreateFolderScreen extends Screen {
         this.renderBackground(context, mouseX, mouseY, delta);
 
         super.render(context, mouseX, mouseY, delta);
-        
+
         // Draw title
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, this.height / 2 - 40, 0xFFFFFF);
 
