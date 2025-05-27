@@ -238,7 +238,7 @@ public class DetailScreen extends Screen {
 
     // Unified method for both success and error messages
     public void setDownloadStatus(String message, boolean isSuccess) {
-        ToastManager.INSTANCE.addToast(message, !isSuccess);
+        ToastManager.addToast(message, !isSuccess);
     }
 
     @Override
@@ -405,7 +405,7 @@ public class DetailScreen extends Screen {
             downloadButton.render(context, mouseX, mouseY, delta);
         }
 
-        ToastManager.INSTANCE.render(context, this.width);
+        ToastManager.render(context, this.width);
     }
 
     // Add these fields to your class

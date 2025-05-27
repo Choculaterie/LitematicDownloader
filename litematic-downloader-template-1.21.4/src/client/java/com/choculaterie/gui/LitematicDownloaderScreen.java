@@ -271,7 +271,7 @@ public class LitematicDownloaderScreen extends Screen {
             );
         }
 
-        ToastManager.INSTANCE.render(context, this.width);
+        ToastManager.render(context, this.width);
     }
 
     private void drawLoadingAnimation(DrawContext context, int centerX, int centerY) {
@@ -529,7 +529,7 @@ public class LitematicDownloaderScreen extends Screen {
     // Status message methods
     public void setStatusMessage(String message, boolean isSuccess) {
         // Replace with ToastManager
-        ToastManager.INSTANCE.addToast(message, !isSuccess);
+        ToastManager.addToast(message, !isSuccess);
     }
 
     public boolean hasActiveStatusMessage() {

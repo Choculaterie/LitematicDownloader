@@ -617,7 +617,7 @@ public class FileManagerScreen extends Screen {
         }
 
         // Draw toast notifications at the end
-        ToastManager.INSTANCE.render(context, this.width);
+        ToastManager.render(context, this.width);
     }
 
     private List<BreadcrumbItem> breadcrumbItems = new ArrayList<>();
@@ -822,13 +822,13 @@ public class FileManagerScreen extends Screen {
         LitematicHttpClient.uploadLitematicFile(file, new LitematicHttpClient.UploadCallback() {
             @Override
             public void onSuccess(String url) {
-                ToastManager.INSTANCE.addToast("URL copied to clipboard!", false);
+                ToastManager.addToast("URL copied to clipboard!", false);
                 filesBeingUploaded.remove(file);
             }
 
             @Override
             public void onError(String message) {
-                ToastManager.INSTANCE.addToast(message, true);
+                ToastManager.addToast(message, true);
                 filesBeingUploaded.remove(file);
             }
         });

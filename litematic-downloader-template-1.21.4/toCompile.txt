@@ -1,0 +1,5 @@
+use:
+
+.\gradlew remapJar --exclude-task test
+
+be in java 1.21
