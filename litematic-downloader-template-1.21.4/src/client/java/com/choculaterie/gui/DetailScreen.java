@@ -2,6 +2,7 @@ package com.choculaterie.gui;
 
 import com.choculaterie.models.SchematicDetailInfo;
 import com.choculaterie.networking.LitematicHttpClient;
+import com.choculaterie.gui.ToastManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
@@ -31,8 +32,6 @@ public class DetailScreen extends Screen {
     private SchematicDetailInfo schematicDetail;
     private boolean isLoading = true;
     private String errorMessage = null;
-    private String statusMessage = null;
-    private int statusColor = 0xFFFFFF;
     private Identifier coverImageTexture = null;
     private int imageWidth = 0;
     private int imageHeight = 0;
@@ -40,10 +39,6 @@ public class DetailScreen extends Screen {
     private ButtonWidget backButton;
     private ButtonWidget downloadButton;
     private Screen confirmationScreen = null;
-
-    // Add timer for temporary status message
-    private long statusMessageDisplayTime = 0;
-    private static final long STATUS_MESSAGE_DURATION = 3000; // 3 seconds
 
     private long loadingStartTime = 0;
 
@@ -243,9 +238,7 @@ public class DetailScreen extends Screen {
 
     // Unified method for both success and error messages
     public void setDownloadStatus(String message, boolean isSuccess) {
-        this.statusMessage = message;
-        this.statusColor = isSuccess ? 0x55FF55 : 0xFF5555; // Green for success, red for error
-        this.statusMessageDisplayTime = System.currentTimeMillis();
+        ToastManager.INSTANCE.addToast(message, !isSuccess);
     }
 
     @Override
@@ -400,20 +393,6 @@ public class DetailScreen extends Screen {
                         this.scrollBarX + scrollBarWidth, this.scrollBarY + this.scrollBarHeight,
                         scrollBarColor);
             }
-
-            // Display status message if present and not expired
-            long currentTime = System.currentTimeMillis();
-            if (statusMessage != null && currentTime - statusMessageDisplayTime < STATUS_MESSAGE_DURATION) {
-                // Draw a semi-transparent background for the message
-                int messageWidth = this.textRenderer.getWidth(statusMessage) + 20;
-                int messageHeight = 20;
-                int messageX = (this.width - messageWidth) / 2;
-                int messageY = this.height / 2 - 10;
-
-                context.fill(messageX, messageY, messageX + messageWidth, messageY + messageHeight, 0x80000000);
-                context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(statusMessage),
-                        this.width / 2, this.height / 2 - 4, statusColor);
-            }
         }
 
         // Position back button in the top left corner
@@ -425,6 +404,8 @@ public class DetailScreen extends Screen {
         if (downloadButton != null) {
             downloadButton.render(context, mouseX, mouseY, delta);
         }
+
+        ToastManager.INSTANCE.render(context, this.width);
     }
 
     // Add these fields to your class

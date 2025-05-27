@@ -270,6 +270,8 @@ public class LitematicDownloaderScreen extends Screen {
                     statusColor
             );
         }
+
+        ToastManager.INSTANCE.render(context, this.width);
     }
 
     private void drawLoadingAnimation(DrawContext context, int centerX, int centerY) {
@@ -526,9 +528,8 @@ public class LitematicDownloaderScreen extends Screen {
 
     // Status message methods
     public void setStatusMessage(String message, boolean isSuccess) {
-        this.statusMessage = message;
-        this.statusColor = isSuccess ? 0x55FF55 : 0xFF5555; // Green for success, red for error
-        this.statusMessageDisplayTime = System.currentTimeMillis();
+        // Replace with ToastManager
+        ToastManager.INSTANCE.addToast(message, !isSuccess);
     }
 
     public boolean hasActiveStatusMessage() {

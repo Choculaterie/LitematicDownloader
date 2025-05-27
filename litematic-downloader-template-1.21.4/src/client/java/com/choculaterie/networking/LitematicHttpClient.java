@@ -21,6 +21,17 @@ import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.io.ByteArrayOutputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import javax.net.ssl.HttpsURLConnection;
 
 public class LitematicHttpClient {
     private static final String API_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI/GetAll";
@@ -193,5 +204,59 @@ public class LitematicHttpClient {
             e.printStackTrace();
             throw new RuntimeException("Failed to download schematic: " + e.getMessage(), e);
         }
+    }
+
+    public static void uploadLitematicFile(File file, UploadCallback callback) {
+        new Thread(() -> {
+            try {
+                String boundary = "Boundary-" + System.currentTimeMillis();
+                byte[] fileBytes = java.nio.file.Files.readAllBytes(file.toPath());
+
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                baos.write(("--" + boundary + "\r\n").getBytes());
+                baos.write(("Content-Disposition: form-data; name=\"file\"; filename=\"" +
+                        file.getName() + "\"\r\n").getBytes());
+                baos.write("Content-Type: application/octet-stream\r\n\r\n".getBytes());
+                baos.write(fileBytes);
+                baos.write("\r\n".getBytes());
+                baos.write(("--" + boundary + "--\r\n").getBytes());
+
+                byte[] requestBody = baos.toByteArray();
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create("https://choculaterie.com/api/LitematicDownloaderModAPI/upload"))
+                        .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    JsonObject json = gson.fromJson(response.body(), JsonObject.class);
+                    String fileUrl = json.get("fileUrl").getAsString();
+                    String viewerUrl = json.get("viewerUrl").getAsString();
+
+                    // Schedule clipboard copy on Minecraft's main thread
+                    MinecraftClient.getInstance().execute(() -> {
+                        MinecraftClient.getInstance().keyboard.setClipboard(viewerUrl);
+                        callback.onSuccess(viewerUrl);
+                    });
+                } else {
+                    MinecraftClient.getInstance().execute(() ->
+                            callback.onError("Upload failed: " + response.statusCode() + " " + response.body()));
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                MinecraftClient.getInstance().execute(() ->
+                        callback.onError("Upload failed: " + e.getMessage()));
+            }
+        }).start();
+    }
+
+
+    // Interface for upload callbacks
+    public interface UploadCallback {
+        void onSuccess(String url);
+        void onError(String message);
     }
 }

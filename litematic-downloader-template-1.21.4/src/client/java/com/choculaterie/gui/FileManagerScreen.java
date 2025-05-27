@@ -1,5 +1,6 @@
 package com.choculaterie.gui;
 
+import com.choculaterie.networking.LitematicHttpClient;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -49,6 +50,9 @@ public class FileManagerScreen extends Screen {
     private List<File> allFiles = new ArrayList<>(); // Unfiltered file list
     private boolean isRecursiveSearch = false; // Whether current results are from recursive search
     private Map<File, String> filePathMap = new HashMap<>(); // Maps files to their relative paths
+
+    // Litematic upload tracking
+    private Set<File> filesBeingUploaded = new HashSet<>();
 
     public FileManagerScreen(Screen parentScreen) {
         super(Text.literal("")); //Title (removed because of search bar)
@@ -186,6 +190,7 @@ public class FileManagerScreen extends Screen {
             }
         }
     }
+
     private void navigateToFolder(File folder) {
         if (folder.isDirectory() && folder.exists()) {
             currentDirectory = folder;
@@ -529,7 +534,7 @@ public class FileManagerScreen extends Screen {
                         String sizeText = fileSizeKB + " KB";
                         int sizeWidth = this.textRenderer.getWidth(sizeText);
                         context.drawTextWithShadow(this.textRenderer, Text.literal(sizeText),
-                                scrollAreaX + scrollAreaWidth - sizeWidth - 25, y + 4, 0xCCCCCC);
+                                scrollAreaX + scrollAreaWidth - sizeWidth - 35, y + 4, 0xCCCCCC);
                     }
 
                     // Draw delete button
@@ -539,6 +544,19 @@ public class FileManagerScreen extends Screen {
                             mouseY >= deleteY && mouseY <= deleteY + 10;
                     int deleteColor = isDeleteHovered ? 0xFF5555 : 0xAA5555;
                     context.drawTextWithShadow(this.textRenderer, Text.literal("✕"), deleteX, deleteY - 1, deleteColor);
+
+                    // Draw upload button for .litematic files
+                    if (file.getName().toLowerCase().endsWith(".litematic")) {
+                        int uploadX = scrollAreaX + scrollAreaWidth - 29; // Adjusted for better alignment
+                        int uploadY = y + 5;
+                        boolean isUploadHovered = mouseX >= uploadX - 2 && mouseX <= uploadX + 12 &&
+                                mouseY >= uploadY && mouseY <= uploadY + 10;
+
+                        // Show different icon if upload is in progress
+                        String uploadIcon = filesBeingUploaded.contains(file) ? "⏳" : "📤";
+                        int uploadColor = isUploadHovered ? 0x55AAFF : 0x5555AA;
+                        context.drawTextWithShadow(this.textRenderer, Text.literal(uploadIcon), uploadX, uploadY - 1, uploadColor);
+                    }
 
                     // Draw separator line - placed lower for items with paths
                     int separatorY = y + currentItemHeight - 5;
@@ -597,6 +615,9 @@ public class FileManagerScreen extends Screen {
                     scrollBarX + scrollBarWidth, scrollBarY + scrollBarHeight,
                     scrollBarColor);
         }
+
+        // Draw toast notifications at the end
+        ToastManager.INSTANCE.render(context, this.width);
     }
 
     private List<BreadcrumbItem> breadcrumbItems = new ArrayList<>();
@@ -622,29 +643,55 @@ public class FileManagerScreen extends Screen {
             searchField.setFocused(false);
         }
 
-        // Start drag operation on left-click with shift in the file area
-        if (button == 0 && hasShiftDown() && mouseX >= scrollAreaX && mouseX < scrollAreaX + scrollAreaWidth - 20 &&
+        // Handle file click in the list
+        if (button == 0 && mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
-            // Calculate which item was clicked, accounting for variable item heights
+            // Calculate which item was clicked
             int y = scrollAreaY - scrollOffset;
             for (int i = 0; i < displayedFiles.size(); i++) {
                 File file = displayedFiles.get(i);
 
-                // Calculate this item's height
+                // Calculate this item's height - increased for search results with paths
                 int currentItemHeight = itemHeight;
-                if (isRecursiveSearch && filePathMap.containsKey(file) && !filePathMap.get(file).isEmpty()) {
+                boolean hasPath = isRecursiveSearch && filePathMap.containsKey(file) && !filePathMap.get(file).isEmpty();
+                if (hasPath) {
                     currentItemHeight = itemHeight + 10;
                 }
 
                 if (mouseY >= y && mouseY < y + currentItemHeight) {
-                    // Start dragging this file
-                    draggedFile = file;
-                    isDragging = true;
-                    dragStartX = (int)mouseX;
-                    dragStartY = (int)mouseY;
-                    dragCurrentX = dragStartX;
-                    dragCurrentY = dragStartY;
+                    // Check if upload button was clicked for .litematic files
+                    if (file.getName().toLowerCase().endsWith(".litematic")) {
+                        int uploadX = scrollAreaX + scrollAreaWidth - 28;
+                        int uploadY = y + 5;
+
+                        if (mouseX >= uploadX - 2 && mouseX <= uploadX + 12 &&
+                                mouseY >= uploadY && mouseY <= uploadY + 10) {
+                            // Upload button clicked
+                            if (!filesBeingUploaded.contains(file)) {
+                                uploadLitematicFile(file);
+                            }
+                            return true;
+                        }
+                    }
+
+                    // Check if delete button was clicked
+                    int deleteX = scrollAreaX + scrollAreaWidth - 15;
+                    int deleteY = y + 5;
+                    if (mouseX >= deleteX - 2 && mouseX <= deleteX + 8 &&
+                            mouseY >= deleteY && mouseY <= deleteY + 10) {
+                        // Delete button clicked
+                        handleDeleteRequest(file);
+                        return true;
+                    }
+
+                    // Handle directory navigation or file actions
+                    if (file.isDirectory()) {
+                        navigateToFolder(file);
+                    } else {
+                        // Handle file click action if needed
+                    }
+
                     return true;
                 }
 
@@ -714,7 +761,25 @@ public class FileManagerScreen extends Screen {
                     // Delete button clicked
                     handleDeleteRequest(clickedFile);
                     return true;
-                } else if (clickedFile.isDirectory()) {
+                }
+
+                // Check if upload button was clicked for .litematic files
+                if (clickedFile.getName().toLowerCase().endsWith(".litematic")) {
+                    int uploadX = scrollAreaX + scrollAreaWidth - 40;
+                    int uploadY = lineY + 5;
+
+                    if (mouseX >= uploadX - 2 && mouseX <= uploadX + 12 &&
+                            mouseY >= uploadY && mouseY <= uploadY + 10) {
+                        // Upload button clicked
+                        if (!filesBeingUploaded.contains(clickedFile)) {
+                            uploadLitematicFile(clickedFile);
+                        }
+                        return true;
+                    }
+                }
+
+                // Handle directory navigation or file search result clicks
+                if (clickedFile.isDirectory()) {
                     // Directory clicked - navigate into it
                     navigateToFolder(clickedFile);
                     return true;
@@ -748,6 +813,25 @@ public class FileManagerScreen extends Screen {
         }
 
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    // Add the new method to handle litematic file uploads
+    private void uploadLitematicFile(File file) {
+        filesBeingUploaded.add(file);
+
+        LitematicHttpClient.uploadLitematicFile(file, new LitematicHttpClient.UploadCallback() {
+            @Override
+            public void onSuccess(String url) {
+                ToastManager.INSTANCE.addToast("URL copied to clipboard!", false);
+                filesBeingUploaded.remove(file);
+            }
+
+            @Override
+            public void onError(String message) {
+                ToastManager.INSTANCE.addToast(message, true);
+                filesBeingUploaded.remove(file);
+            }
+        });
     }
 
     private void handleDeleteRequest(File fileToDelete) {
@@ -939,34 +1023,12 @@ public class FileManagerScreen extends Screen {
 
             // Check if we're trying to move to the same location
             if (sourceFile.getParentFile().equals(targetFolder)) {
-                return; // No need to move - already in correct folder
+                return;
             }
 
             // Check if destination already exists
             if (destFile.exists()) {
-                // Show confirmation dialog
-                MinecraftClient.getInstance().setScreen(new ConfirmationScreen(
-                        Text.literal("File Exists"),
-                        Text.literal("A file with name " + sourceFile.getName() + " already exists in the destination folder. Overwrite?"),
-                        (confirmed) -> {
-                            if (confirmed) {
-                                if (destFile.isDirectory()) {
-                                    // Recursively delete directory
-                                    List<File> filesToDelete = new ArrayList<>();
-                                    collectFilesToDelete(destFile, filesToDelete);
-                                    for (int i = filesToDelete.size() - 1; i >= 0; i--) {
-                                        filesToDelete.get(i).delete();
-                                    }
-                                } else {
-                                    destFile.delete();
-                                }
-                                performMove(sourceFile, destFile);
-                            }
-                            loadFilesFromCurrentDirectory(); // Always refresh after dialog closes
-                            updateScrollbarDimensions();
-                            MinecraftClient.getInstance().setScreen(this);
-                        }
-                ));
+                // Handle conflict - for now just return
                 return;
             }
 
@@ -985,45 +1047,11 @@ public class FileManagerScreen extends Screen {
         try {
             boolean success = false;
             if (sourceFile.isDirectory()) {
-                // For directories, create new directory and recursively copy files
-                if (destFile.mkdir()) {
-                    File[] files = sourceFile.listFiles();
-                    if (files != null) {
-                        success = true;
-                        for (File file : files) {
-                            if (!performMove(file, new File(destFile, file.getName()))) {
-                                success = false;
-                            }
-                        }
-                    }
-                    // Only delete source directory if copy succeeded
-                    if (success) {
-                        sourceFile.delete();
-                    }
-                }
+                // Handle directory moving
+                success = sourceFile.renameTo(destFile);
             } else {
-                // For files, use java.nio for atomic move if possible
-                try {
-                    java.nio.file.Files.move(
-                            sourceFile.toPath(),
-                            destFile.toPath(),
-                            java.nio.file.StandardCopyOption.REPLACE_EXISTING
-                    );
-                    success = true;
-                } catch (Exception e) {
-                    // If move fails, try copy + delete
-                    try {
-                        java.nio.file.Files.copy(
-                                sourceFile.toPath(),
-                                destFile.toPath(),
-                                java.nio.file.StandardCopyOption.REPLACE_EXISTING
-                        );
-                        success = sourceFile.delete();
-                    } catch (Exception copyEx) {
-                        e.printStackTrace();
-                        success = false;
-                    }
-                }
+                // Handle file moving
+                success = sourceFile.renameTo(destFile);
             }
             return success;
         } catch (Exception e) {

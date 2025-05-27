@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <bytecodeTargetLevel>
+      <module name="litematic-downloader-template-1.21.4" target="21" />
+      <module name="litematic-downloader-template-1.21.4.client" target="21" />
+      <module name="litematic-downloader-template-1.21.4.main" target="21" />
+      <module name="litematic-downloader-template-1.21.4.test" target="21" />
+    </bytecodeTargetLevel>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="litematic-downloader-template-1.21.4" options="&quot;-AoutRefMapFile=C:\Users\Margot Awa\Documents\GitHub\LitematicDownloader\litematic-downloader-template-1.21.4\build\classes\java\client\client-litematic-downloader-refmap.json&quot; -AdefaultObfuscationEnv=named:intermediary -Aquiet=true &quot;-AoutMapFileNamedIntermediary=C:\Users\Margot Awa\Documents\GitHub\LitematicDownloader\litematic-downloader-template-1.21.4\build\loom-cache\mixin-map-net.fabricmc.yarn.1_21_4.1.21.4+build.8-v2.client.tiny&quot; &quot;-AinMapFileNamedIntermediary=C:\Users\Margot Awa\.gradle\caches\fabric-loom\1.21.4\net.fabricmc.yarn.1_21_4.1.21.4+build.8-v2\mappings.tiny&quot;" />
+      <module name="litematic-downloader-template-1.21.4.client" options="&quot;-AoutRefMapFile=C:\Users\Margot Awa\Documents\GitHub\LitematicDownloader\litematic-downloader-template-1.21.4\build\classes\java\client\client-litematic-downloader-refmap.json&quot; -AdefaultObfuscationEnv=named:intermediary -Aquiet=true &quot;-AoutMapFileNamedIntermediary=C:\Users\Margot Awa\Documents\GitHub\LitematicDownloader\litematic-downloader-template-1.21.4\build\loom-cache\mixin-map-net.fabricmc.yarn.1_21_4.1.21.4+build.8-v2.client.tiny&quot; &quot;-AinMapFileNamedIntermediary=C:\Users\Margot Awa\.gradle\caches\fabric-loom\1.21.4\net.fabricmc.yarn.1_21_4.1.21.4+build.8-v2\mappings.tiny&quot;" />
+      <module name="litematic-downloader-template-1.21.4.main" options="&quot;-AoutRefMapFile=C:\Users\Margot Awa\Documents\GitHub\LitematicDownloader\litematic-downloader-template-1.21.4\build\classes\java\main\litematic-downloader-refmap.json&quot; -AdefaultObfuscationEnv=named:intermediary -Aquiet=true &quot;-AoutMapFileNamedIntermediary=C:\Users\Margot Awa\Documents\GitHub\LitematicDownloader\litematic-downloader-template-1.21.4\build\loom-cache\mixin-map-net.fabricmc.yarn.1_21_4.1.21.4+build.8-v2.main.tiny&quot; &quot;-AinMapFileNamedIntermediary=C:\Users\Margot Awa\.gradle\caches\fabric-loom\1.21.4\net.fabricmc.yarn.1_21_4.1.21.4+build.8-v2\mappings.tiny&quot;" />
+      <module name="litematic-downloader-template-1.21.4.test" options="&quot;-AoutRefMapFile=C:\Users\Margot Awa\Documents\GitHub\LitematicDownloader\litematic-downloader-template-1.21.4\build\classes\java\test\test-litematic-downloader-refmap.json&quot; -AdefaultObfuscationEnv=named:intermediary -Aquiet=true &quot;-AoutMapFileNamedIntermediary=C:\Users\Margot Awa\Documents\GitHub\LitematicDownloader\litematic-downloader-template-1.21.4\build\loom-cache\mixin-map-net.fabricmc.yarn.1_21_4.1.21.4+build.8-v2.test.tiny&quot; &quot;-AinMapFileNamedIntermediary=C:\Users\Margot Awa\.gradle\caches\fabric-loom\1.21.4\net.fabricmc.yarn.1_21_4.1.21.4+build.8-v2\mappings.tiny&quot;" />
+    </option>
+  </component>
+</project>
