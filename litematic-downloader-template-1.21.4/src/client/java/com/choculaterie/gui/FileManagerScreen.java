@@ -963,6 +963,28 @@ public class FileManagerScreen extends Screen {
     }
 
     @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        // Only scroll if mouse is over the file list area
+        if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
+                mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
+
+            // Check if there's content that requires scrolling
+            if (totalContentHeight > scrollAreaHeight) {
+                // Scroll amount - adjust multiplier to change scroll speed
+                int scrollAmount = (int)(verticalAmount * 1 * itemHeight);
+
+                // Update scroll offset
+                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight,
+                        scrollOffset - scrollAmount));
+
+                return true; // Consume the scroll event
+            }
+        }
+
+        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+    }
+
+    @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         // Handle scrollbar release
         if (button == 0 && isScrolling) {

@@ -35,8 +35,8 @@ import javax.net.ssl.HttpsURLConnection;
 
 public class LitematicHttpClient {
     // Change this URL for development/production environments
-    private static final String BASE_URL = "http://localhost:5036/api/LitematicDownloaderModAPI";
-    // For production, change to: "https://choculaterie.com/api/LitematicDownloaderModAPI"
+    //private static final String BASE_URL = "http://localhost:5036/api/LitematicDownloaderModAPI";
+    private static final String BASE_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI";
 
     private static final Gson gson = new Gson();
     private static final HttpClient client;
