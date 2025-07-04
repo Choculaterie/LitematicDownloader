@@ -15,9 +15,15 @@ import java.util.List;
 
 public class LitematicDownloaderScreen extends Screen {
     private List<SchematicInfo> schematics = new ArrayList<>();
-    private List<SchematicInfo> filteredSchematics = new ArrayList<>();
     private TextFieldWidget searchField;
     private String searchTerm = "";
+    private boolean isSearchMode = false;
+
+    // Pagination fields
+    private int currentPage = 1;
+    private int totalPages = 1;
+    private int totalItems = 0;
+    private final int pageSize = 15;
 
     // Scrolling related fields
     private int scrollOffset = 0;
@@ -38,7 +44,7 @@ public class LitematicDownloaderScreen extends Screen {
     private String statusMessage = null;
     private int statusColor = 0xFFFFFF;
     private long statusMessageDisplayTime = 0;
-    private static final long STATUS_MESSAGE_DURATION = 3000; // 3 seconds
+    private static final long STATUS_MESSAGE_DURATION = 3000;
 
     // For double click detection
     private int lastClickedIndex = -1;
@@ -46,6 +52,10 @@ public class LitematicDownloaderScreen extends Screen {
 
     private boolean isLoading = false;
     private long loadingStartTime = 0;
+
+    // Search debounce
+    private long lastSearchTime = 0;
+    private static final long SEARCH_DEBOUNCE_MS = 500;
 
     public LitematicDownloaderScreen() {
         super(Text.literal(""));
@@ -55,26 +65,32 @@ public class LitematicDownloaderScreen extends Screen {
     protected void init() {
         super.init();
 
-        // File Manager button - at the top right
+        // File Manager button
         this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("📁"),
                 button -> MinecraftClient.getInstance().setScreen(new FileManagerScreen(this))
         ).dimensions(this.width - 65, 10, 20, 20).build());
 
-        // Refresh button - to the right of the file manager button
+        // Refresh button
         this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("🔄"),
-                button -> loadSchematics()
+                button -> {
+                    if (isSearchMode) {
+                        performSearch();
+                    } else {
+                        loadSchematics();
+                    }
+                }
         ).dimensions(this.width - 40, 10, 20, 20).build());
 
         // Set up scroll area dimensions
-        int contentWidth = Math.min(600, this.width - 80); // Max width or screen width minus margins
+        int contentWidth = Math.min(600, this.width - 80);
         scrollAreaX = (this.width - contentWidth) / 2;
-        scrollAreaY = 35;
+        scrollAreaY = 70; // Make room for pagination
         scrollAreaWidth = contentWidth;
-        scrollAreaHeight = this.height - scrollAreaY - 10;
+        scrollAreaHeight = this.height - scrollAreaY - 40; // Make room for pagination at bottom
 
-        // Add search field (centered with fixed width of 200)
+        // Add search field
         int searchFieldWidth = 200;
         this.searchField = new TextFieldWidget(
                 this.textRenderer,
@@ -86,53 +102,139 @@ public class LitematicDownloaderScreen extends Screen {
         );
         this.searchField.setMaxLength(50);
         this.searchField.setPlaceholder(Text.literal("Search..."));
-        this.searchField.setChangedListener(this::onSearchChanged);
         this.addSelectableChild(this.searchField);
 
-        // Add clear button (X) for the search field
+        // Add clear button for search field
         this.addDrawableChild(ButtonWidget.builder(
                         Text.literal("✕"),
                         button -> {
                             searchField.setText("");
-                            onSearchChanged("");
                         })
                 .dimensions((this.width + searchFieldWidth) / 2 + 5, 10, 20, 20)
                 .build());
 
-        // Calculate total content height (will be updated when schematics load)
-        updateScrollbarDimensions();
+        // Add pagination controls
+        setupPaginationControls();
 
-        // Load schematics
+        updateScrollbarDimensions();
         loadSchematics();
     }
 
-    private void onSearchChanged(String searchText) {
-        this.searchTerm = searchText.toLowerCase();
-        this.filterSchematics();
-        this.scrollOffset = 0; // Reset scroll position on search
-        updateScrollbarDimensions();
+    private void setupPaginationControls() {
+        int centerX = this.width / 2;
+        int paginationY = this.height - 30;
+
+        // Previous page button
+        this.addDrawableChild(ButtonWidget.builder(
+                        Text.literal("◀"),
+                        button -> {
+                            if (currentPage > 1) {
+                                currentPage--;
+                                if (isSearchMode) {
+                                    performSearch();
+                                } else {
+                                    loadSchematics();
+                                }
+                            }
+                        })
+                .dimensions(centerX - 100, paginationY, 20, 20)
+                .build());
+
+        // Next page button
+        this.addDrawableChild(ButtonWidget.builder(
+                        Text.literal("▶"),
+                        button -> {
+                            if (currentPage < totalPages) {
+                                currentPage++;
+                                if (isSearchMode) {
+                                    performSearch();
+                                } else {
+                                    loadSchematics();
+                                }
+                            }
+                        })
+                .dimensions(centerX + 80, paginationY, 20, 20)
+                .build());
+
+        // First page button
+        this.addDrawableChild(ButtonWidget.builder(
+                        Text.literal("⏮"),
+                        button -> {
+                            if (currentPage > 1) {
+                                currentPage = 1;
+                                if (isSearchMode) {
+                                    performSearch();
+                                } else {
+                                    loadSchematics();
+                                }
+                            }
+                        })
+                .dimensions(centerX - 125, paginationY, 20, 20)
+                .build());
+
+        // Last page button
+        this.addDrawableChild(ButtonWidget.builder(
+                        Text.literal("⏭"),
+                        button -> {
+                            if (currentPage < totalPages) {
+                                currentPage = totalPages;
+                                if (isSearchMode) {
+                                    performSearch();
+                                } else {
+                                    loadSchematics();
+                                }
+                            }
+                        })
+                .dimensions(centerX + 105, paginationY, 20, 20)
+                .build());
     }
 
-    private void filterSchematics() {
-        if (searchTerm.isEmpty()) {
-            // If search is empty, show all schematics
-            this.filteredSchematics = new ArrayList<>(this.schematics);
-            return;
-        }
+    private void performSearch() {
+        if (searchTerm.isEmpty()) return;
 
-        // Filter schematics based on search term
-        this.filteredSchematics = this.schematics.stream()
-                .filter(schematic ->
-                        schematic.getName().toLowerCase().contains(searchTerm) ||
-                                schematic.getDescription().toLowerCase().contains(searchTerm) ||
-                                schematic.getUsername().toLowerCase().contains(searchTerm))
-                .toList();
+        schematics.clear();
+        updateScrollbarDimensions();
+        scrollOffset = 0;
+
+        isLoading = true;
+        loadingStartTime = System.currentTimeMillis();
+
+        new Thread(() -> {
+            List<SchematicInfo> searchResults = LitematicHttpClient.searchSchematics(searchTerm);
+            MinecraftClient.getInstance().execute(() -> {
+                schematics = searchResults;
+                // For search, we don't have pagination info, so reset these
+                totalPages = 1;
+                totalItems = searchResults.size();
+                updateScrollbarDimensions();
+                isLoading = false;
+            });
+        }).start();
+    }
+
+    private void loadSchematics() {
+        schematics.clear();
+        updateScrollbarDimensions();
+        scrollOffset = 0;
+
+        isLoading = true;
+        loadingStartTime = System.currentTimeMillis();
+
+        new Thread(() -> {
+            LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(currentPage, pageSize);
+            MinecraftClient.getInstance().execute(() -> {
+                schematics = result.getItems();
+                totalPages = result.getTotalPages();
+                totalItems = result.getTotalItems();
+                updateScrollbarDimensions();
+                isLoading = false;
+            });
+        }).start();
     }
 
     private void updateScrollbarDimensions() {
-        totalContentHeight = filteredSchematics.size() * itemHeight;
+        totalContentHeight = schematics.size() * itemHeight;
 
-        // Reset scroll offset if it's now out of bounds
         if (totalContentHeight <= scrollAreaHeight) {
             scrollOffset = 0;
         } else {
@@ -140,33 +242,9 @@ public class LitematicDownloaderScreen extends Screen {
         }
     }
 
-    private void loadSchematics() {
-        // Clear existing schematics immediately so loading animation will show
-        schematics = new ArrayList<>();
-        filteredSchematics = new ArrayList<>();
-        updateScrollbarDimensions();
-
-        // Set loading state
-        isLoading = true;
-        loadingStartTime = System.currentTimeMillis();
-
-        // Fetch schematics in background
-        new Thread(() -> {
-            List<SchematicInfo> loadedSchematics = LitematicHttpClient.fetchSchematicList();
-            MinecraftClient.getInstance().execute(() -> {
-                schematics = loadedSchematics;
-                filterSchematics(); // Apply any existing search filter
-                updateScrollbarDimensions();
-                isLoading = false;
-            });
-        }).start();
-    }
-
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         this.renderBackground(context, mouseX, mouseY, delta);
-
-        // Render other widgets
         super.render(context, mouseX, mouseY, delta);
 
         // Render title
@@ -183,6 +261,21 @@ public class LitematicDownloaderScreen extends Screen {
                 0xAAAAAA
         );
 
+        // Render pagination info
+        String paginationText;
+        if (isSearchMode) {
+            paginationText = "Found " + totalItems + " results";
+        } else {
+            paginationText = "Page " + currentPage + " of " + totalPages + " (" + totalItems + " total)";
+        }
+        context.drawCenteredTextWithShadow(
+                this.textRenderer,
+                Text.literal(paginationText),
+                this.width / 2,
+                40,
+                0xCCCCCC
+        );
+
         // Create clipping region for schematic list
         context.enableScissor(
                 scrollAreaX,
@@ -192,32 +285,26 @@ public class LitematicDownloaderScreen extends Screen {
         );
 
         // Draw schematics list
-        if (filteredSchematics.isEmpty()) {
+        if (schematics.isEmpty()) {
             if (isLoading) {
-                // Calculate center of scroll area
                 int centerY = scrollAreaY + (scrollAreaHeight / 2);
-
-                // Draw loading animation centered in the scroll area
                 drawLoadingAnimation(context, this.width / 2, centerY - 15);
                 context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Loading..."),
                         this.width / 2, centerY + 15, 0xCCCCCC);
-            } else if (schematics.isEmpty()) {
-                context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No schematics found"),
+            } else if (isSearchMode) {
+                context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No results found for: " + searchTerm),
                         this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xCCCCCC);
             } else {
-                context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No matches found"),
+                context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No schematics found"),
                         this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xCCCCCC);
             }
         } else {
             int y = scrollAreaY - scrollOffset;
-            for (int i = 0; i < filteredSchematics.size(); i++) {
-                SchematicInfo schematic = filteredSchematics.get(i);
+            for (int i = 0; i < schematics.size(); i++) {
+                SchematicInfo schematic = schematics.get(i);
 
-                // Only render if visible in the scroll area
                 if (y + itemHeight >= scrollAreaY && y <= scrollAreaY + scrollAreaHeight) {
                     renderSchematicItem(context, schematic, scrollAreaX, y, scrollAreaWidth, mouseX, mouseY, i);
-
-                    // Draw separator line
                     context.fill(scrollAreaX, y + itemHeight - 5,
                             scrollAreaX + scrollAreaWidth - 10, y + itemHeight -4, 0x22FFFFFF);
                 }
@@ -236,12 +323,10 @@ public class LitematicDownloaderScreen extends Screen {
             scrollBarY = scrollAreaY + (int)((float)scrollOffset / (totalContentHeight - scrollAreaHeight)
                     * (scrollAreaHeight - scrollBarHeight));
 
-            // Draw scroll bar background
             context.fill(scrollBarX, scrollAreaY,
                     scrollBarX + scrollBarWidth, scrollAreaY + scrollAreaHeight,
                     0x33FFFFFF);
 
-            // Draw scroll bar handle with hover effect
             boolean isHovering = mouseX >= scrollBarX && mouseX <= scrollBarX + scrollBarWidth &&
                     mouseY >= scrollBarY && mouseY <= scrollBarY + scrollBarHeight;
 
@@ -251,11 +336,8 @@ public class LitematicDownloaderScreen extends Screen {
                     scrollBarColor);
         }
 
-
-
         // Render status message if active
         if (hasActiveStatusMessage()) {
-            // Draw a semi-transparent background for the message
             int messageWidth = this.textRenderer.getWidth(statusMessage) + 20;
             int messageHeight = 20;
             int messageX = (this.width - messageWidth) / 2;
@@ -277,24 +359,21 @@ public class LitematicDownloaderScreen extends Screen {
     private void drawLoadingAnimation(DrawContext context, int centerX, int centerY) {
         int radius = 12;
         int segments = 8;
-        int animationDuration = 1600; // Full rotation time in ms
+        int animationDuration = 1600;
 
-        // Calculate current angle based on time
         long currentTime = System.currentTimeMillis();
         long elapsedTime = currentTime - loadingStartTime;
         float rotation = (elapsedTime % animationDuration) / (float) animationDuration;
 
-        // Draw each segment with fading color
         for (int i = 0; i < segments; i++) {
             float angle = (float) (i * 2 * Math.PI / segments);
-            angle += rotation * 2 * Math.PI; // Rotate based on time
+            angle += rotation * 2 * Math.PI;
 
             int x1 = centerX + (int)(Math.sin(angle) * (radius - 3));
             int y1 = centerY + (int)(Math.cos(angle) * (radius - 3));
             int x2 = centerX + (int)(Math.sin(angle) * radius);
             int y2 = centerY + (int)(Math.cos(angle) * radius);
 
-            // Calculate color intensity based on position
             int alpha = 255 - (i * 255 / segments);
             int color = 0xFFFFFF | (alpha << 24);
 
@@ -304,21 +383,18 @@ public class LitematicDownloaderScreen extends Screen {
 
     private void renderSchematicItem(DrawContext context, SchematicInfo schematic, int x, int y,
                                      int width, int mouseX, int mouseY, int index) {
-        // Use the full available width for rendering content
-        int maxTextWidth = width - 110; // Reserve space for stats and download button
+        int maxTextWidth = width - 110;
 
-        // Left side: Title, Description, Author
         int textX = x + 10;
         int textY = y + 2;
         int originalY = textY;
 
-        // Title (white)
+        // Title
         List<OrderedText> titleLines = MinecraftClient.getInstance().textRenderer.wrapLines(
                 Text.literal(schematic.getName()), maxTextWidth);
 
-        for (int i = 0; i < Math.min(titleLines.size(), 2); i++) { // Limit to 2 lines max
+        for (int i = 0; i < Math.min(titleLines.size(), 2); i++) {
             if (i == 1 && titleLines.size() > 2) {
-                // This is the last visible line and there are more lines
                 String lastLine = getPlainText(titleLines.get(i));
                 if (lastLine.length() > 3) {
                     lastLine = lastLine.substring(0, lastLine.length() - 3) + "...";
@@ -331,14 +407,13 @@ public class LitematicDownloaderScreen extends Screen {
             textY += 10;
         }
 
-        // Description (gray) with wrapping and ellipsis
+        // Description
         String description = schematic.getDescription().isEmpty() ? "No description" : schematic.getDescription();
         List<OrderedText> descLines = MinecraftClient.getInstance().textRenderer.wrapLines(
                 Text.literal(description), maxTextWidth);
 
         if (!descLines.isEmpty()) {
             if (descLines.size() > 1) {
-                // Show first line with ellipsis if there are more lines
                 String firstLine = getPlainText(descLines.get(0));
                 if (firstLine.length() > 3) {
                     firstLine = firstLine.substring(0, firstLine.length() - 3) + "...";
@@ -351,15 +426,14 @@ public class LitematicDownloaderScreen extends Screen {
             textY += 10;
         }
 
-        // Author (light gray)
+        // Author
         String authorText = "By: " + schematic.getUsername();
         context.drawText(MinecraftClient.getInstance().textRenderer, authorText, textX, textY, 0xCCCCCC, false);
 
-        // Right side: View and Download counts
-        int rightX = x + width - 50; // Adjust position for download button
+        // Right side stats
+        int rightX = x + width - 50;
         int statsY = originalY;
 
-        // Calculate maximum width needed for the numbers to align them right
         String viewCountStr = String.valueOf(schematic.getViewCount());
         String downloadCountStr = String.valueOf(schematic.getDownloadCount());
         int maxNumberWidth = Math.max(
@@ -367,7 +441,6 @@ public class LitematicDownloaderScreen extends Screen {
                 MinecraftClient.getInstance().textRenderer.getWidth(downloadCountStr)
         );
 
-        // View count (aligned right)
         context.drawText(MinecraftClient.getInstance().textRenderer, viewCountStr,
                 rightX - maxNumberWidth, statsY, 0xFFFFFF, false);
         context.drawText(MinecraftClient.getInstance().textRenderer, " 👁",
@@ -375,14 +448,13 @@ public class LitematicDownloaderScreen extends Screen {
                 statsY, 0xFFFFFF, false);
         statsY += 10;
 
-        // Download count (aligned right)
         context.drawText(MinecraftClient.getInstance().textRenderer, downloadCountStr,
                 rightX - maxNumberWidth, statsY, 0xFFFFFF, false);
         context.drawText(MinecraftClient.getInstance().textRenderer, " ⬇",
                 rightX - maxNumberWidth + MinecraftClient.getInstance().textRenderer.getWidth(downloadCountStr),
                 statsY, 0xFFFFFF, false);
 
-        // Draw download button with hover effect
+        // Download button
         int buttonX = x + width - 30;
         int buttonY = originalY - 2;
         boolean isButtonHovered = mouseX >= buttonX && mouseX <= buttonX + 20 &&
@@ -393,7 +465,6 @@ public class LitematicDownloaderScreen extends Screen {
         context.drawCenteredTextWithShadow(textRenderer, Text.literal("⬇"), buttonX + 10, buttonY + 6, 0xFFFFFF);
     }
 
-    // Utility method to convert OrderedText to String
     private String getPlainText(OrderedText text) {
         StringBuilder sb = new StringBuilder();
         text.accept((index, style, codePoint) -> {
@@ -405,27 +476,24 @@ public class LitematicDownloaderScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Check if clicked outside the search field to unfocus it
         if (searchField.isFocused() &&
                 (mouseX < searchField.getX() || mouseX > searchField.getX() + searchField.getWidth() ||
                         mouseY < searchField.getY() || mouseY > searchField.getY() + searchField.getHeight())) {
             searchField.setFocused(false);
         }
+
         // Handle scrollbar interaction
         if (button == 0 && totalContentHeight > scrollAreaHeight) {
-            // Check if click is on scroll bar
             if (mouseX >= scrollBarX && mouseX <= scrollBarX + 6 &&
                     mouseY >= scrollBarY && mouseY <= scrollBarY + scrollBarHeight) {
                 isScrolling = true;
                 lastMouseY = (int) mouseY;
-                scrollDragOffset = (int)(mouseY - scrollBarY); // Store offset between mouse and scroll bar top
+                scrollDragOffset = (int)(mouseY - scrollBarY);
                 return true;
             }
 
-            // Check if click is in scroll area but not on the handle (jump scroll)
             if (mouseX >= scrollBarX && mouseX <= scrollBarX + 6 &&
                     mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
-                // Calculate new scroll position based on click location
                 float clickPercent = ((float)mouseY - scrollAreaY) / scrollAreaHeight;
                 scrollOffset = (int)(clickPercent * (totalContentHeight - scrollAreaHeight));
                 scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));
@@ -438,8 +506,8 @@ public class LitematicDownloaderScreen extends Screen {
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
             int index = (int)((mouseY - scrollAreaY + scrollOffset) / itemHeight);
-            if (index >= 0 && index < filteredSchematics.size()) {
-                SchematicInfo schematic = filteredSchematics.get(index);
+            if (index >= 0 && index < schematics.size()) {
+                SchematicInfo schematic = schematics.get(index);
 
                 // Check for download button click
                 int buttonX = scrollAreaX + scrollAreaWidth - 30;
@@ -469,7 +537,6 @@ public class LitematicDownloaderScreen extends Screen {
         try {
             String fileName = schematic.getName().replaceAll("[^a-zA-Z0-9.-]", "_");
 
-            // Get file path before downloading to check if it exists
             File gameDir = MinecraftClient.getInstance().runDirectory;
             String savePath;
 
@@ -493,7 +560,6 @@ public class LitematicDownloaderScreen extends Screen {
             File potentialFile = new File(savePath + fileName + ".litematic");
 
             if (potentialFile.exists()) {
-                // Show confirmation dialog
                 ConfirmationScreen confirmationScreen = new ConfirmationScreen(
                         Text.literal("File already exists"),
                         Text.literal("The file \"" + fileName + ".litematic\" already exists. Do you want to replace it?"),
@@ -506,7 +572,6 @@ public class LitematicDownloaderScreen extends Screen {
                 );
                 MinecraftClient.getInstance().setScreen(confirmationScreen);
             } else {
-                // No existing file, download directly
                 downloadSchematic(schematic, fileName);
             }
         } catch (Exception e) {
@@ -517,18 +582,14 @@ public class LitematicDownloaderScreen extends Screen {
     private void downloadSchematic(SchematicInfo schematic, String fileName) {
         try {
             String filePath = LitematicHttpClient.fetchAndDownloadSchematic(schematic.getId(), fileName);
-            // Extract the schematic name for display
             String displayPath = "/schematic/" + fileName + ".litematic";
-
             setStatusMessage("Schematic downloaded to: " + displayPath, true);
         } catch (Exception e) {
             setStatusMessage("Failed to download schematic: " + e.getMessage(), false);
         }
     }
 
-    // Status message methods
     public void setStatusMessage(String message, boolean isSuccess) {
-        // Replace with ToastManager
         ToastManager.addToast(message, !isSuccess);
     }
 
@@ -540,11 +601,8 @@ public class LitematicDownloaderScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         if (isScrolling) {
-            // Calculate scroll position based on mouse position adjusted by initial click offset
             float dragPosition = (float)(mouseY - scrollDragOffset - scrollAreaY) / (scrollAreaHeight - scrollBarHeight);
             scrollOffset = (int)(dragPosition * (totalContentHeight - scrollAreaHeight));
-
-            // Ensure we stay within bounds
             scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));
             return true;
         }
@@ -564,15 +622,11 @@ public class LitematicDownloaderScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Only handle scrolling if mouse is in the scroll area
         if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
             if (totalContentHeight > scrollAreaHeight) {
-                // Calculate scroll amount (20 pixels per mouse wheel tick)
                 int scrollAmount = (int)(-verticalAmount * 20);
-
-                // Update scroll position
                 scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight,
                         scrollOffset + scrollAmount));
                 return true;

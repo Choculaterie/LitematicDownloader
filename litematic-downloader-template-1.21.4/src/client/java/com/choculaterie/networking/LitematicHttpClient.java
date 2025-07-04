@@ -34,7 +34,10 @@ import java.nio.file.Files;
 import javax.net.ssl.HttpsURLConnection;
 
 public class LitematicHttpClient {
-    private static final String API_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI/GetAll";
+    // Change this URL for development/production environments
+    private static final String BASE_URL = "http://localhost:5036/api/LitematicDownloaderModAPI";
+    // For production, change to: "https://choculaterie.com/api/LitematicDownloaderModAPI"
+
     private static final Gson gson = new Gson();
     private static final HttpClient client;
 
@@ -62,47 +65,212 @@ public class LitematicHttpClient {
         }
     }
 
-    public static List<SchematicInfo> fetchSchematicList() {
+    public static class PaginatedResult {
+        private final List<SchematicInfo> items;
+        private final int totalPages;
+        private final int currentPage;
+        private final int totalItems;
+
+        public PaginatedResult(List<SchematicInfo> items, int totalPages, int currentPage, int totalItems) {
+            this.items = items;
+            this.totalPages = totalPages;
+            this.currentPage = currentPage;
+            this.totalItems = totalItems;
+        }
+
+        public List<SchematicInfo> getItems() { return items; }
+        public int getTotalPages() { return totalPages; }
+        public int getCurrentPage() { return currentPage; }
+        public int getTotalItems() { return totalItems; }
+    }
+
+    public static PaginatedResult fetchSchematicsPaginated(int page, int pageSize) {
         try {
+            String url = BASE_URL + "/GetPaginated?page=" + page + "&pageSize=" + pageSize;
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(LitematicHttpClient.API_URL))
+                    .uri(URI.create(url))
                     .GET()
                     .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            System.out.println("Pagination API Response Status: " + response.statusCode());
+            System.out.println("Pagination API Response Body: " + response.body());
+
             if (response.statusCode() != 200) {
                 throw new RuntimeException("Failed to fetch schematics: " + response.statusCode());
             }
 
-            // Parse JSON response
-            JsonArray jsonArray = gson.fromJson(response.body(), JsonArray.class);
-            List<SchematicInfo> schematics = new ArrayList<>();
-
-            for (int i = 0; i < jsonArray.size(); i++) {
-                JsonObject json = jsonArray.get(i).getAsJsonObject();
-                SchematicInfo schematic = new SchematicInfo(
-                        json.get("id").getAsString(),
-                        json.get("name").getAsString(),
-                        json.get("description").isJsonNull() ? "" : json.get("description").getAsString(),
-                        json.get("viewCount").getAsInt(),
-                        json.get("downloadCount").getAsInt(),
-                        json.get("username").getAsString()
-                );
-                schematics.add(schematic);
+            if (response.body() == null || response.body().trim().isEmpty()) {
+                System.out.println("Empty response body");
+                return new PaginatedResult(new ArrayList<>(), 0, 0, 0);
             }
 
-            return schematics;
+            // Parse as JsonObject since your API returns a paginated object
+            JsonObject jsonResponse;
+            try {
+                jsonResponse = gson.fromJson(response.body(), JsonObject.class);
+            } catch (Exception e) {
+                System.err.println("Failed to parse JSON response as object: " + e.getMessage());
+                System.err.println("Response body: " + response.body());
+                return new PaginatedResult(new ArrayList<>(), 0, 0, 0);
+            }
+
+            if (jsonResponse == null) {
+                System.err.println("JsonObject is null");
+                return new PaginatedResult(new ArrayList<>(), 0, 0, 0);
+            }
+
+            // Extract the schematics array
+            JsonArray schematicsArray = null;
+            if (jsonResponse.has("schematics")) {
+                schematicsArray = jsonResponse.getAsJsonArray("schematics");
+            }
+
+            if (schematicsArray == null) {
+                System.err.println("Schematics array is null or missing");
+                return new PaginatedResult(new ArrayList<>(), 0, 0, 0);
+            }
+
+            List<SchematicInfo> schematics = new ArrayList<>();
+            for (int i = 0; i < schematicsArray.size(); i++) {
+                try {
+                    JsonObject json = schematicsArray.get(i).getAsJsonObject();
+                    SchematicInfo schematic = new SchematicInfo(
+                            json.has("id") ? json.get("id").getAsString() : "",
+                            json.has("name") ? json.get("name").getAsString() : "Unknown",
+                            json.has("description") && !json.get("description").isJsonNull() ?
+                                    json.get("description").getAsString() : "",
+                            json.has("viewCount") ? json.get("viewCount").getAsInt() : 0,
+                            json.has("downloadCount") ? json.get("downloadCount").getAsInt() : 0,
+                            json.has("username") ? json.get("username").getAsString() : "Unknown"
+                    );
+                    schematics.add(schematic);
+                } catch (Exception e) {
+                    System.err.println("Error parsing schematic item " + i + ": " + e.getMessage());
+                }
+            }
+
+            // Extract pagination metadata
+            int totalPages = jsonResponse.has("totalPages") ? jsonResponse.get("totalPages").getAsInt() : 1;
+            int currentPage = jsonResponse.has("currentPage") ? jsonResponse.get("currentPage").getAsInt() : 1;
+            int totalCount = jsonResponse.has("totalCount") ? jsonResponse.get("totalCount").getAsInt() : schematics.size();
+
+            return new PaginatedResult(schematics, totalPages, currentPage, totalCount);
         } catch (Exception e) {
+            System.err.println("Error in fetchSchematicsPaginated: " + e.getMessage());
             e.printStackTrace();
-            return new ArrayList<>(); // Return empty list on error
+            return new PaginatedResult(new ArrayList<>(), 0, 0, 0);
         }
     }
 
-    public static SchematicDetailInfo fetchSchematicDetail(String id) {
+    public static List<SchematicInfo> searchSchematics(String query) {
         try {
-            String url = "https://choculaterie.com/api/LitematicDownloaderModAPI/Getbyid/" + id;
+            String encodedQuery = java.net.URLEncoder.encode(query, StandardCharsets.UTF_8);
+            String url = BASE_URL + "/Search?query=" + encodedQuery;
+
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            System.out.println("Search API Response Status: " + response.statusCode());
+            System.out.println("Search API Response Body: " + response.body());
+
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("Failed to search schematics: " + response.statusCode());
+            }
+
+            if (response.body() == null || response.body().trim().isEmpty()) {
+                System.out.println("Empty search response body");
+                return new ArrayList<>();
+            }
+
+            // Try to parse as paginated object first (same format as pagination)
+            try {
+                JsonObject jsonResponse = gson.fromJson(response.body(), JsonObject.class);
+
+                if (jsonResponse != null && jsonResponse.has("schematics")) {
+                    // Parse as paginated response
+                    JsonArray schematicsArray = jsonResponse.getAsJsonArray("schematics");
+
+                    List<SchematicInfo> schematics = new ArrayList<>();
+                    for (int i = 0; i < schematicsArray.size(); i++) {
+                        try {
+                            JsonObject json = schematicsArray.get(i).getAsJsonObject();
+                            SchematicInfo schematic = new SchematicInfo(
+                                    json.has("id") ? json.get("id").getAsString() : "",
+                                    json.has("name") ? json.get("name").getAsString() : "Unknown",
+                                    json.has("description") && !json.get("description").isJsonNull() ?
+                                            json.get("description").getAsString() : "",
+                                    json.has("viewCount") ? json.get("viewCount").getAsInt() : 0,
+                                    json.has("downloadCount") ? json.get("downloadCount").getAsInt() : 0,
+                                    json.has("username") ? json.get("username").getAsString() : "Unknown"
+                            );
+                            schematics.add(schematic);
+                        } catch (Exception e) {
+                            System.err.println("Error parsing search result item " + i + ": " + e.getMessage());
+                        }
+                    }
+                    return schematics;
+                }
+            } catch (Exception e) {
+                System.err.println("Failed to parse as paginated object, trying direct array: " + e.getMessage());
+            }
+
+            // Fallback: try to parse as direct array
+            try {
+                JsonArray jsonArray = gson.fromJson(response.body(), JsonArray.class);
+
+                if (jsonArray == null) {
+                    System.err.println("Search JsonArray is null");
+                    return new ArrayList<>();
+                }
+
+                List<SchematicInfo> schematics = new ArrayList<>();
+                for (int i = 0; i < jsonArray.size(); i++) {
+                    try {
+                        JsonObject json = jsonArray.get(i).getAsJsonObject();
+                        SchematicInfo schematic = new SchematicInfo(
+                                json.has("id") ? json.get("id").getAsString() : "",
+                                json.has("name") ? json.get("name").getAsString() : "Unknown",
+                                json.has("description") && !json.get("description").isJsonNull() ?
+                                        json.get("description").getAsString() : "",
+                                json.has("viewCount") ? json.get("viewCount").getAsInt() : 0,
+                                json.has("downloadCount") ? json.get("downloadCount").getAsInt() : 0,
+                                json.has("username") ? json.get("username").getAsString() : "Unknown"
+                        );
+                        schematics.add(schematic);
+                    } catch (Exception e) {
+                        System.err.println("Error parsing search result item " + i + ": " + e.getMessage());
+                    }
+                }
+                return schematics;
+            } catch (Exception e) {
+                System.err.println("Failed to parse search response as array: " + e.getMessage());
+                return new ArrayList<>();
+            }
+        } catch (Exception e) {
+            System.err.println("Error in searchSchematics: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    // Keep the old method for backward compatibility, but use pagination
+    @Deprecated
+    public static List<SchematicInfo> fetchSchematicList() {
+        PaginatedResult result = fetchSchematicsPaginated(1, 50);
+        return result.getItems();
+    }
+
+    // Rest of the methods remain the same...
+    public static SchematicDetailInfo fetchSchematicDetail(String id) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(BASE_URL + "/Getbyid/" + id))
                     .GET()
                     .build();
 
@@ -111,7 +279,6 @@ public class LitematicHttpClient {
                 throw new RuntimeException("Failed to fetch schematic details: " + response.statusCode());
             }
 
-            // Parse JSON response
             JsonObject json = gson.fromJson(response.body(), JsonObject.class);
 
             return new SchematicDetailInfo(
@@ -134,16 +301,12 @@ public class LitematicHttpClient {
 
     public static String downloadSchematic(String base64Data, String fileName) {
         try {
-            // Try to get Minecraft's game directory
             File gameDir = MinecraftClient.getInstance().runDirectory;
             String savePath;
 
-            // Set the appropriate path based on whether we're in development or production
             if (gameDir != null) {
-                // Use the actual game directory if available
                 savePath = new File(gameDir, "schematics").getAbsolutePath() + File.separator;
             } else {
-                // Fall back to hardcoded paths if game directory isn't available
                 boolean isDevelopment = System.getProperty("dev.env", "false").equals("true");
                 String homeDir = System.getProperty("user.home");
 
@@ -158,13 +321,11 @@ public class LitematicHttpClient {
                 }
             }
 
-            // Create directory if it doesn't exist
             File directory = new File(savePath);
             if (!directory.exists()) {
                 directory.mkdirs();
             }
 
-            // Save the file
             String filePath = savePath + fileName + ".litematic";
             byte[] decodedData = Base64.getDecoder().decode(base64Data);
 
@@ -181,9 +342,8 @@ public class LitematicHttpClient {
 
     public static String fetchAndDownloadSchematic(String id, String fileName) {
         try {
-            String url = "https://choculaterie.com/api/LitematicDownloaderModAPI/GetLitematicFiles/" + id;
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
+                    .uri(URI.create(BASE_URL + "/GetLitematicFiles/" + id))
                     .GET()
                     .build();
 
@@ -192,7 +352,6 @@ public class LitematicHttpClient {
                 throw new RuntimeException("Failed to fetch schematic file: " + response.statusCode());
             }
 
-            // Parse JSON response
             JsonObject json = gson.fromJson(response.body(), JsonObject.class);
             if (json.has("files") && json.getAsJsonArray("files").size() > 0) {
                 String base64Data = json.getAsJsonArray("files").get(0).getAsString();
@@ -224,7 +383,7 @@ public class LitematicHttpClient {
                 byte[] requestBody = baos.toByteArray();
 
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create("https://choculaterie.com/api/LitematicDownloaderModAPI/upload"))
+                        .uri(URI.create(BASE_URL + "/upload"))
                         .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                         .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody))
                         .build();
@@ -236,7 +395,6 @@ public class LitematicHttpClient {
                     String fileUrl = json.get("fileUrl").getAsString();
                     String viewerUrl = json.get("viewerUrl").getAsString();
 
-                    // Schedule clipboard copy on Minecraft's main thread
                     MinecraftClient.getInstance().execute(() -> {
                         MinecraftClient.getInstance().keyboard.setClipboard(viewerUrl);
                         callback.onSuccess(viewerUrl);
@@ -253,8 +411,6 @@ public class LitematicHttpClient {
         }).start();
     }
 
-
-    // Interface for upload callbacks
     public interface UploadCallback {
         void onSuccess(String url);
         void onError(String message);
