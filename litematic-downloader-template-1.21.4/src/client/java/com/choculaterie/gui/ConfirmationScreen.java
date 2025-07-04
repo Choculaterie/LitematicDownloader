@@ -24,24 +24,31 @@ public class ConfirmationScreen extends Screen {
     protected void init() {
         super.init();
 
+        // Calculate message height to position buttons properly
+        String[] lines = this.message.getString().split("\n");
+        int messageHeight = lines.length * 10; // 10 pixels per line
+
         int buttonWidth = 100;
         int buttonHeight = 20;
         int gap = 10;
         int buttonsWidth = buttonWidth * 2 + gap;
         int startX = (this.width - buttonsWidth) / 2;
-        int y = this.height / 2 + 20;
+
+        // Position buttons below the message with proper spacing
+        int messageEndY = this.height / 2 - 10 + messageHeight;
+        int buttonY = messageEndY + 30; // 30 pixels gap below message
 
         // Yes button
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Yes"), button -> {
             MinecraftClient.getInstance().setScreen(parentScreen);
             this.resultHandler.accept(true);
-        }).dimensions(startX, y, buttonWidth, buttonHeight).build());
+        }).dimensions(startX, buttonY, buttonWidth, buttonHeight).build());
 
         // No button
         this.addDrawableChild(ButtonWidget.builder(Text.literal("No"), button -> {
             MinecraftClient.getInstance().setScreen(parentScreen);
             this.resultHandler.accept(false);
-        }).dimensions(startX + buttonWidth + gap, y, buttonWidth, buttonHeight).build());
+        }).dimensions(startX + buttonWidth + gap, buttonY, buttonWidth, buttonHeight).build());
     }
 
     @Override

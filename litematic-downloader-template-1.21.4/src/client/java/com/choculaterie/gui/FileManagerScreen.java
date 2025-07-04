@@ -7,6 +7,7 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
+import net.minecraft.client.util.InputUtil;
 
 import java.awt.*;
 import java.io.File;
@@ -685,6 +686,19 @@ public class FileManagerScreen extends Screen {
                         return true;
                     }
 
+                    // Check if Shift is held down to initiate drag and drop
+                    if (Screen.hasShiftDown()) {
+                        System.out.println("DEBUG: Shift held down, starting drag for: " + file.getName());
+                        // Start drag operation
+                        isDragging = true;
+                        draggedFile = file;
+                        dragStartX = (int)mouseX;
+                        dragStartY = (int)mouseY;
+                        dragCurrentX = (int)mouseX;
+                        dragCurrentY = (int)mouseY;
+                        return true;
+                    }
+
                     // Handle directory navigation or file actions
                     if (file.isDirectory()) {
                         navigateToFolder(file);
@@ -958,13 +972,37 @@ public class FileManagerScreen extends Screen {
 
         // Handle file drop
         if (button == 0 && isDragging && draggedFile != null) {
+            System.out.println("DEBUG: Mouse released while dragging: " + draggedFile.getName());
             // Check if we're over a valid folder target
             File targetFolder = findDropTarget((int)mouseX, (int)mouseY);
-            if (targetFolder != null && targetFolder.isDirectory() && !isSubdirectory(targetFolder, draggedFile)) {
-                // Move the file to the target folder
-                moveFile(draggedFile, targetFolder);
-                // Note: moveFile now handles the refresh
+            System.out.println("DEBUG: Drop target found: " + (targetFolder != null ? targetFolder.getName() : "null"));
+
+            if (targetFolder != null && targetFolder.isDirectory()) {
+                // Check if we're trying to move a folder into itself or one of its subdirectories
+                boolean isInvalidMove = false;
+
+                if (draggedFile.isDirectory()) {
+                    // For directories, check if target is the same as source or inside source
+                    if (draggedFile.equals(targetFolder)) {
+                        System.out.println("DEBUG: Cannot move folder into itself");
+                        isInvalidMove = true;
+                    } else if (isSubdirectory(draggedFile, targetFolder)) {
+                        System.out.println("DEBUG: Cannot move folder into its own subdirectory");
+                        isInvalidMove = true;
+                    }
+                }
+
+                if (!isInvalidMove) {
+                    System.out.println("DEBUG: Valid drop target, calling moveFile");
+                    // Move the file to the target folder
+                    moveFile(draggedFile, targetFolder);
+                } else {
+                    System.out.println("DEBUG: Invalid move - would create circular reference");
+                    loadFilesFromCurrentDirectory();
+                    updateScrollbarDimensions();
+                }
             } else {
+                System.out.println("DEBUG: No valid drop target found");
                 // If no valid drop, still refresh to ensure consistency
                 loadFilesFromCurrentDirectory();
                 updateScrollbarDimensions();
@@ -1019,79 +1057,403 @@ public class FileManagerScreen extends Screen {
 
     private void moveFile(File sourceFile, File targetFolder) {
         try {
+            System.out.println("DEBUG: moveFile called - source: " + sourceFile.getName() + ", target: " + targetFolder.getName());
+
             File destFile = new File(targetFolder, sourceFile.getName());
 
             // Check if we're trying to move to the same location
             if (sourceFile.getParentFile().equals(targetFolder)) {
+                System.out.println("DEBUG: Same location, returning");
                 return;
             }
 
             // Check if destination already exists
             if (destFile.exists()) {
-                // Handle conflict - for now just return
+                System.out.println("DEBUG: Destination exists, showing conflict dialog");
+                // Show confirmation dialog for conflicts
+                showMoveConflictDialog(sourceFile, destFile, targetFolder);
                 return;
             }
 
-            // Perform the move
-            performMove(sourceFile, destFile);
-            loadFilesFromCurrentDirectory(); // Refresh after direct move
-            updateScrollbarDimensions();
+            // For directories, show confirmation with file count
+            if (sourceFile.isDirectory()) {
+                System.out.println("DEBUG: Is directory, collecting files and showing confirmation");
+                List<File> allFiles = new ArrayList<>();
+                collectAllFiles(sourceFile, allFiles);
+                showMoveConfirmationDialog(sourceFile, targetFolder, allFiles);
+            } else {
+                System.out.println("DEBUG: Is file, performing direct move");
+                // For single files, move directly
+                boolean success = performMove(sourceFile, destFile);
+                System.out.println("DEBUG: Move result: " + success);
+                loadFilesFromCurrentDirectory(); // Refresh after direct move
+                updateScrollbarDimensions();
+            }
         } catch (Exception e) {
+            System.out.println("DEBUG: Exception in moveFile: " + e.getMessage());
             e.printStackTrace();
+            ToastManager.addToast("Error moving file: " + e.getMessage(), true);
             loadFilesFromCurrentDirectory(); // Refresh even after error
             updateScrollbarDimensions();
         }
     }
 
+    private void showMoveConfirmationDialog(File sourceFolder, File targetFolder, List<File> allFiles) {
+        int fileCount = (int) allFiles.stream().filter(f -> !f.isDirectory()).count();
+        int folderCount = (int) allFiles.stream().filter(File::isDirectory).count();
+
+        String message = String.format("Move folder '%s' to '%s'?\n\nThis will move:\n- %d file(s)\n- %d folder(s)",
+                sourceFolder.getName(), targetFolder.getName(), fileCount, folderCount);
+
+        MinecraftClient.getInstance().setScreen(new ConfirmationScreen(
+                Text.literal("Confirm Move"),
+                Text.literal(message),
+                (confirmed) -> {
+                    if (confirmed) {
+                        File destFile = new File(targetFolder, sourceFolder.getName());
+                        boolean success = performRecursiveMove(sourceFolder, destFile);
+                        if (success) {
+                            ToastManager.addToast("Successfully moved " + sourceFolder.getName(), false);
+                        } else {
+                            ToastManager.addToast("Failed to move " + sourceFolder.getName(), true);
+                        }
+                        loadFilesFromCurrentDirectory();
+                        updateScrollbarDimensions();
+                    }
+                    MinecraftClient.getInstance().setScreen(this); // Return to this screen
+                }
+        ));
+    }
+
+    private void showMoveConflictDialog(File sourceFile, File destFile, File targetFolder) {
+        String message = String.format("'%s' already exists in '%s'.\n\nWhat would you like to do?",
+                sourceFile.getName(), targetFolder.getName());
+
+        MinecraftClient.getInstance().setScreen(new ConfirmationScreen(
+                Text.literal("File Already Exists"),
+                Text.literal(message + "\n\nMerge contents?"),
+                (confirmed) -> {
+                    if (confirmed) {
+                        System.out.println("DEBUG: showMoveConflictDialog - sourceFile: " + sourceFile.getAbsolutePath() + ", isDirectory: " + sourceFile.isDirectory());
+                        System.out.println("DEBUG: showMoveConflictDialog - destFile: " + destFile.getAbsolutePath() + ", exists: " + destFile.exists());
+
+                        boolean success = false;
+
+                        // Check if we're trying to move a directory to overwrite one of its own subdirectories
+                        // This would be invalid because it would create a circular reference
+                        boolean isInvalidMove = false;
+                        if (sourceFile.isDirectory()) {
+                            // Check if the destination is inside the source directory
+                            File tempParent = destFile.getParentFile();
+                            while (tempParent != null) {
+                                if (tempParent.equals(sourceFile)) {
+                                    isInvalidMove = true;
+                                    break;
+                                }
+                                tempParent = tempParent.getParentFile();
+                            }
+
+                            // Only check for self-conflict if we're not doing a merge operation
+                            // For merge operations, we want to merge the contents, not create a conflict
+                            if (!isInvalidMove && sourceFile.isDirectory() && destFile.isDirectory()) {
+                                // Allow merging - the mergeDirectories method will handle this properly
+                                // Only prevent if source and destination are exactly the same directory
+                                if (sourceFile.getAbsolutePath().equals(destFile.getAbsolutePath())) {
+                                    System.out.println("DEBUG: Cannot merge directory - source and destination are identical");
+                                    isInvalidMove = true;
+                                }
+                            }
+                        }
+
+                        if (isInvalidMove) {
+                            System.out.println("DEBUG: Invalid move - would create circular reference or self-conflict");
+                            ToastManager.addToast("Cannot move " + sourceFile.getName() + " - invalid move", true);
+                            loadFilesFromCurrentDirectory();
+                            updateScrollbarDimensions();
+                            MinecraftClient.getInstance().setScreen(this);
+                            return;
+                        }
+
+                        // Handle directory merging vs file overwriting
+                        if (sourceFile.isDirectory() && destFile.isDirectory()) {
+                            System.out.println("DEBUG: Both source and destination are directories, merging contents");
+                            // Merge contents: move all files from source directory into destination directory
+                            success = mergeDirectories(sourceFile, destFile);
+                        } else {
+                            System.out.println("DEBUG: File overwrite scenario, deleting destination and moving source");
+                            // For file-to-file conflicts, delete destination and move source
+                            boolean destinationDeleted = false;
+                            if (destFile.exists()) {
+                                if (destFile.isDirectory()) {
+                                    destinationDeleted = deleteRecursively(destFile);
+                                } else {
+                                    destinationDeleted = destFile.delete();
+                                }
+                            } else {
+                                destinationDeleted = true;
+                            }
+
+                            if (destinationDeleted) {
+                                if (sourceFile.isDirectory()) {
+                                    success = performRecursiveMove(sourceFile, destFile);
+                                } else {
+                                    success = performMove(sourceFile, destFile);
+                                }
+                            } else {
+                                ToastManager.addToast("Failed to delete existing " + destFile.getName(), true);
+                            }
+                        }
+
+                        if (success) {
+                            ToastManager.addToast("Successfully moved " + sourceFile.getName(), false);
+                        } else {
+                            ToastManager.addToast("Failed to move " + sourceFile.getName(), true);
+                        }
+                        loadFilesFromCurrentDirectory();
+                        updateScrollbarDimensions();
+                    }
+                    MinecraftClient.getInstance().setScreen(this); // Return to this screen
+                }
+        ));
+    }
+
+    private boolean mergeDirectories(File sourceDir, File destDir) {
+        try {
+            System.out.println("DEBUG: mergeDirectories - source: " + sourceDir.getAbsolutePath() + ", dest: " + destDir.getAbsolutePath());
+
+            // Check if source and destination are the same directory
+            if (sourceDir.getAbsolutePath().equals(destDir.getAbsolutePath())) {
+                System.out.println("DEBUG: Source and destination are the same directory, nothing to merge");
+                return true; // Nothing to do, but it's not an error
+            }
+
+            // Get all files and subdirectories from source
+            File[] files = sourceDir.listFiles();
+            if (files == null) {
+                System.out.println("DEBUG: Source directory is empty or unreadable");
+                return sourceDir.delete(); // Try to delete empty directory
+            }
+
+            System.out.println("DEBUG: Found " + files.length + " items to merge");
+            boolean allMovedSuccessfully = true;
+
+            // Keep track of original files to verify they were moved
+            Set<String> originalFileNames = new HashSet<>();
+            for (File file : files) {
+                originalFileNames.add(file.getName());
+            }
+
+            for (File file : files) {
+                File destFile = new File(destDir, file.getName());
+                System.out.println("DEBUG: Moving: " + file.getAbsolutePath() + " -> " + destFile.getAbsolutePath());
+
+                boolean moveSuccess = false;
+
+                if (file.isDirectory()) {
+                    if (destFile.exists() && destFile.isDirectory()) {
+                        // Destination subdirectory exists, merge recursively
+                        moveSuccess = mergeDirectories(file, destFile);
+                    } else {
+                        // Destination subdirectory doesn't exist, move the entire directory
+                        moveSuccess = file.renameTo(destFile);
+                        if (!moveSuccess) {
+                            // If rename fails, do recursive copy+delete
+                            moveSuccess = performRecursiveMove(file, destFile);
+                        }
+                    }
+                } else {
+                    // Move file - if destination exists, overwrite it
+                    if (destFile.exists()) {
+                        System.out.println("DEBUG: Destination file exists, removing: " + destFile.getAbsolutePath());
+                        destFile.delete(); // Remove existing file
+                    }
+
+                    moveSuccess = file.renameTo(destFile);
+                    if (!moveSuccess) {
+                        System.out.println("DEBUG: renameTo failed, trying copy+delete for: " + file.getName());
+                        // If rename fails, try copy and delete
+                        if (copyFile(file, destFile)) {
+                            moveSuccess = file.delete();
+                            if (!moveSuccess) {
+                                System.err.println("DEBUG: Failed to delete source file after copy: " + file.getAbsolutePath());
+                            }
+                        } else {
+                            System.err.println("DEBUG: Failed to copy file: " + file.getAbsolutePath());
+                        }
+                    }
+                }
+
+                if (!moveSuccess) {
+                    System.err.println("DEBUG: Failed to move: " + file.getAbsolutePath());
+                    allMovedSuccessfully = false;
+                }
+            }
+
+            // Only delete the source directory if all items were moved successfully
+            if (allMovedSuccessfully && !sourceDir.getAbsolutePath().equals(destDir.getAbsolutePath())) {
+                System.out.println("DEBUG: All items moved successfully, deleting source directory: " + sourceDir.getAbsolutePath());
+
+                // Check what files remain in the source directory
+                File[] remainingFiles = sourceDir.listFiles();
+                if (remainingFiles != null && remainingFiles.length > 0) {
+                    System.out.println("DEBUG: Source directory contains " + remainingFiles.length + " files after merge:");
+
+                    // Check if remaining files are files that were moved TO this directory (not FROM it)
+                    boolean hasUnexpectedFiles = false;
+                    for (File remaining : remainingFiles) {
+                        System.out.println("DEBUG: - " + remaining.getName());
+
+                        // If this file was one of the original files we were trying to move, it's unexpected
+                        if (originalFileNames.contains(remaining.getName())) {
+                            hasUnexpectedFiles = true;
+                            System.err.println("DEBUG: Unexpected file still exists: " + remaining.getName());
+                        }
+                    }
+
+                    if (hasUnexpectedFiles) {
+                        System.err.println("DEBUG: Source directory still contains original files that should have been moved");
+                        return false;
+                    } else {
+                        System.out.println("DEBUG: Source directory contains only files that were moved TO it, this is expected");
+                        // In this case, we shouldn't delete the source directory because it now contains merged content
+                        return true;
+                    }
+                }
+
+                boolean deleted = sourceDir.delete();
+                System.out.println("DEBUG: Source directory deletion result: " + deleted);
+                return deleted;
+            } else if (!allMovedSuccessfully) {
+                System.err.println("DEBUG: Not all items were moved successfully, keeping source directory");
+                return false;
+            } else {
+                System.out.println("DEBUG: Source and destination are the same, no deletion needed");
+                return true;
+            }
+        } catch (Exception e) {
+            System.err.println("DEBUG: Exception in mergeDirectories: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private void collectAllFiles(File root, List<File> allFiles) {
+        if (root.isDirectory()) {
+            File[] files = root.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    collectAllFiles(file, allFiles);
+                }
+            }
+        }
+        allFiles.add(root);
+    }
+
+    private boolean performRecursiveMove(File sourceDir, File destDir) {
+        try {
+            System.out.println("DEBUG: performRecursiveMove - source: " + sourceDir.getAbsolutePath() + ", dest: " + destDir.getAbsolutePath());
+
+            // Create destination directory first
+            if (!destDir.exists()) {
+                System.out.println("DEBUG: Creating destination directory: " + destDir.getAbsolutePath());
+                if (!destDir.mkdirs()) {
+                    System.err.println("DEBUG: Failed to create destination directory: " + destDir.getAbsolutePath());
+                    return false;
+                }
+            }
+
+            // Get all files and subdirectories
+            File[] files = sourceDir.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    File destFile = new File(destDir, file.getName());
+                    System.out.println("DEBUG: Processing file: " + file.getAbsolutePath() + " -> " + destFile.getAbsolutePath());
+
+                    if (file.isDirectory()) {
+                        // Recursively move subdirectory
+                        if (!performRecursiveMove(file, destFile)) {
+                            return false;
+                        }
+                    } else {
+                        // Move file - try renameTo first, then copy+delete
+                        if (!file.renameTo(destFile)) {
+                            System.out.println("DEBUG: renameTo failed, trying copy+delete for: " + file.getName());
+                            // If rename fails, try copy and delete
+                            if (!copyFile(file, destFile)) {
+                                System.err.println("DEBUG: copyFile failed for: " + file.getAbsolutePath());
+                                return false;
+                            }
+                            if (!file.delete()) {
+                                System.err.println("DEBUG: Failed to delete source file: " + file.getAbsolutePath());
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Delete the source directory after moving all contents
+            System.out.println("DEBUG: Deleting source directory: " + sourceDir.getAbsolutePath());
+            boolean deleted = sourceDir.delete();
+            System.out.println("DEBUG: Source directory deletion result: " + deleted);
+            return deleted;
+        } catch (Exception e) {
+            System.err.println("DEBUG: Exception in performRecursiveMove: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     private boolean performMove(File sourceFile, File destFile) {
         try {
-            boolean success = false;
-            if (sourceFile.isDirectory()) {
-                // Handle directory moving
-                success = sourceFile.renameTo(destFile);
-            } else {
-                // Handle file moving
-                success = sourceFile.renameTo(destFile);
+            // Try to move the file using renameTo first (most efficient)
+            if (sourceFile.renameTo(destFile)) {
+                return true;
             }
-            return success;
+
+            // If renameTo fails (e.g., moving across different filesystems),
+            // fall back to copy and delete
+            if (copyFile(sourceFile, destFile)) {
+                return sourceFile.delete();
+            }
+
+            return false;
         } catch (Exception e) {
             e.printStackTrace();
             return false;
         }
     }
 
-    @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Handle scrolling if mouse is in the scroll area
-        if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
-                mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
+    private boolean copyFile(File source, File dest) {
+        try {
+            // Ensure parent directories exist
+            File parentDir = dest.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                if (!parentDir.mkdirs()) {
+                    System.err.println("Failed to create parent directories for: " + dest.getAbsolutePath());
+                    return false;
+                }
+            }
 
-            if (totalContentHeight > scrollAreaHeight) {
-                // Calculate scroll amount (20 pixels per mouse wheel tick)
-                int scrollAmount = (int)(-verticalAmount * 20);
+            java.nio.file.Files.copy(source.toPath(), dest.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
 
-                // Update scroll position
-                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight,
-                        scrollOffset + scrollAmount));
-                return true;
+    private boolean deleteRecursively(File file) {
+        if (file.isDirectory()) {
+            File[] files = file.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    deleteRecursively(f);
+                }
             }
         }
-        // Even if mouse is over the search field, allow scrolling the file list
-        else if (searchField.isVisible() && !searchField.isFocused() &&
-                mouseX >= searchField.getX() && mouseX <= searchField.getX() + searchField.getWidth() &&
-                mouseY >= searchField.getY() && mouseY <= searchField.getY() + searchField.getHeight()) {
-
-            if (totalContentHeight > scrollAreaHeight) {
-                // Calculate scroll amount (20 pixels per mouse wheel tick)
-                int scrollAmount = (int)(-verticalAmount * 20);
-
-                // Update scroll position
-                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight,
-                        scrollOffset + scrollAmount));
-                return true;
-            }
-        }
-
-        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        return file.delete();
     }
 }
+
