@@ -40,6 +40,7 @@ public class LitematicDownloaderScreen extends Screen {
     private int lastMouseY;
     private int scrollDragOffset = 0;
 
+
     // Status message fields
     private String statusMessage = null;
     private int statusColor = 0xFFFFFF;
@@ -56,6 +57,7 @@ public class LitematicDownloaderScreen extends Screen {
     // Search debounce
     private long lastSearchTime = 0;
     private static final long SEARCH_DEBOUNCE_MS = 500;
+    private String lastSearchedTerm = "";
 
     public LitematicDownloaderScreen() {
         super(Text.literal(""));
@@ -86,9 +88,9 @@ public class LitematicDownloaderScreen extends Screen {
         // Set up scroll area dimensions
         int contentWidth = Math.min(600, this.width - 80);
         scrollAreaX = (this.width - contentWidth) / 2;
-        scrollAreaY = 70; // Make room for pagination
+        scrollAreaY = 70;
         scrollAreaWidth = contentWidth;
-        scrollAreaHeight = this.height - scrollAreaY - 40; // Make room for pagination at bottom
+        scrollAreaHeight = this.height - scrollAreaY - 40;
 
         // Add search field
         int searchFieldWidth = 200;
@@ -102,6 +104,14 @@ public class LitematicDownloaderScreen extends Screen {
         );
         this.searchField.setMaxLength(50);
         this.searchField.setPlaceholder(Text.literal("Search..."));
+
+
+        // Add key press handler for Enter key
+        this.searchField.setChangedListener(text -> {
+            searchTerm = text.trim();
+            // Don't perform search here - only on Enter key press
+        });
+
         this.addSelectableChild(this.searchField);
 
         // Add clear button for search field
@@ -109,6 +119,9 @@ public class LitematicDownloaderScreen extends Screen {
                         Text.literal("✕"),
                         button -> {
                             searchField.setText("");
+                            isSearchMode = false;
+                            currentPage = 1;
+                            loadSchematics();
                         })
                 .dimensions((this.width + searchFieldWidth) / 2 + 5, 10, 20, 20)
                 .build());
@@ -118,6 +131,23 @@ public class LitematicDownloaderScreen extends Screen {
 
         updateScrollbarDimensions();
         loadSchematics();
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (this.searchField.isFocused() && keyCode == 257) { // 257 is Enter key
+            String text = this.searchField.getText().trim();
+            if (!text.isEmpty()) {
+                searchTerm = text;
+                lastSearchedTerm = text; // Save the actual searched term
+                isSearchMode = true;
+                currentPage = 1;
+                performSearch();
+                return true;
+            }
+        }
+
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     private void setupPaginationControls() {
@@ -292,7 +322,7 @@ public class LitematicDownloaderScreen extends Screen {
                 context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Loading..."),
                         this.width / 2, centerY + 15, 0xCCCCCC);
             } else if (isSearchMode) {
-                context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No results found for: " + searchTerm),
+                context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No results found for: " + lastSearchedTerm),
                         this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xCCCCCC);
             } else {
                 context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No schematics found"),
