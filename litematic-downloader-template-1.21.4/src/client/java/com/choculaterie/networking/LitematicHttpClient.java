@@ -6,6 +6,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.client.MinecraftClient;
+import com.choculaterie.config.SettingsManager;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -301,25 +302,8 @@ public class LitematicHttpClient {
 
     public static String downloadSchematic(String base64Data, String fileName) {
         try {
-            File gameDir = MinecraftClient.getInstance().runDirectory;
-            String savePath;
-
-            if (gameDir != null) {
-                savePath = new File(gameDir, "schematics").getAbsolutePath() + File.separator;
-            } else {
-                boolean isDevelopment = System.getProperty("dev.env", "false").equals("true");
-                String homeDir = System.getProperty("user.home");
-
-                if (isDevelopment) {
-                    savePath = homeDir + File.separator + "Downloads" + File.separator +
-                            "litematic-downloader-template-1.21.4" + File.separator +
-                            "run" + File.separator + "schematics" + File.separator;
-                } else {
-                    savePath = homeDir + File.separator + "AppData" + File.separator +
-                            "Roaming" + File.separator + ".minecraft" + File.separator +
-                            "schematics" + File.separator;
-                }
-            }
+            // Use SettingsManager to get the configured schematics path
+            String savePath = SettingsManager.getSchematicsPath() + File.separator;
 
             File directory = new File(savePath);
             if (!directory.exists()) {

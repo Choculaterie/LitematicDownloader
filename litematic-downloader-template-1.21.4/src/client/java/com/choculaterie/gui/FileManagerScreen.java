@@ -8,6 +8,7 @@ import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 import net.minecraft.client.util.InputUtil;
+import com.choculaterie.config.SettingsManager;
 
 import java.awt.*;
 import java.io.File;
@@ -64,27 +65,7 @@ public class FileManagerScreen extends Screen {
 
     private void initializeRootPath() {
         try {
-            // Try to get Minecraft's game directory
-            File gameDir = MinecraftClient.getInstance().runDirectory;
-
-            // Set the appropriate path based on whether we're in development or production
-            if (gameDir != null) {
-                schematicsRootPath = new File(gameDir, "schematics").getAbsolutePath();
-            } else {
-                // Fall back to hardcoded paths if game directory isn't available
-                boolean isDevelopment = System.getProperty("dev.env", "false").equals("true");
-                String homeDir = System.getProperty("user.home");
-
-                if (isDevelopment) {
-                    schematicsRootPath = homeDir + File.separator + "Downloads" + File.separator +
-                            "litematic-downloader-template-1.21.4" + File.separator +
-                            "run" + File.separator + "schematics";
-                } else {
-                    schematicsRootPath = homeDir + File.separator + "AppData" + File.separator +
-                            "Roaming" + File.separator + ".minecraft" + File.separator +
-                            "schematics";
-                }
-            }
+            schematicsRootPath = SettingsManager.getSchematicsPath();
 
             File directory = new File(schematicsRootPath);
             if (!directory.exists()) {
@@ -163,32 +144,32 @@ public class FileManagerScreen extends Screen {
         breadcrumbParts.clear();
         breadcrumbItems.clear();
 
-        // Add "schematics" as the root
-        breadcrumbParts.add("schematics");
-        breadcrumbItems.add(new BreadcrumbItem("schematics", new File(schematicsRootPath)));
+        // Get the folder name from the schematics path instead of hardcoding "schematics"
+        String folderName = new File(schematicsRootPath).getName();
+        breadcrumbParts.add(folderName);
+        breadcrumbItems.add(new BreadcrumbItem(folderName, new File(schematicsRootPath)));
 
         // If we're in the root directory, we're done
-        if (currentDirectory.getAbsolutePath().equals(schematicsRootPath)) {
+        if (currentDirectory.equals(new File(schematicsRootPath))) {
             return;
         }
 
-        // Otherwise, add each part of the path after "schematics"
-        String relativePath = currentDirectory.getAbsolutePath().substring(schematicsRootPath.length());
-        if (relativePath.startsWith(File.separator)) {
-            relativePath = relativePath.substring(1);
+        // Build the path from root to current directory
+        File root = new File(schematicsRootPath);
+        File current = currentDirectory;
+        List<String> pathParts = new ArrayList<>();
+
+        while (current != null && !current.equals(root)) {
+            pathParts.add(0, current.getName());
+            current = current.getParentFile();
         }
 
-        if (!relativePath.isEmpty()) {
-            String[] parts = relativePath.split(File.separator.replace("\\", "\\\\"));
-            StringBuilder pathBuilder = new StringBuilder(schematicsRootPath);
-
-            for (String part : parts) {
-                if (!part.isEmpty()) {
-                    breadcrumbParts.add(part);
-                    pathBuilder.append(File.separator).append(part);
-                    breadcrumbItems.add(new BreadcrumbItem(part, new File(pathBuilder.toString())));
-                }
-            }
+        // Add each path part as a breadcrumb
+        File breadcrumbFile = new File(schematicsRootPath);
+        for (String part : pathParts) {
+            breadcrumbFile = new File(breadcrumbFile, part);
+            breadcrumbParts.add(part);
+            breadcrumbItems.add(new BreadcrumbItem(part, breadcrumbFile));
         }
     }
 
@@ -240,6 +221,15 @@ public class FileManagerScreen extends Screen {
             MinecraftClient.getInstance().setScreen(parentScreen);
         }).dimensions(backButtonX, backButtonY, buttonWidth, buttonHeight).build());
 
+        // Settings button
+        this.addDrawableChild(ButtonWidget.builder(Text.literal("⚙"), button -> {
+            MinecraftClient.getInstance().setScreen(new SettingsScreen(this, (changed) -> {
+                if (changed) {
+                    initializeRootPath(); // Reload with new path
+                }
+            }));
+        }).dimensions(this.width - 140, 10, 20, 20).build());
+
         // Refresh button
         this.addDrawableChild(ButtonWidget.builder(Text.literal("🔄"), button -> {
             loadFilesFromCurrentDirectory();
@@ -260,6 +250,7 @@ public class FileManagerScreen extends Screen {
         this.addDrawableChild(ButtonWidget.builder(Text.literal("📂"), button -> {
             openFolderInOS(currentDirectory);
         }).dimensions(this.width - 115, 10, 20, 20).build());
+
 
         // Add search field
         int searchFieldWidth = 200;
@@ -322,8 +313,9 @@ public class FileManagerScreen extends Screen {
                     // Only add files that match the search term
                     if (file.getName().toLowerCase().contains(searchTerm)) {
                         results.add(file);
-                        // Include "schematics" in the path
-                        String filePath = "schematics/" + relativePath;
+                        // Use the folder name from the settings instead of hardcoding "schematics"
+                        String folderName = new File(schematicsRootPath).getName();
+                        String filePath = folderName + "/" + relativePath;
                         filePathMap.put(file, filePath);
                     }
                 }

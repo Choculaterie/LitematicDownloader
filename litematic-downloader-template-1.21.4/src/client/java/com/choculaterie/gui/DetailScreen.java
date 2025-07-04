@@ -17,6 +17,7 @@ import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+import com.choculaterie.config.SettingsManager;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -68,27 +69,8 @@ public class DetailScreen extends Screen {
                 try {
                     String fileName = schematicDetail.getName().replaceAll("[^a-zA-Z0-9.-]", "_");
 
-                    // Get file path before downloading to check if it exists
-                    File gameDir = MinecraftClient.getInstance().runDirectory;
-                    String savePath;
-
-                    if (gameDir != null) {
-                        savePath = new File(gameDir, "schematics").getAbsolutePath() + File.separator;
-                    } else {
-                        boolean isDevelopment = System.getProperty("dev.env", "false").equals("true");
-                        String homeDir = System.getProperty("user.home");
-
-                        if (isDevelopment) {
-                            savePath = homeDir + File.separator + "Downloads" + File.separator +
-                                    "litematic-downloader-template-1.21.4" + File.separator +
-                                    "run" + File.separator + "schematics" + File.separator;
-                        } else {
-                            savePath = homeDir + File.separator + "AppData" + File.separator +
-                                    "Roaming" + File.separator + ".minecraft" + File.separator +
-                                    "schematics" + File.separator;
-                        }
-                    }
-
+                    // Get file path using SettingsManager
+                    String savePath = SettingsManager.getSchematicsPath() + File.separator;
                     File potentialFile = new File(savePath + fileName + ".litematic");
 
                     if (potentialFile.exists()) {
@@ -192,9 +174,24 @@ public class DetailScreen extends Screen {
                     schematicDetail.getId(),
                     fileName
             );
-            // Extract the schematic path starting with /schematic/
-            String displayPath = "/schematic/" + fileName + ".litematic";
-            this.setDownloadStatus("Schematic downloaded to: " + displayPath, true);
+            // Show relative path from schematics base folder with forward slashes
+            String schematicsPath = SettingsManager.getSchematicsPath();
+            String relativePath;
+            if (filePath.startsWith(schematicsPath)) {
+                String pathAfterBase = filePath.substring(schematicsPath.length());
+                // Remove leading separator if present
+                if (pathAfterBase.startsWith(File.separator)) {
+                    pathAfterBase = pathAfterBase.substring(File.separator.length());
+                }
+                // Use the folder name from the settings instead of hardcoding "schematics"
+                String folderName = new File(schematicsPath).getName();
+                relativePath = folderName + "/" + pathAfterBase.replace(File.separator, "/");
+            } else {
+                // Fallback - just show filename
+                String folderName = new File(schematicsPath).getName();
+                relativePath = folderName + "/" + fileName + ".litematic";
+            }
+            this.setDownloadStatus("Schematic downloaded to: " + relativePath, true);
         } catch (Exception e) {
             this.setDownloadStatus("Failed to download schematic: " + e.getMessage(), false);
         }
@@ -499,3 +496,4 @@ public class DetailScreen extends Screen {
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 }
+
