@@ -79,6 +79,29 @@ public class LitematicDownloaderScreen extends Screen {
         super(Text.literal(""));
     }
 
+    // Constructor that accepts a flag to restore navigation state
+    public LitematicDownloaderScreen(boolean restoreState) {
+        super(Text.literal(""));
+        if (restoreState) {
+            // State will be restored in init() method
+        }
+    }
+
+    // Method to restore navigation state (called by NavigationState)
+    public void restoreNavigationState(int currentPage, int totalPages, int totalItems,
+                                     boolean isSearchMode, String searchTerm, String lastSearchedTerm,
+                                     int scrollOffset) {
+        this.currentPage = currentPage;
+        this.totalPages = totalPages;
+        this.totalItems = totalItems;
+        this.isSearchMode = isSearchMode;
+        this.searchTerm = searchTerm;
+        this.lastSearchedTerm = lastSearchedTerm;
+        this.scrollOffset = scrollOffset;
+
+        System.out.println("Restored navigation state in screen: page=" + currentPage + ", scroll=" + scrollOffset);
+    }
+
     @Override
     protected void init() {
         super.init();
@@ -160,6 +183,19 @@ public class LitematicDownloaderScreen extends Screen {
         setupPaginationControls();
 
         updateScrollbarDimensions();
+
+        // Check if we need to restore navigation state
+        NavigationState navState = NavigationState.getInstance();
+        if (this instanceof LitematicDownloaderScreen && navState.getSavedCurrentPage() > 0) {
+            // Restore state if this screen was created with restore flag
+            navState.restoreState(this);
+
+            // Set the search field text if we were in search mode
+            if (isSearchMode && !searchTerm.isEmpty()) {
+                this.searchField.setText(searchTerm);
+            }
+        }
+
         loadSchematics();
     }
 
@@ -722,6 +758,13 @@ public class LitematicDownloaderScreen extends Screen {
                     // Handle double click for item detail
                     long currentTime = System.currentTimeMillis();
                     if (index == lastClickedIndex && currentTime - lastClickTime < 500) {
+                        // Save current navigation state before going to detail screen
+                        NavigationState.getInstance().saveState(
+                            currentPage, totalPages, totalItems,
+                            isSearchMode, searchTerm, lastSearchedTerm,
+                            scrollOffset
+                        );
+
                         MinecraftClient.getInstance().setScreen(new DetailScreen(schematic.getId()));
                         return true;
                     }

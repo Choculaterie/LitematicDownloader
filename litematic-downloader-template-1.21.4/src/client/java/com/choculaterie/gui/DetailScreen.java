@@ -58,7 +58,16 @@ public class DetailScreen extends Screen {
 
         // Add a back button with arrow in the top left corner
         this.backButton = ButtonWidget.builder(Text.literal("←"), button -> {
-            MinecraftClient.getInstance().setScreen(new LitematicDownloaderScreen());
+            // Check if we have saved navigation state to restore
+            NavigationState navState = NavigationState.getInstance();
+            if (navState.getSavedCurrentPage() > 0) {
+                // Create a new LitematicDownloaderScreen with state restoration flag
+                LitematicDownloaderScreen restoredScreen = new LitematicDownloaderScreen(true);
+                MinecraftClient.getInstance().setScreen(restoredScreen);
+            } else {
+                // Fallback to normal screen if no state saved
+                MinecraftClient.getInstance().setScreen(new LitematicDownloaderScreen());
+            }
         }).dimensions(10, 10, 20, 20).build();
         this.addDrawableChild(this.backButton);
 
