@@ -26,6 +26,21 @@ public class LitematicDownloaderScreen extends Screen {
     private int totalItems = 0;
     private final int pageSize = 15;
 
+    // Enhanced cache fields with multi-page support
+    private static CacheManager cacheManager = new CacheManager();
+    private static final long CACHE_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+    private static final long DETAIL_CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes for details
+
+    // Request management to prevent race conditions
+    private volatile int activeRequestPage = -1; // Track which page is currently being loaded
+    private volatile long lastRequestTime = 0; // Track when the last request was made
+    private static final long MIN_REQUEST_INTERVAL_MS = 100; // Minimum time between requests
+
+    // Static method to access cache manager from other screens
+    public static CacheManager getCacheManager() {
+        return cacheManager;
+    }
+
     // Scrolling related fields
     private int scrollOffset = 0;
     private final int itemHeight = 40;
@@ -84,10 +99,14 @@ public class LitematicDownloaderScreen extends Screen {
                 }))
         ).dimensions(this.width - 90, 10, 20, 20).build());
 
-        // Refresh button
+        // Refresh button - now forces reload by clearing ALL cache
         this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("🔄"),
                 button -> {
+                    // Clear all cache when refresh is clicked
+                    cacheManager.clearAllCache();
+                    System.out.println("Cleared all cache - forcing fresh data load");
+
                     if (isSearchMode) {
                         performSearch();
                     } else {
@@ -233,6 +252,15 @@ public class LitematicDownloaderScreen extends Screen {
     private void performSearch() {
         if (searchTerm.isEmpty()) return;
 
+        // Check if we have valid cached search data
+        if (cacheManager.hasValidSearchCache(searchTerm, CACHE_DURATION_MS)) {
+            schematics = cacheManager.getSearchCache(searchTerm).getItems();
+            totalPages = 1;
+            totalItems = schematics.size();
+            updateScrollbarDimensions();
+            return;
+        }
+
         schematics.clear();
         updateScrollbarDimensions();
         scrollOffset = 0;
@@ -244,16 +272,68 @@ public class LitematicDownloaderScreen extends Screen {
             List<SchematicInfo> searchResults = LitematicHttpClient.searchSchematics(searchTerm);
             MinecraftClient.getInstance().execute(() -> {
                 schematics = searchResults;
-                // For search, we don't have pagination info, so reset these
                 totalPages = 1;
                 totalItems = searchResults.size();
+
+                // Cache the search response
+                cacheManager.putSearchCache(searchTerm, searchResults, CACHE_DURATION_MS);
+
                 updateScrollbarDimensions();
                 isLoading = false;
             });
         }).start();
     }
 
+    private void performSearchForced() {
+        // Force search by clearing cache first
+        cacheManager.clearSearchCache(searchTerm);
+        performSearch();
+    }
+
     private void loadSchematics() {
+        System.out.println("=== loadSchematics() called for page " + currentPage + " ===");
+
+        // Prevent race conditions from rapid clicking
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastRequestTime < MIN_REQUEST_INTERVAL_MS) {
+            System.out.println("Request throttled - too soon after last request");
+            return;
+        }
+
+        // If there's already a request in progress for a different page, ignore this request
+        if (activeRequestPage != -1 && activeRequestPage != currentPage) {
+            System.out.println("Ignoring request for page " + currentPage + " - already loading page " + activeRequestPage);
+            return;
+        }
+
+        cacheManager.debugPrintCachedPages();
+
+        // Check if we have valid cached data
+        if (cacheManager.hasValidSchematicCache(currentPage, CACHE_DURATION_MS)) {
+            System.out.println("Using cached data for page " + currentPage);
+            CacheManager.SchematicCacheEntry cachedEntry = cacheManager.getSchematicCache(currentPage);
+
+            // Create a defensive copy to prevent cache corruption
+            schematics = new ArrayList<>(cachedEntry.getItems());
+            totalPages = cachedEntry.getTotalPages();
+            totalItems = cachedEntry.getTotalItems();
+            updateScrollbarDimensions();
+            System.out.println("Loaded " + schematics.size() + " items from cache for page " + currentPage);
+            return;
+        }
+
+        // If we're already loading this exact page, don't start another request
+        if (activeRequestPage == currentPage && isLoading) {
+            System.out.println("Already loading page " + currentPage + " - ignoring duplicate request");
+            return;
+        }
+
+        System.out.println("No valid cache for page " + currentPage + ", fetching from server...");
+
+        // Mark this page as being actively loaded
+        activeRequestPage = currentPage;
+        lastRequestTime = currentTime;
+
         schematics.clear();
         updateScrollbarDimensions();
         scrollOffset = 0;
@@ -261,16 +341,96 @@ public class LitematicDownloaderScreen extends Screen {
         isLoading = true;
         loadingStartTime = System.currentTimeMillis();
 
+        // Capture the page number to ensure we handle the correct response
+        final int requestedPage = currentPage;
+
         new Thread(() -> {
-            LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(currentPage, pageSize);
-            MinecraftClient.getInstance().execute(() -> {
-                schematics = result.getItems();
-                totalPages = result.getTotalPages();
-                totalItems = result.getTotalItems();
-                updateScrollbarDimensions();
-                isLoading = false;
-            });
+            try {
+                System.out.println("Fetching page " + requestedPage + " from server...");
+                LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(requestedPage, pageSize);
+
+                MinecraftClient.getInstance().execute(() -> {
+                    // Verify this response is still relevant (user might have navigated away)
+                    if (activeRequestPage != requestedPage) {
+                        System.out.println("Discarding response for page " + requestedPage + " - user navigated to page " + activeRequestPage);
+                        // Clear loading state if this was the active request
+                        if (isLoading && activeRequestPage == -1) {
+                            isLoading = false;
+                            System.out.println("Cleared loading state after discarding response");
+                        }
+                        return;
+                    }
+
+                    // If the current page changed while we were loading, discard this response
+                    if (currentPage != requestedPage) {
+                        System.out.println("Discarding response for page " + requestedPage + " - current page is now " + currentPage);
+                        activeRequestPage = -1; // Clear the active request
+                        isLoading = false; // Clear loading state since we're discarding this response
+                        System.out.println("Cleared loading state after page change");
+
+                        // CRITICAL FIX: Check if current page has cached data and load it immediately
+                        if (cacheManager.hasValidSchematicCache(currentPage, CACHE_DURATION_MS)) {
+                            System.out.println("Loading cached data for current page " + currentPage + " after discarding response");
+                            CacheManager.SchematicCacheEntry cachedEntry = cacheManager.getSchematicCache(currentPage);
+                            schematics = new ArrayList<>(cachedEntry.getItems());
+                            totalPages = cachedEntry.getTotalPages();
+                            totalItems = cachedEntry.getTotalItems();
+                            updateScrollbarDimensions();
+                            System.out.println("Restored " + schematics.size() + " items from cache for current page " + currentPage);
+                        } else if (!cacheManager.hasValidSchematicCache(currentPage, CACHE_DURATION_MS)) {
+                            // If the current page needs loading and no request is active, start loading it
+                            System.out.println("Current page " + currentPage + " needs loading - starting request");
+                            // Use a small delay to avoid immediate re-request
+                            new Thread(() -> {
+                                try {
+                                    Thread.sleep(50); // Small delay to avoid race conditions
+                                    MinecraftClient.getInstance().execute(() -> loadSchematics());
+                                } catch (InterruptedException ignored) {}
+                            }).start();
+                        }
+                        return;
+                    }
+
+                    System.out.println("Server response received for page " + requestedPage + ": " + result.getItems().size() + " items");
+
+                    // Create a defensive copy before assigning to schematics
+                    schematics = new ArrayList<>(result.getItems());
+                    totalPages = result.getTotalPages();
+                    totalItems = result.getTotalItems();
+
+                    // Cache the response with proper error handling
+                    try {
+                        // Pass the original result items to cache (cache will make its own copy)
+                        cacheManager.putSchematicCache(requestedPage, result.getItems(), result.getTotalPages(), result.getTotalItems(), CACHE_DURATION_MS);
+                        System.out.println("Successfully cached page " + requestedPage);
+                    } catch (Exception e) {
+                        System.err.println("Failed to cache page " + requestedPage + ": " + e.getMessage());
+                        e.printStackTrace();
+                    }
+
+                    updateScrollbarDimensions();
+                    isLoading = false;
+                    activeRequestPage = -1; // Clear the active request marker
+
+                    // Debug print after caching
+                    cacheManager.debugPrintCachedPages();
+                });
+            } catch (Exception e) {
+                System.err.println("Error fetching page " + requestedPage + ": " + e.getMessage());
+                e.printStackTrace();
+                MinecraftClient.getInstance().execute(() -> {
+                    isLoading = false;
+                    activeRequestPage = -1; // Clear the active request marker
+                    // Handle error case - could show error message to user
+                });
+            }
         }).start();
+    }
+
+    private void loadSchematicsForced() {
+        // Force reload by clearing cache first
+        cacheManager.clearSchematicCache(currentPage);
+        loadSchematics();
     }
 
     private void updateScrollbarDimensions() {
@@ -675,4 +835,3 @@ public class LitematicDownloaderScreen extends Screen {
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 }
-

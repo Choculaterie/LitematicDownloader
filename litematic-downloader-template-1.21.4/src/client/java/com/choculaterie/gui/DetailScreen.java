@@ -43,6 +43,10 @@ public class DetailScreen extends Screen {
 
     private long loadingStartTime = 0;
 
+    // Add reference to the cache manager
+    private static CacheManager cacheManager = LitematicDownloaderScreen.getCacheManager();
+    private static final long DETAIL_CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
     public DetailScreen(String schematicId) {
         super(Text.literal(""));
         this.schematicId = schematicId;
@@ -102,18 +106,48 @@ public class DetailScreen extends Screen {
         System.out.println("Loading schematic details for ID: " + schematicId);
 
         errorMessage = null;
+        loadSchematicDetails();
+    }
 
+    private void loadSchematicDetails() {
+        // Check if we have valid cached detail data
+        if (cacheManager.hasValidDetailCache(schematicId, DETAIL_CACHE_DURATION_MS)) {
+            CacheManager.DetailCacheEntry cachedDetail = cacheManager.getDetailCache(schematicId);
+            schematicDetail = cachedDetail.getDetail();
+            isLoading = false;
+
+            // Enable download button since data is loaded
+            this.downloadButton.active = true;
+
+            // Load the cover image if available
+            if (schematicDetail != null && schematicDetail.getCoverPicture() != null
+                    && !schematicDetail.getCoverPicture().isEmpty()) {
+                System.out.println("Cover image available (from cache), loading...");
+                loadCoverImage(schematicDetail.getCoverPicture());
+            }
+
+            System.out.println("Loaded schematic details from cache for ID: " + schematicId);
+            return;
+        }
+
+        // No valid cache, fetch from server
         isLoading = true;
         loadingStartTime = System.currentTimeMillis();
 
         // Fetch schematic details in a separate thread
         new Thread(() -> {
             try {
-                schematicDetail = LitematicHttpClient.fetchSchematicDetail(schematicId);
-                System.out.println("Fetched schematic details: " + (schematicDetail != null));
+                SchematicDetailInfo fetchedDetail = LitematicHttpClient.fetchSchematicDetail(schematicId);
+                System.out.println("Fetched schematic details from server: " + (fetchedDetail != null));
 
                 MinecraftClient.getInstance().execute(() -> {
+                    schematicDetail = fetchedDetail;
                     isLoading = false;
+
+                    // Cache the fetched detail
+                    if (schematicDetail != null) {
+                        cacheManager.putDetailCache(schematicId, schematicDetail, DETAIL_CACHE_DURATION_MS);
+                    }
 
                     // Enable download button now that data is loaded
                     this.downloadButton.active = true;
@@ -201,20 +235,102 @@ public class DetailScreen extends Screen {
         try {
             // Remove data URI prefix if present (e.g., "data:image/png;base64,")
             String base64Data = base64Image;
+            String detectedFormat = "unknown";
+
+            // Extract format from data URI if present
             if (base64Data.contains(",")) {
+                String prefix = base64Data.substring(0, base64Data.indexOf(","));
+                if (prefix.contains("image/")) {
+                    detectedFormat = prefix.substring(prefix.indexOf("image/") + 6);
+                    if (detectedFormat.contains(";")) {
+                        detectedFormat = detectedFormat.substring(0, detectedFormat.indexOf(";"));
+                    }
+                }
                 base64Data = base64Data.split(",")[1];
             }
 
+            // Validate base64 string before decoding
+            if (base64Data == null || base64Data.trim().isEmpty()) {
+                System.err.println("Base64 image data is empty");
+                ToastManager.addToast("Image data is empty", true);
+                coverImageTexture = null;
+                return;
+            }
+
             // Decode the base64 string to binary data
-            byte[] imageData = Base64.getDecoder().decode(base64Data);
+            byte[] imageData;
+            try {
+                imageData = Base64.getDecoder().decode(base64Data);
+            } catch (IllegalArgumentException e) {
+                System.err.println("Invalid base64 image data: " + e.getMessage());
+                ToastManager.addToast("Invalid image data format", true);
+                coverImageTexture = null;
+                return;
+            }
+
+            // Validate that we have actual image data
+            if (imageData.length == 0) {
+                System.err.println("Decoded image data is empty");
+                ToastManager.addToast("Image data is empty", true);
+                coverImageTexture = null;
+                return;
+            }
+
+            // Check for minimum file size (corrupted images are often very small)
+            if (imageData.length < 100) {
+                System.err.println("Image data too small, likely corrupted: " + imageData.length + " bytes");
+                ToastManager.addToast("Image file too small (corrupted)", true);
+                createAndRegisterPlaceholder("Image data too small (corrupted)");
+                return;
+            }
+
+            // Detect image format from binary signature if not detected from data URI
+            if (detectedFormat.equals("unknown")) {
+                detectedFormat = detectImageFormat(imageData);
+            }
+
+            System.out.println("Detected image format: " + detectedFormat);
 
             // Generate a unique identifier for this texture
             String uniqueId = UUID.randomUUID().toString().replace("-", "");
             coverImageTexture = Identifier.of("minecraft", "textures/dynamic/" + uniqueId);
 
-            // Create NativeImage directly from the image data
-            try (NativeImage nativeImage = NativeImage.read(new ByteArrayInputStream(imageData))) {
-                // Store image dimensions
+            // Try to read the image and handle potential format exceptions
+            NativeImage nativeImage;
+            boolean isPlaceholder = false;
+            String placeholderReason = "";
+
+            try {
+                // Try to convert different formats to PNG first if needed
+                byte[] processedImageData = convertImageToPng(imageData, detectedFormat);
+                nativeImage = NativeImage.read(new ByteArrayInputStream(processedImageData));
+
+                // Additional validation: check if image dimensions are reasonable
+                if (nativeImage.getWidth() <= 0 || nativeImage.getHeight() <= 0) {
+                    System.err.println("Invalid image dimensions: " + nativeImage.getWidth() + "x" + nativeImage.getHeight());
+                    ToastManager.addToast("Image has invalid dimensions", true);
+                    nativeImage.close();
+                    nativeImage = createPlaceholderImage(256, 256, "Invalid dimensions");
+                    isPlaceholder = true;
+                    placeholderReason = "Invalid image dimensions";
+                } else if (nativeImage.getWidth() > 4096 || nativeImage.getHeight() > 4096) {
+                    System.err.println("Image too large: " + nativeImage.getWidth() + "x" + nativeImage.getHeight());
+                    ToastManager.addToast("Image too large (" + nativeImage.getWidth() + "x" + nativeImage.getHeight() + ")", true);
+                    nativeImage.close();
+                    nativeImage = createPlaceholderImage(256, 256, "Image too large");
+                    isPlaceholder = true;
+                    placeholderReason = "Image too large (" + nativeImage.getWidth() + "x" + nativeImage.getHeight() + ")";
+                }
+            } catch (Exception e) {
+                System.err.println("Error loading image (corrupted or unsupported format '" + detectedFormat + "'): " + e.getMessage());
+                ToastManager.addToast("Could not load " + detectedFormat + " image: " + getSimpleErrorMessage(e.getMessage()), true);
+                nativeImage = createPlaceholderImage(256, 256, "Image corrupted");
+                isPlaceholder = true;
+                placeholderReason = "Image corrupted (" + e.getMessage() + ")";
+            }
+
+            // Store image dimensions and register texture
+            if (nativeImage != null) {
                 imageWidth = nativeImage.getWidth();
                 imageHeight = nativeImage.getHeight();
 
@@ -224,12 +340,142 @@ public class DetailScreen extends Screen {
                         new NativeImageBackedTexture(nativeImage)
                 );
 
-                System.out.println("Cover image loaded successfully: " + imageWidth + "x" + imageHeight);
+                if (isPlaceholder) {
+                    System.out.println("Placeholder image created due to: " + placeholderReason + " (" + imageWidth + "x" + imageHeight + ")");
+                } else {
+                    System.out.println("Cover image loaded successfully (" + detectedFormat + "): " + imageWidth + "x" + imageHeight);
+                }
             }
         } catch (Exception e) {
             System.err.println("Failed to load cover image: " + e.getMessage());
+            ToastManager.addToast("Failed to load image", true);
             e.printStackTrace();
             coverImageTexture = null;
+        }
+    }
+
+    // Helper method to detect image format from binary signature
+    private String detectImageFormat(byte[] imageData) {
+        if (imageData.length < 8) {
+            return "unknown";
+        }
+
+        // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+        if (imageData[0] == (byte)0x89 && imageData[1] == 0x50 &&
+            imageData[2] == 0x4E && imageData[3] == 0x47) {
+            return "png";
+        }
+
+        // JPEG signature: FF D8 FF
+        if (imageData[0] == (byte)0xFF && imageData[1] == (byte)0xD8 && imageData[2] == (byte)0xFF) {
+            return "jpeg";
+        }
+
+        // GIF signature: GIF87a or GIF89a
+        if (imageData.length >= 6 &&
+            imageData[0] == 0x47 && imageData[1] == 0x49 && imageData[2] == 0x46) {
+            return "gif";
+        }
+
+        // BMP signature: BM
+        if (imageData[0] == 0x42 && imageData[1] == 0x4D) {
+            return "bmp";
+        }
+
+        // WebP signature: RIFF....WEBP
+        if (imageData.length >= 12 &&
+            imageData[0] == 0x52 && imageData[1] == 0x49 && imageData[2] == 0x46 && imageData[3] == 0x46 &&
+            imageData[8] == 0x57 && imageData[9] == 0x45 && imageData[10] == 0x42 && imageData[11] == 0x50) {
+            return "webp";
+        }
+
+        return "unknown";
+    }
+
+    // Helper method to convert different image formats to PNG-compatible format
+    private byte[] convertImageToPng(byte[] imageData, String format) throws Exception {
+        // If it's already PNG or unknown, try as-is first
+        if (format.equals("png") || format.equals("unknown")) {
+            return imageData;
+        }
+
+        // For non-PNG formats, we'll try to use Java's built-in image processing
+        try {
+            java.awt.image.BufferedImage bufferedImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(imageData));
+
+            if (bufferedImage == null) {
+                throw new Exception("Could not decode " + format + " image");
+            }
+
+            // Convert to PNG format
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(bufferedImage, "PNG", baos);
+
+            System.out.println("Successfully converted " + format + " to PNG format");
+            return baos.toByteArray();
+
+        } catch (Exception e) {
+            System.err.println("Failed to convert " + format + " image: " + e.getMessage());
+            // Fallback: try the original data anyway
+            return imageData;
+        }
+    }
+
+    // Helper method to simplify error messages for user display
+    private String getSimpleErrorMessage(String fullError) {
+        if (fullError.contains("Bad PNG Signature")) {
+            return "Corrupted PNG file";
+        } else if (fullError.contains("JPEG")) {
+            return "JPEG format issue";
+        } else if (fullError.contains("format")) {
+            return "Unsupported format";
+        } else if (fullError.contains("signature") || fullError.contains("Signature")) {
+            return "Corrupted file";
+        } else {
+            // Keep it short for toast display
+            return fullError.length() > 30 ? "Image corrupted" : fullError;
+        }
+    }
+
+    // Helper method to create and register placeholder when image loading fails early
+    private void createAndRegisterPlaceholder(String reason) {
+        try {
+            String uniqueId = UUID.randomUUID().toString().replace("-", "");
+            coverImageTexture = Identifier.of("minecraft", "textures/dynamic/" + uniqueId);
+
+            NativeImage nativeImage = createPlaceholderImage(256, 256, reason);
+            if (nativeImage != null) {
+                imageWidth = nativeImage.getWidth();
+                imageHeight = nativeImage.getHeight();
+
+                // Register the texture with Minecraft's texture manager
+                MinecraftClient.getInstance().getTextureManager().registerTexture(
+                        coverImageTexture,
+                        new NativeImageBackedTexture(nativeImage)
+                );
+
+                System.out.println("Placeholder image created due to: " + reason + " (" + imageWidth + "x" + imageHeight + ")");
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to create placeholder: " + e.getMessage());
+            coverImageTexture = null;
+        }
+    }
+
+    // Helper method to create a placeholder image when original image loading fails
+    private NativeImage createPlaceholderImage(int width, int height, String reason) {
+        try {
+            NativeImage placeholder = new NativeImage(NativeImage.Format.RGBA, width, height, false);
+
+            // Since we can't easily manipulate pixels without access to setColor methods,
+            // we'll create a basic transparent placeholder that won't crash the game
+            // The placeholder will appear as a transparent square, which is better than crashing
+
+            return placeholder;
+        } catch (Exception e) {
+            System.err.println("Failed to create placeholder image: " + e.getMessage());
+            e.printStackTrace();
+            return null;
         }
     }
 

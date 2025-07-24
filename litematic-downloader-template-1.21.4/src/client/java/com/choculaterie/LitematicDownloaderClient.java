@@ -7,6 +7,7 @@ import net.minecraft.client.util.InputUtil;
 import org.lwjgl.glfw.GLFW;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.MinecraftClient;
+import com.choculaterie.gui.CacheManager;
 
 public class LitematicDownloaderClient implements ClientModInitializer {
 
@@ -14,6 +15,10 @@ public class LitematicDownloaderClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		// Initialize cache system with background preloading
+		System.out.println("Starting LitematicDownloader cache initialization...");
+		CacheManager.initializeAtGameStartup();
+
 		// Register keybinding with translation key and miscellaneous category
 		keyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
 				"key.litematic-downloader.open_menu", // Translation key
