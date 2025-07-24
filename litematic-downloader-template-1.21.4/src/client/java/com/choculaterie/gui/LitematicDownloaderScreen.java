@@ -75,6 +75,17 @@ public class LitematicDownloaderScreen extends Screen {
     private static final long SEARCH_DEBOUNCE_MS = 500;
     private String lastSearchedTerm = "";
 
+    // Hover preloading fields
+    private int hoveredItemIndex = -1;
+    private long hoverStartTime = 0;
+    private static final long HOVER_DELAY_MS = 200; // 0.5 seconds
+    private boolean isPreloadingHoveredItem = false;
+    private String currentlyPreloadingId = null;
+
+    // Pagination preloading fields
+    private boolean isPreloadingPagination = false;
+    private int preloadingPageNumber = -1;
+
     public LitematicDownloaderScreen() {
         super(Text.literal(""));
     }
@@ -484,6 +495,12 @@ public class LitematicDownloaderScreen extends Screen {
         this.renderBackground(context, mouseX, mouseY, delta);
         super.render(context, mouseX, mouseY, delta);
 
+        // Handle hover tracking for preloading
+        handleHoverPreloading(mouseX, mouseY);
+
+        // Handle pagination hover preloading
+        handlePaginationHoverPreloading(mouseX, mouseY);
+
         // Render title
         context.drawCenteredTextWithShadow(textRenderer, this.title, this.width / 2 - searchField.getWidth()/4, 10, 0xFFFFFF);
 
@@ -876,5 +893,258 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+    }
+
+    /**
+     * Handle hover tracking for preloading schematic details after 2 seconds
+     */
+    private void handleHoverPreloading(int mouseX, int mouseY) {
+        // Only track hover if mouse is in the scroll area and we have schematics
+        if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
+                mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight &&
+                !schematics.isEmpty()) {
+
+            // Calculate which item the mouse is over
+            int itemIndex = (int)((mouseY - scrollAreaY + scrollOffset) / itemHeight);
+
+            // Check if the index is valid
+            if (itemIndex >= 0 && itemIndex < schematics.size()) {
+                SchematicInfo hoveredSchematic = schematics.get(itemIndex);
+
+                // If this is a new item being hovered
+                if (itemIndex != hoveredItemIndex) {
+                    hoveredItemIndex = itemIndex;
+                    hoverStartTime = System.currentTimeMillis();
+
+                    // Cancel any ongoing preload if we're hovering a different item
+                    if (isPreloadingHoveredItem && !hoveredSchematic.getId().equals(currentlyPreloadingId)) {
+                        System.out.println("Cancelled preload for " + currentlyPreloadingId + " - now hovering " + hoveredSchematic.getId());
+                        currentlyPreloadingId = null;
+                        isPreloadingHoveredItem = false;
+                    }
+                }
+                // If we've been hovering the same item for 0.5+ seconds and haven't started preloading yet
+                else if (itemIndex == hoveredItemIndex &&
+                         System.currentTimeMillis() - hoverStartTime >= HOVER_DELAY_MS &&
+                         !isPreloadingHoveredItem &&
+                         !cacheManager.hasValidDetailCache(hoveredSchematic.getId(), DETAIL_CACHE_DURATION_MS)) {
+
+                    // Start preloading this schematic's details
+                    startHoverPreload(hoveredSchematic);
+                }
+            } else {
+                // Mouse is not over a valid item, reset hover state
+                resetHoverState();
+            }
+        } else {
+            // Mouse is not in the scroll area, reset hover state
+            resetHoverState();
+        }
+    }
+
+    /**
+     * Start preloading schematic details for the hovered item
+     */
+    private void startHoverPreload(SchematicInfo schematic) {
+        if (isPreloadingHoveredItem || schematic == null) {
+            return;
+        }
+
+        String schematicId = schematic.getId();
+
+        // Don't preload if already cached
+        if (cacheManager.hasValidDetailCache(schematicId, DETAIL_CACHE_DURATION_MS)) {
+            System.out.println("Skipping preload for " + schematicId + " - already cached");
+            return;
+        }
+
+        isPreloadingHoveredItem = true;
+        currentlyPreloadingId = schematicId;
+
+        System.out.println("Starting hover preload for schematic: " + schematic.getName() + " (ID: " + schematicId + ")");
+
+        // Fetch schematic details in background thread
+        new Thread(() -> {
+            try {
+                // Check if we should still preload (user might have moved mouse away)
+                if (!isPreloadingHoveredItem || !schematicId.equals(currentlyPreloadingId)) {
+                    System.out.println("Preload cancelled during fetch for " + schematicId);
+                    return;
+                }
+
+                com.choculaterie.models.SchematicDetailInfo detailInfo =
+                    LitematicHttpClient.fetchSchematicDetail(schematicId);
+
+                // Update on main thread
+                MinecraftClient.getInstance().execute(() -> {
+                    // Double-check we should still cache this (user might have moved away)
+                    if (isPreloadingHoveredItem && schematicId.equals(currentlyPreloadingId)) {
+                        if (detailInfo != null) {
+                            // Cache the preloaded detail
+                            cacheManager.putDetailCache(schematicId, detailInfo, DETAIL_CACHE_DURATION_MS);
+                            System.out.println("Successfully preloaded and cached details for: " + detailInfo.getName());
+                        } else {
+                            System.out.println("Preload failed for " + schematicId + " - null response");
+                        }
+                    } else {
+                        System.out.println("Discarded preload result for " + schematicId + " - user moved away");
+                    }
+
+                    // Reset preload state only if this was the current preload
+                    if (schematicId.equals(currentlyPreloadingId)) {
+                        isPreloadingHoveredItem = false;
+                        currentlyPreloadingId = null;
+                    }
+                });
+
+            } catch (Exception e) {
+                System.err.println("Error during hover preload for " + schematicId + ": " + e.getMessage());
+                MinecraftClient.getInstance().execute(() -> {
+                    // Reset preload state only if this was the current preload
+                    if (schematicId.equals(currentlyPreloadingId)) {
+                        isPreloadingHoveredItem = false;
+                        currentlyPreloadingId = null;
+                    }
+                });
+            }
+        }).start();
+    }
+
+    /**
+     * Reset hover tracking state
+     */
+    private void resetHoverState() {
+        if (hoveredItemIndex != -1) {
+            hoveredItemIndex = -1;
+            hoverStartTime = 0;
+
+            // Don't cancel ongoing preloads immediately - let them complete
+            // This prevents unnecessary cancellations from brief mouse movements
+        }
+    }
+
+    /**
+     * Handle hover tracking for pagination buttons - instant preloading
+     */
+    private void handlePaginationHoverPreloading(int mouseX, int mouseY) {
+        // Only track hover if not in search mode (pagination preloading only applies to regular browsing)
+        if (isSearchMode) {
+            return;
+        }
+
+        int centerX = this.width / 2;
+        int paginationY = this.height - 30;
+        int buttonWidth = 20;
+        int buttonHeight = 20;
+
+        // Check each pagination button individually
+        boolean isHoveringAnyButton = false;
+        int targetPage = -1;
+
+        // Previous page button (◀)
+        if (mouseX >= centerX - 100 && mouseX <= centerX - 100 + buttonWidth &&
+            mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
+            if (currentPage > 1) {
+                targetPage = currentPage - 1;
+                isHoveringAnyButton = true;
+            }
+        }
+        // Next page button (▶)
+        else if (mouseX >= centerX + 80 && mouseX <= centerX + 80 + buttonWidth &&
+                 mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
+            if (currentPage < totalPages) {
+                targetPage = currentPage + 1;
+                isHoveringAnyButton = true;
+            }
+        }
+        // First page button (⏮)
+        else if (mouseX >= centerX - 125 && mouseX <= centerX - 125 + buttonWidth &&
+                 mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
+            if (currentPage > 1) {
+                targetPage = 1;
+                isHoveringAnyButton = true;
+            }
+        }
+        // Last page button (⏭)
+        else if (mouseX >= centerX + 105 && mouseX <= centerX + 105 + buttonWidth &&
+                 mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
+            if (currentPage < totalPages) {
+                targetPage = totalPages;
+                isHoveringAnyButton = true;
+            }
+        }
+
+        // If hovering over a valid button and target page is different from what we're preloading
+        if (isHoveringAnyButton && targetPage != -1) {
+            if (!isPreloadingPagination || preloadingPageNumber != targetPage) {
+                // Cancel any existing preload if switching to different page
+                if (isPreloadingPagination && preloadingPageNumber != targetPage) {
+                    System.out.println("Switching pagination preload from page " + preloadingPageNumber + " to " + targetPage);
+                }
+
+                // Check if target page is already cached
+                if (!cacheManager.hasValidSchematicCache(targetPage, CACHE_DURATION_MS)) {
+                    startPaginationPreload(targetPage);
+                } else {
+                    System.out.println("Page " + targetPage + " already cached - no preload needed");
+                }
+            }
+        } else {
+            // Not hovering over any pagination button - reset state but don't cancel ongoing preloads
+            // This prevents cancelling preloads when mouse briefly moves outside button bounds
+        }
+    }
+
+    /**
+     * Start preloading a specific page for pagination
+     */
+    private void startPaginationPreload(int pageNumber) {
+        if (pageNumber == currentPage) {
+            return; // Don't preload current page
+        }
+
+        isPreloadingPagination = true;
+        preloadingPageNumber = pageNumber;
+
+        System.out.println("Starting instant pagination preload for page: " + pageNumber);
+
+        new Thread(() -> {
+            try {
+                // Double-check we should still preload this page
+                if (!isPreloadingPagination || preloadingPageNumber != pageNumber) {
+                    System.out.println("Pagination preload cancelled for page " + pageNumber);
+                    return;
+                }
+
+                // Fetch and cache the target page
+                LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(pageNumber, pageSize);
+
+                MinecraftClient.getInstance().execute(() -> {
+                    // Final check before caching
+                    if (isPreloadingPagination && preloadingPageNumber == pageNumber) {
+                        cacheManager.putSchematicCache(pageNumber, result.getItems(), result.getTotalPages(), result.getTotalItems(), CACHE_DURATION_MS);
+                        System.out.println("Successfully preloaded and cached page: " + pageNumber + " (" + result.getItems().size() + " items)");
+                    } else {
+                        System.out.println("Discarded pagination preload result for page " + pageNumber + " - cancelled");
+                    }
+
+                    // Reset preload state only if this was the current preload
+                    if (preloadingPageNumber == pageNumber) {
+                        isPreloadingPagination = false;
+                        preloadingPageNumber = -1;
+                    }
+                });
+
+            } catch (Exception e) {
+                System.err.println("Error during pagination preload for page " + pageNumber + ": " + e.getMessage());
+                MinecraftClient.getInstance().execute(() -> {
+                    // Reset preload state only if this was the current preload
+                    if (preloadingPageNumber == pageNumber) {
+                        isPreloadingPagination = false;
+                        preloadingPageNumber = -1;
+                    }
+                });
+            }
+        }).start();
     }
 }
