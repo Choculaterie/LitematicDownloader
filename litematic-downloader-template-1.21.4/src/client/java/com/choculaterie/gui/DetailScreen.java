@@ -346,7 +346,7 @@ public class DetailScreen extends Screen {
                 // Register the texture with Minecraft's texture manager
                 MinecraftClient.getInstance().getTextureManager().registerTexture(
                         coverImageTexture,
-                        new NativeImageBackedTexture(nativeImage)
+                        new NativeImageBackedTexture(() -> "cover_image", nativeImage)
                 );
 
                 if (isPlaceholder) {
@@ -460,7 +460,7 @@ public class DetailScreen extends Screen {
                 // Register the texture with Minecraft's texture manager
                 MinecraftClient.getInstance().getTextureManager().registerTexture(
                         coverImageTexture,
-                        new NativeImageBackedTexture(nativeImage)
+                        new NativeImageBackedTexture(() -> "cover_image", nativeImage)
                 );
 
                 System.out.println("Placeholder image created due to: " + reason + " (" + imageWidth + "x" + imageHeight + ")");
