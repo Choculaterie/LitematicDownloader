@@ -515,6 +515,9 @@ public class LitematicDownloaderScreen extends Screen {
                 0xAAAAAA
         );
 
+        // Restore the original matrix state
+        context.getMatrices().set(originalMatrix);
+        
         // Render pagination info
         String paginationText;
         if (isSearchMode) {
@@ -548,6 +551,8 @@ public class LitematicDownloaderScreen extends Screen {
             } else if (isSearchMode) {
                 context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No results found for: " + lastSearchedTerm),
                         this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xCCCCCC);
+                //Restore original matrix state, in case emoji is entered into search
+                context.getMatrices().set(originalMatrix);
             } else {
                 context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No schematics found"),
                         this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xCCCCCC);
@@ -655,8 +660,10 @@ public class LitematicDownloaderScreen extends Screen {
                 }
                 context.drawText(MinecraftClient.getInstance().textRenderer,
                         Text.literal(lastLine).asOrderedText(), textX, textY, 0xFFFFFF, true);
+                context.getMatrices().set(originalMatrix);
             } else {
                 context.drawText(MinecraftClient.getInstance().textRenderer, titleLines.get(i), textX, textY, 0xFFFFFF, true);
+                context.getMatrices().set(originalMatrix);
             }
             textY += 10;
         }
@@ -674,8 +681,10 @@ public class LitematicDownloaderScreen extends Screen {
                 }
                 context.drawText(MinecraftClient.getInstance().textRenderer,
                         Text.literal(firstLine).asOrderedText(), textX, textY, 0xAAAAAA, false);
+                context.getMatrices().set(originalMatrix);
             } else {
                 context.drawText(MinecraftClient.getInstance().textRenderer, descLines.get(0), textX, textY, 0xAAAAAA, false);
+                context.getMatrices().set(originalMatrix);
             }
             textY += 10;
         }
@@ -683,6 +692,7 @@ public class LitematicDownloaderScreen extends Screen {
         // Author
         String authorText = "By: " + schematic.getUsername();
         context.drawText(MinecraftClient.getInstance().textRenderer, authorText, textX, textY, 0xCCCCCC, false);
+        context.getMatrices().set(originalMatrix);
 
         // Right side stats
         int rightX = x + width - 50;
@@ -697,16 +707,20 @@ public class LitematicDownloaderScreen extends Screen {
 
         context.drawText(MinecraftClient.getInstance().textRenderer, viewCountStr,
                 rightX - maxNumberWidth, statsY, 0xFFFFFF, false);
+        context.getMatrices().set(originalMatrix);
         context.drawText(MinecraftClient.getInstance().textRenderer, " 👁",
                 rightX - maxNumberWidth + MinecraftClient.getInstance().textRenderer.getWidth(viewCountStr),
                 statsY, 0xFFFFFF, false);
+        context.getMatrices().set(originalMatrix);
         statsY += 10;
 
         context.drawText(MinecraftClient.getInstance().textRenderer, downloadCountStr,
                 rightX - maxNumberWidth, statsY, 0xFFFFFF, false);
+        context.getMatrices().set(originalMatrix);
         context.drawText(MinecraftClient.getInstance().textRenderer, " ⬇",
                 rightX - maxNumberWidth + MinecraftClient.getInstance().textRenderer.getWidth(downloadCountStr),
                 statsY, 0xFFFFFF, false);
+        context.getMatrices().set(originalMatrix);
 
         // Download button
         int buttonX = x + width - 30;
@@ -717,6 +731,7 @@ public class LitematicDownloaderScreen extends Screen {
         int buttonColor = isButtonHovered ? 0x99FFFFFF : 0x66FFFFFF;
         context.fill(buttonX, buttonY, buttonX + 20, buttonY + 20, buttonColor);
         context.drawCenteredTextWithShadow(textRenderer, Text.literal("⬇"), buttonX + 10, buttonY + 6, 0xFFFFFF);
+        context.getMatrices().set(originalMatrix);
     }
 
     private String getPlainText(OrderedText text) {
