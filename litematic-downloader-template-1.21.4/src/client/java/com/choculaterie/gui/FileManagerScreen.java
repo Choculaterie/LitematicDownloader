@@ -404,7 +404,7 @@ public class FileManagerScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
+
 
         // Call super.render() after our custom drawing so widgets appear on top
         super.render(context, mouseX, mouseY, delta);
@@ -416,16 +416,16 @@ public class FileManagerScreen extends Screen {
                 Text.literal("🔍"),
                 searchField.getX() - 15,
                 searchField.getY() + 5,
-                0xAAAAAA
+                0xFFAAAAAA
         );
 
         // Draw title and standard UI elements first
-        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFFFFFF);
+        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFFFFFFFF);
 
         // Draw breadcrumb path (centered)
         int breadcrumbY = 40;
-        int pathColor = 0xCCCCCC;
-        int separatorColor = 0x999999;
+        int pathColor = 0xFFCCCCCC;
+        int separatorColor = 0xFF999999;
 
         // Calculate total width of breadcrumb path for centering
         int totalBreadcrumbWidth = 0;
@@ -456,7 +456,7 @@ public class FileManagerScreen extends Screen {
                 int textWidth = item.width;
                 isHovering = mouseX >= breadcrumbX && mouseX <= breadcrumbX + textWidth &&
                         mouseY >= breadcrumbY && mouseY <= breadcrumbY + 10;
-                color = isHovering ? 0xFFFFFF : pathColor;
+                color = isHovering ? 0xFFFFFFFF : pathColor;
 
                 // Highlight for potential drop target
                 if (isDragging && draggedFile != null &&
@@ -490,7 +490,7 @@ public class FileManagerScreen extends Screen {
         // Draw files list
         if (displayedFiles.isEmpty()) {
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No files found"),
-                    this.width / 2, scrollAreaY + 20, 0xCCCCCC);
+                    this.width / 2, scrollAreaY + 20, 0xFFCCCCCC);
         } else {
             int y = scrollAreaY - scrollOffset;
             for (int i = 0; i < displayedFiles.size(); i++) {
@@ -511,14 +511,14 @@ public class FileManagerScreen extends Screen {
 
                     // Draw icon and name with vertical padding
                     context.drawTextWithShadow(this.textRenderer, Text.literal(icon + file.getName()),
-                            scrollAreaX + 10, y + 4, 0xFFFFFF);
+                            scrollAreaX + 10, y + 4, 0xFFFFFFFF);
 
                     // If this is a search result from a subfolder, show the folder path
                     if (hasPath) {
                         String path = filePathMap.get(file);
                         String pathText = "📂 " + path;
                         context.drawTextWithShadow(this.textRenderer, Text.literal(pathText),
-                                scrollAreaX + 10, y + 16, 0xAAAAAA);
+                                scrollAreaX + 10, y + 16, 0xFFAAAAAA);
                     }
 
                     // For files, show file size
@@ -527,7 +527,7 @@ public class FileManagerScreen extends Screen {
                         String sizeText = fileSizeKB + " KB";
                         int sizeWidth = this.textRenderer.getWidth(sizeText);
                         context.drawTextWithShadow(this.textRenderer, Text.literal(sizeText),
-                                scrollAreaX + scrollAreaWidth - sizeWidth - 35, y + 4, 0xCCCCCC);
+                                scrollAreaX + scrollAreaWidth - sizeWidth - 35, y + 4, 0xFFCCCCCC);
                     }
 
                     // Draw delete button
@@ -535,7 +535,7 @@ public class FileManagerScreen extends Screen {
                     int deleteY = y + 5;
                     boolean isDeleteHovered = mouseX >= deleteX - 2 && mouseX <= deleteX + 8 &&
                             mouseY >= deleteY && mouseY <= deleteY + 10;
-                    int deleteColor = isDeleteHovered ? 0xFF5555 : 0xAA5555;
+                    int deleteColor = isDeleteHovered ? 0xFFFF5555 : 0xFFAA5555;
                     context.drawTextWithShadow(this.textRenderer, Text.literal("✕"), deleteX, deleteY - 1, deleteColor);
 
                     // Draw upload button for .litematic files
@@ -547,7 +547,7 @@ public class FileManagerScreen extends Screen {
 
                         // Show different icon if upload is in progress
                         String uploadIcon = filesBeingUploaded.contains(file) ? "⏳" : "📤";
-                        int uploadColor = isUploadHovered ? 0x55AAFF : 0x5555AA;
+                        int uploadColor = isUploadHovered ? 0xFF55AAFF : 0xFF5555AA;
                         context.drawTextWithShadow(this.textRenderer, Text.literal(uploadIcon), uploadX, uploadY - 1, uploadColor);
                     }
 
@@ -579,7 +579,7 @@ public class FileManagerScreen extends Screen {
                         Text.literal(dragText),
                         dragCurrentX + 10,
                         dragCurrentY - 5,
-                        0xFFFFFF
+                        0xFFFFFFFF
                 );
             }
         }

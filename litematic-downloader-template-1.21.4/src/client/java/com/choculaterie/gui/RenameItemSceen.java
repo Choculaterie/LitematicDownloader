@@ -78,7 +78,7 @@ public class RenameItemSceen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
+
 
         super.render(context, mouseX, mouseY, delta);
         // Draw title
@@ -86,12 +86,12 @@ public class RenameItemSceen extends Screen {
 
         // Draw instructions - simplified to avoid duplicating the filename
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Enter a new name:"),
-                this.width / 2, this.height / 2 - 30, 0xCCCCCC);
+                this.width / 2, this.height / 2 - 30, 0xFFCCCCCC);
 
         // Draw file type info
         String typeInfo = fileToRename.isDirectory() ? "Folder" : "File";
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(typeInfo),
-                this.width / 2, this.height / 2 - 45, 0xAAAAAA);
+                this.width / 2, this.height / 2 - 45, 0xFFAAAAAA);
 
         // Draw error message if present
         if (errorMessage != null && System.currentTimeMillis() - errorDisplayTime < 3000) {
@@ -100,7 +100,7 @@ public class RenameItemSceen extends Screen {
                     Text.literal(errorMessage),
                     this.width / 2,
                     this.height / 2 + 15,
-                    0xFF5555
+                    0xFFFF5555
             );
         }
 

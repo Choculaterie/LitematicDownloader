@@ -98,19 +98,19 @@ public class ConfirmationCreateFolderScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
+
 
         super.render(context, mouseX, mouseY, delta);
 
         // Draw title
-        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, this.height / 2 - 40, 0xFFFFFF);
+        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, this.height / 2 - 40, 0xFFFFFFFF);
 
         // Draw prompt
-        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Enter name for new folder:"), this.width / 2, this.height / 2 - 30, 0xCCCCCC);
+        context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Enter name for new folder:"), this.width / 2, this.height / 2 - 30, 0xFFCCCCCC);
 
         // Draw error message if any
         if (errorMessage != null) {
-            context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(errorMessage), this.width / 2, this.height / 2 + 50, 0xFF5555);
+            context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(errorMessage), this.width / 2, this.height / 2 + 50, 0xFFFF5555);
         }
 
 

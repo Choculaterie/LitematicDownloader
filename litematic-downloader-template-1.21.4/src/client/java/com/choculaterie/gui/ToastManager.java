@@ -3,10 +3,12 @@ package com.choculaterie.gui;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
+import net.minecraft.util.math.ColorHelper;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import org.joml.Matrix3x2f;
 
 public class ToastManager {
     private static final List<Toast> toasts = new ArrayList<>();
@@ -23,10 +25,7 @@ public class ToastManager {
         Iterator<Toast> iterator = toasts.iterator();
 
         // Save the current transform state
-        context.getMatrices().push();
-
-        // Ensure toasts are rendered at the highest z-index
-        context.getMatrices().translate(0.0, 0.0, 1000.0);
+        Matrix3x2f originalMatrix = new Matrix3x2f(context.getMatrices());
 
         int y = TOAST_MARGIN;
         while (iterator.hasNext()) {
@@ -46,12 +45,13 @@ public class ToastManager {
             int width = MinecraftClient.getInstance().textRenderer.getWidth(toast.message) + 20;
             int x = screenWidth - width - TOAST_MARGIN;
 
-            // Fully opaque background colors
+            // Apply alpha to colors using ColorHelper
+            int textColor = ColorHelper.withAlpha(alpha, 0xFFFFFF);
             int bgColor = toast.isError ?
-                    0xFFFF0000 :  // Opaque red for errors
-                    0xFF00AA00;   // Opaque green for success
+                    ColorHelper.withAlpha(alpha, 0xFF0000) :  // Red for errors with alpha
+                    ColorHelper.withAlpha(alpha, 0x00AA00);   // Green for success with alpha
 
-            // Draw background with z-positioning
+            // Draw background
             context.fill(x, y, x + width, y + TOAST_HEIGHT, bgColor);
 
             // Draw text with Text.literal to convert String to Text
@@ -60,14 +60,14 @@ public class ToastManager {
                     Text.literal(toast.message),
                     x + 10,
                     y + 5,
-                    0xFFFFFFFF
+                    textColor
             );
 
             y += TOAST_HEIGHT + 5;
         }
 
         // Restore the original transform state
-        context.getMatrices().pop();
+        context.getMatrices().set(originalMatrix);
     }
 
     private static class Toast {

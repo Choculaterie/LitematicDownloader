@@ -53,17 +53,17 @@ public class ConfirmationScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
+
 
         super.render(context, mouseX, mouseY, delta);
 
         // Draw title and message
-        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, this.height / 2 - 30, 0xFFFFFF);
+        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, this.height / 2 - 30, 0xFFFFFFFF);
 
         // Split message over multiple lines if needed
         int y = this.height / 2 - 10;
         for (String line : this.message.getString().split("\n")) {
-            context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(line), this.width / 2, y, 0xFFFFFF);
+            context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(line), this.width / 2, y, 0xFFFFFFFF);
             y += 10;
         }
 

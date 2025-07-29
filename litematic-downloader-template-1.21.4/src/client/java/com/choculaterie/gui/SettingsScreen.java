@@ -271,12 +271,12 @@ public class SettingsScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
+
         super.render(context, mouseX, mouseY, delta);
 
-        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 20, 0xFFFFFF);
+        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 20, 0xFFFFFFFF);
 
-        context.drawTextWithShadow(this.textRenderer, Text.literal("Schematics Path:"), this.width / 2 - 200, 48, 0xFFFFFF);
+        context.drawTextWithShadow(this.textRenderer, Text.literal("Schematics Path:"), this.width / 2 - 200, 48, 0xFFFFFFFF);
 
         pathField.render(context, mouseX, mouseY, delta);
 

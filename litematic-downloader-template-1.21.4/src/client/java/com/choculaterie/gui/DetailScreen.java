@@ -12,6 +12,7 @@ import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.PressableWidget;
 import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.text.OrderedText;
@@ -495,8 +496,7 @@ public class DetailScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Keep the blur background
-        this.renderBackground(context, mouseX, mouseY, delta);
+
 
         // Draw title
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 10, 0xFFFFFF);
@@ -523,10 +523,10 @@ public class DetailScreen extends Screen {
             int centerY = this.height / 2;
             drawLoadingAnimation(context, this.width / 2, centerY - 15);
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Loading..."),
-                    this.width / 2, centerY + 15, 0xCCCCCC);
+                    this.width / 2, centerY + 15, 0xFFFFFFFF);
         }  else if (errorMessage != null) {
             context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(errorMessage),
-                    this.width / 2, this.height / 2, 0xFF0000);
+                    this.width / 2, this.height / 2, 0xFFFFFFFF);
         } else if (schematicDetail != null) {
             // Define layout dimensions
             int padding = 20;
@@ -537,7 +537,7 @@ public class DetailScreen extends Screen {
 
             // Draw the image on the left
             context.drawTexture(
-                    RenderLayer::getGuiTextured,
+                    RenderPipelines.GUI_TEXTURED,
                     coverImageTexture,
                     padding,
                     topMargin,
@@ -554,14 +554,14 @@ public class DetailScreen extends Screen {
             // Title (name)
             String name = schematicDetail.getName();
             if (name != null) {
-                context.drawText(this.textRenderer, name, rightSectionX, y, 0xFFFFFF, true);
+                context.drawText(this.textRenderer, name, rightSectionX, y, 0xFFFFFFFF, true);
                 y += 15;
             }
 
             // Author
             String username = schematicDetail.getUsername();
             if (username != null) {
-                context.drawText(this.textRenderer, "By: " + username, rightSectionX, y, 0xCCCCCC, false);
+                context.drawText(this.textRenderer, "By: " + username, rightSectionX, y, 0xFFD5D5D5, false);
                 y += 15;
             }
 
@@ -569,7 +569,7 @@ public class DetailScreen extends Screen {
             String publishDate = schematicDetail.getPublishDate();
             if (publishDate != null) {
                 String formattedDate = publishDate.split("T")[0];
-                context.drawText(this.textRenderer, "Published: " + formattedDate, rightSectionX, y, 0xCCCCCC, false);
+                context.drawText(this.textRenderer, "Published: " + formattedDate, rightSectionX, y, 0xFFD5D5D5, false);
                 y += 20;
             }
 
@@ -578,15 +578,15 @@ public class DetailScreen extends Screen {
             int statsSpacing = contentWidth / 3;
 
             context.drawText(this.textRenderer, "Views: " + schematicDetail.getViewCount(),
-                    rightSectionX, statsY, 0xFFFFFF, false);
+                    rightSectionX, statsY, 0xFFD5D5D5, false);
 
             context.drawText(this.textRenderer, "Downloads: " + schematicDetail.getDownloadCount(),
-                    rightSectionX + statsSpacing, statsY, 0xFFFFFF, false);
+                    rightSectionX + statsSpacing, statsY, 0xFFD5D5D5, false);
 
             y += 25;
 
             // Description header
-            context.drawText(this.textRenderer, "Description:", rightSectionX, y, 0xFFFFFF, false);
+            context.drawText(this.textRenderer, "Description:", rightSectionX, y, 0xFFFFFFFF, false);
             y += 15;
 
             // Store scroll area parameters for mouse handling
@@ -617,7 +617,7 @@ public class DetailScreen extends Screen {
             this.totalContentHeight = lines.size() * 10;
 
             for (OrderedText line : lines) {
-                context.drawText(this.textRenderer, line, this.scrollAreaX, textY, 0xFFFFFF, false);
+                context.drawText(this.textRenderer, line, this.scrollAreaX, textY, 0xFFFFFFFF, false);
                 textY += 10;
             }
 

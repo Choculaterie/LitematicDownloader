@@ -13,6 +13,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import com.choculaterie.config.SettingsManager;
+import org.joml.Matrix3x2f;
 
 public class LitematicDownloaderScreen extends Screen {
     private List<SchematicInfo> schematics = new ArrayList<>();
@@ -59,7 +60,7 @@ public class LitematicDownloaderScreen extends Screen {
 
     // Status message fields
     private String statusMessage = null;
-    private int statusColor = 0xFFFFFF;
+    private int statusColor = 0xFFFFFFFF;
     private long statusMessageDisplayTime = 0;
     private static final long STATUS_MESSAGE_DURATION = 3000;
 
@@ -492,27 +493,26 @@ public class LitematicDownloaderScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
+
         super.render(context, mouseX, mouseY, delta);
 
         // Handle hover tracking for preloading
         handleHoverPreloading(mouseX, mouseY);
-
-        // Handle pagination hover preloading
         handlePaginationHoverPreloading(mouseX, mouseY);
 
         // Render title
-        context.drawCenteredTextWithShadow(textRenderer, this.title, this.width / 2 - searchField.getWidth()/4, 10, 0xFFFFFF);
+        context.drawCenteredTextWithShadow(textRenderer, this.title, this.width / 2 - searchField.getWidth()/4, 10, 0xFFFFFFFF);
 
         // Render search field
         this.searchField.render(context, mouseX, mouseY, delta);
 
+        // Draw your icon text (you can do this without extra push/pop now)
         context.drawTextWithShadow(
                 this.textRenderer,
                 Text.literal("🔍"),
                 searchField.getX() - 15,
                 searchField.getY() + 5,
-                0xAAAAAA
+                0xFFAAAAAA
         );
 
         // Render pagination info
@@ -527,7 +527,7 @@ public class LitematicDownloaderScreen extends Screen {
                 Text.literal(paginationText),
                 this.width / 2,
                 40,
-                0xCCCCCC
+                0xFFFFFFFF
         );
 
         // Create clipping region for schematic list
@@ -544,13 +544,14 @@ public class LitematicDownloaderScreen extends Screen {
                 int centerY = scrollAreaY + (scrollAreaHeight / 2);
                 drawLoadingAnimation(context, this.width / 2, centerY - 15);
                 context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Loading..."),
-                        this.width / 2, centerY + 15, 0xCCCCCC);
+                        this.width / 2, centerY + 15, 0xFFFFFFFF
+                );
             } else if (isSearchMode) {
                 context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No results found for: " + lastSearchedTerm),
-                        this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xCCCCCC);
+                        this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xFFFFFFFF);
             } else {
                 context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("No schematics found"),
-                        this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xCCCCCC);
+                        this.width / 2, scrollAreaY + (scrollAreaHeight / 2), 0xFFFFFFFF);
             }
         } else {
             int y = scrollAreaY - scrollOffset;
@@ -608,7 +609,9 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         ToastManager.render(context, this.width);
+
     }
+
 
     private void drawLoadingAnimation(DrawContext context, int centerX, int centerY) {
         int radius = 12;
@@ -629,7 +632,7 @@ public class LitematicDownloaderScreen extends Screen {
             int y2 = centerY + (int)(Math.cos(angle) * radius);
 
             int alpha = 255 - (i * 255 / segments);
-            int color = 0xFFFFFF | (alpha << 24);
+            int color = 0xFFFFFFFF | (alpha << 24);
 
             context.fill(x1, y1, x2, y2, color);
         }
@@ -654,9 +657,9 @@ public class LitematicDownloaderScreen extends Screen {
                     lastLine = lastLine.substring(0, lastLine.length() - 3) + "...";
                 }
                 context.drawText(MinecraftClient.getInstance().textRenderer,
-                        Text.literal(lastLine).asOrderedText(), textX, textY, 0xFFFFFF, true);
+                        Text.literal(lastLine).asOrderedText(), textX, textY, 0xFFFFFFFF, true);
             } else {
-                context.drawText(MinecraftClient.getInstance().textRenderer, titleLines.get(i), textX, textY, 0xFFFFFF, true);
+                context.drawText(MinecraftClient.getInstance().textRenderer, titleLines.get(i), textX, textY, 0xFFFFFFFF, true);
             }
             textY += 10;
         }
@@ -673,16 +676,16 @@ public class LitematicDownloaderScreen extends Screen {
                     firstLine = firstLine.substring(0, firstLine.length() - 3) + "...";
                 }
                 context.drawText(MinecraftClient.getInstance().textRenderer,
-                        Text.literal(firstLine).asOrderedText(), textX, textY, 0xAAAAAA, false);
+                        Text.literal(firstLine).asOrderedText(), textX, textY, 0xFFAAAAAA, false);
             } else {
-                context.drawText(MinecraftClient.getInstance().textRenderer, descLines.get(0), textX, textY, 0xAAAAAA, false);
+                context.drawText(MinecraftClient.getInstance().textRenderer, descLines.get(0), textX, textY, 0xFFAAAAAA, false);
             }
             textY += 10;
         }
 
         // Author
         String authorText = "By: " + schematic.getUsername();
-        context.drawText(MinecraftClient.getInstance().textRenderer, authorText, textX, textY, 0xCCCCCC, false);
+        context.drawText(MinecraftClient.getInstance().textRenderer, authorText, textX, textY, 0xFFD5D5D5, false);
 
         // Right side stats
         int rightX = x + width - 50;
@@ -696,17 +699,17 @@ public class LitematicDownloaderScreen extends Screen {
         );
 
         context.drawText(MinecraftClient.getInstance().textRenderer, viewCountStr,
-                rightX - maxNumberWidth, statsY, 0xFFFFFF, false);
+                rightX - maxNumberWidth, statsY, 0xFFFFFFFF, false);
         context.drawText(MinecraftClient.getInstance().textRenderer, " 👁",
                 rightX - maxNumberWidth + MinecraftClient.getInstance().textRenderer.getWidth(viewCountStr),
-                statsY, 0xFFFFFF, false);
+                statsY, 0xFFFFFFFF, false);
         statsY += 10;
 
         context.drawText(MinecraftClient.getInstance().textRenderer, downloadCountStr,
-                rightX - maxNumberWidth, statsY, 0xFFFFFF, false);
+                rightX - maxNumberWidth, statsY, 0xFFFFFFFF, false);
         context.drawText(MinecraftClient.getInstance().textRenderer, " ⬇",
                 rightX - maxNumberWidth + MinecraftClient.getInstance().textRenderer.getWidth(downloadCountStr),
-                statsY, 0xFFFFFF, false);
+                statsY, 0xFFFFFFFF, false);
 
         // Download button
         int buttonX = x + width - 30;
@@ -716,7 +719,7 @@ public class LitematicDownloaderScreen extends Screen {
 
         int buttonColor = isButtonHovered ? 0x99FFFFFF : 0x66FFFFFF;
         context.fill(buttonX, buttonY, buttonX + 20, buttonY + 20, buttonColor);
-        context.drawCenteredTextWithShadow(textRenderer, Text.literal("⬇"), buttonX + 10, buttonY + 6, 0xFFFFFF);
+        context.drawCenteredTextWithShadow(textRenderer, Text.literal("⬇"), buttonX + 10, buttonY + 6, 0xFFFFFFFF);
     }
 
     private String getPlainText(OrderedText text) {

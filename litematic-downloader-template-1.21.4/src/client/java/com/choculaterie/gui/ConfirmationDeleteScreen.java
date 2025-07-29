@@ -164,16 +164,16 @@ public class ConfirmationDeleteScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
+
 
         super.render(context, mouseX, mouseY, delta);
 
         // Draw title and warning
-        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFF5555);
+        context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFFFF5555);
 
         String warning = "The following items will be permanently deleted:";
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(warning),
-                this.width / 2, 35, 0xFFFFFF);
+                this.width / 2, 35, 0xFFFFFFFF);
 
         // Count files and folders
         int fileCount = 0;
@@ -186,7 +186,7 @@ public class ConfirmationDeleteScreen extends Screen {
         String summary = folderCount + " folder" + (folderCount != 1 ? "s" : "") +
                 " and " + fileCount + " file" + (fileCount != 1 ? "s" : "");
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(summary),
-                this.width / 2, scrollAreaY - 15, 0xCCCCCC);
+                this.width / 2, scrollAreaY - 15, 0xFFCCCCCC);
 
         // Create clipping region for tree view
         context.enableScissor(
@@ -215,17 +215,17 @@ public class ConfirmationDeleteScreen extends Screen {
                             mouseY >= y && mouseY <= y + itemHeight;
 
                     context.drawTextWithShadow(this.textRenderer, Text.literal(expandChar),
-                            scrollAreaX + indent, y, isHovering ? 0xFFFFFF : 0xAAAAAA);
+                            scrollAreaX + indent, y, isHovering ? 0xFFFFFFFF : 0xFFAAAAAA);
                 }
 
                 // Draw icon
                 String icon = entry.file.isDirectory() ? "📁 " : "📄 ";
                 context.drawTextWithShadow(this.textRenderer, Text.literal(icon),
-                        scrollAreaX + indent + 15, y, 0xFFFFFF);
+                        scrollAreaX + indent + 15, y, 0xFFFFFFFF);
 
                 // Draw file name
                 context.drawTextWithShadow(this.textRenderer, Text.literal(entry.file.getName()),
-                        scrollAreaX + indent + 30, y, 0xFFFFFF);
+                        scrollAreaX + indent + 30, y, 0xFFFFFFFF);
             }
 
             y += itemHeight;
