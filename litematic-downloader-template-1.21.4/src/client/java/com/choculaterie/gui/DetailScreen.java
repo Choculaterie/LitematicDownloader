@@ -601,6 +601,11 @@ public class DetailScreen extends Screen {
             String description = schematicDetail.getDescription() != null && !schematicDetail.getDescription().isEmpty()
                     ? schematicDetail.getDescription() : "No description available";
 
+            // Clean the description: remove carriage return characters but keep newlines
+            description = description.replace("\r", "");
+            // Optional: clean up any remaining whitespace issues while preserving line breaks
+            description = description.replaceAll("[ \\t]+", " ").trim();
+
             // Use scissor to create a clipping region for scrolling
             context.enableScissor(
                     this.scrollAreaX,

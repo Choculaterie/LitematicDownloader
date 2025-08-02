@@ -38,6 +38,22 @@ loom {
 		}
 	}
 
+	runs {
+		client {
+			client()
+			setConfigName("Minecraft Client")
+			ideConfigGenerated(true)
+			runDir("run")
+			programArgs("--username", "DevPlayer", "--uuid", "00000000-0000-0000-0000-000000000000")
+			vmArgs("-Xmx2G", "-Xms1G", "-XX:+UseG1GC", "-Djava.awt.headless=false")
+		}
+		server {
+			server()
+			setConfigName("Minecraft Server")
+			ideConfigGenerated(true)
+			runDir("run")
+		}
+	}
 }
 
 dependencies {
