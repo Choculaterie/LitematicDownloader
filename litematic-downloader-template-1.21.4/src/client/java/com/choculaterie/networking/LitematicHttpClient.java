@@ -1,5 +1,6 @@
 package com.choculaterie.networking;
 
+import com.choculaterie.models.SchematicCreateDTO;
 import com.choculaterie.models.SchematicDetailInfo;
 import com.choculaterie.models.SchematicInfo;
 import com.google.gson.Gson;
@@ -393,6 +394,208 @@ public class LitematicHttpClient {
                         callback.onError("Upload failed: " + e.getMessage()));
             }
         }).start();
+    }
+
+    /**
+     * Creates a new schematic using the CreateSchematic API endpoint
+     * @param schematicDto The schematic data to upload
+     * @param apiKey The user's API key for authentication
+     * @param callback Callback for handling success/error responses
+     */
+    public static void createSchematic(SchematicCreateDTO schematicDto, String apiKey, CreateSchematicCallback callback) {
+        new Thread(() -> {
+            try {
+                String boundary = "Boundary-" + System.currentTimeMillis();
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+                // === COMPREHENSIVE HTTP CLIENT DEBUG LOGGING ===
+                System.out.println("=== HTTP CLIENT DEBUG START ===");
+                System.out.println("Creating multipart request with boundary: " + boundary);
+                System.out.println("DTO contents:");
+                System.out.println("  - Name: " + schematicDto.getName());
+                System.out.println("  - Description: " + schematicDto.getDescription());
+                System.out.println("  - SchematicsPictureFiles: " + schematicDto.getSchematicsPictureFiles().size() + " files");
+                for (int i = 0; i < schematicDto.getSchematicsPictureFiles().size(); i++) {
+                    File file = schematicDto.getSchematicsPictureFiles().get(i);
+                    System.out.println("    [" + i + "] " + file.getName() + " (" + file.length() + " bytes)");
+                }
+                System.out.println("  - LitematicFiles: " + schematicDto.getLitematicFiles().size() + " files");
+                for (int i = 0; i < schematicDto.getLitematicFiles().size(); i++) {
+                    File file = schematicDto.getLitematicFiles().get(i);
+                    System.out.println("    [" + i + "] " + file.getName() + " (" + file.length() + " bytes)");
+                }
+                System.out.println("  - CoverImageIndex: " + schematicDto.getCoverImageIndex());
+                System.out.println("  - Tags: " + schematicDto.getTags());
+                System.out.println("  - DownloadLinkMediaFire: " + schematicDto.getDownloadLinkMediaFire());
+                System.out.println("  - YoutubeLink: " + schematicDto.getYoutubeLink());
+
+                // Add text fields
+                System.out.println("Adding form fields to multipart request...");
+                addFormField(baos, boundary, "Name", schematicDto.getName());
+                System.out.println("  Added Name field: " + schematicDto.getName());
+
+                // Only send Description field if it has content (treat like other optional fields)
+
+                // Set description only if provided (not required by server)
+                addFormField(baos, boundary, "Description",
+                        schematicDto.getDescription() != null ? schematicDto.getDescription() : "");
+                System.out.println("  Added Description field: " + (schematicDto.getDescription() != null ? schematicDto.getDescription() : ""));
+
+                if (schematicDto.getDownloadLinkMediaFire() != null) {
+                    addFormField(baos, boundary, "DownloadLinkMediaFire", schematicDto.getDownloadLinkMediaFire());
+                    System.out.println("  Added DownloadLinkMediaFire field: " + schematicDto.getDownloadLinkMediaFire());
+                }
+                if (schematicDto.getYoutubeLink() != null) {
+                    addFormField(baos, boundary, "YoutubeLink", schematicDto.getYoutubeLink());
+                    System.out.println("  Added YoutubeLink field: " + schematicDto.getYoutubeLink());
+                }
+                if (schematicDto.getTags() != null) {
+                    addFormField(baos, boundary, "Tags", schematicDto.getTags());
+                    System.out.println("  Added Tags field: " + schematicDto.getTags());
+                }
+                if (schematicDto.getCoverImageIndex() != null) {
+                    addFormField(baos, boundary, "CoverImageIndex", schematicDto.getCoverImageIndex().toString());
+                    System.out.println("  Added CoverImageIndex field: " + schematicDto.getCoverImageIndex().toString());
+                }
+
+                // Add schematic picture files
+                System.out.println("Adding picture files to multipart request...");
+                for (int i = 0; i < schematicDto.getSchematicsPictureFiles().size(); i++) {
+                    File pictureFile = schematicDto.getSchematicsPictureFiles().get(i);
+                    System.out.println("  Adding picture file [" + i + "]: " + pictureFile.getName() + " (" + pictureFile.length() + " bytes)");
+                    // Use the exact field name the server expects (not indexed)
+                    addFileField(baos, boundary, "SchematicsPictureFiles", pictureFile);
+                }
+
+                // Add litematic files
+                System.out.println("Adding litematic files to multipart request...");
+                for (int i = 0; i < schematicDto.getLitematicFiles().size(); i++) {
+                    File litematicFile = schematicDto.getLitematicFiles().get(i);
+                    System.out.println("  Adding litematic file [" + i + "]: " + litematicFile.getName() + " (" + litematicFile.length() + " bytes)");
+                    // Use the exact field name the server expects (not indexed)
+                    addFileField(baos, boundary, "LitematicFiles", litematicFile);
+                }
+
+                // Close the boundary
+                baos.write(("--" + boundary + "--\r\n").getBytes());
+
+                byte[] requestBody = baos.toByteArray();
+                System.out.println("Final multipart request size: " + requestBody.length + " bytes");
+                System.out.println("=== HTTP CLIENT DEBUG END ===");
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(BASE_URL + "/CreateSchematic"))
+                        .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                        .header("X-API-Key", apiKey)
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                System.out.println("Server response status: " + response.statusCode());
+                System.out.println("Server response body: " + response.body());
+                System.out.println("Server response headers: " + response.headers().map());
+
+                if (response.statusCode() == 201) {
+                    // Parse the response to get the created schematic details
+                    JsonObject json = gson.fromJson(response.body(), JsonObject.class);
+
+                    MinecraftClient.getInstance().execute(() -> {
+                        callback.onSuccess(json);
+                    });
+                } else {
+                    String errorMessage = "Creation failed: " + response.statusCode();
+                    String responseBody = response.body();
+
+                    // Enhanced error parsing for better debugging
+                    try {
+                        if (responseBody != null && !responseBody.trim().isEmpty()) {
+                            if (responseBody.trim().startsWith("{")) {
+                                // Try to parse as JSON
+                                JsonObject errorJson = gson.fromJson(responseBody, JsonObject.class);
+                                if (errorJson.has("error")) {
+                                    errorMessage = errorJson.get("error").getAsString();
+                                }
+                                if (errorJson.has("message")) {
+                                    errorMessage += " - " + errorJson.get("message").getAsString();
+                                }
+                                if (errorJson.has("details")) {
+                                    errorMessage += " - " + errorJson.get("details").getAsString();
+                                }
+                                if (errorJson.has("errors")) {
+                                    errorMessage += " - " + errorJson.get("errors").toString();
+                                }
+                            } else {
+                                // Plain text response
+                                errorMessage += " - " + responseBody;
+                            }
+                        } else {
+                            errorMessage += " - No response body";
+                        }
+
+                        // Add common 400 error explanations
+                        if (response.statusCode() == 400) {
+                            errorMessage += " (Bad Request - check required fields, file formats, or data validation)";
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Failed to parse error response: " + e.getMessage());
+                        errorMessage += " - Raw response: " + responseBody;
+                    }
+
+                    System.err.println("Publishing failed with detailed error: " + errorMessage);
+
+                    final String finalErrorMessage = errorMessage;
+                    MinecraftClient.getInstance().execute(() ->
+                            callback.onError(finalErrorMessage));
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                MinecraftClient.getInstance().execute(() ->
+                        callback.onError("Creation failed: " + e.getMessage()));
+            }
+        }).start();
+    }
+
+    /**
+     * Helper method to add a text form field to the multipart request
+     */
+    private static void addFormField(ByteArrayOutputStream baos, String boundary, String name, String value) throws Exception {
+        baos.write(("--" + boundary + "\r\n").getBytes());
+        baos.write(("Content-Disposition: form-data; name=\"" + name + "\"\r\n").getBytes());
+        baos.write("\r\n".getBytes());
+        baos.write(value.getBytes(StandardCharsets.UTF_8));
+        baos.write("\r\n".getBytes());
+    }
+
+    /**
+     * Helper method to add a file field to the multipart request
+     */
+    private static void addFileField(ByteArrayOutputStream baos, String boundary, String fieldName, File file) throws Exception {
+        byte[] fileBytes = Files.readAllBytes(file.toPath());
+
+        baos.write(("--" + boundary + "\r\n").getBytes());
+        baos.write(("Content-Disposition: form-data; name=\"" + fieldName + "\"; filename=\"" + file.getName() + "\"\r\n").getBytes());
+
+        // Set appropriate content type based on file extension
+        String contentType = "application/octet-stream";
+        String fileName = file.getName().toLowerCase();
+        if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
+            contentType = "image/jpeg";
+        } else if (fileName.endsWith(".png")) {
+            contentType = "image/png";
+        } else if (fileName.endsWith(".litematic")) {
+            contentType = "application/octet-stream";
+        }
+
+        baos.write(("Content-Type: " + contentType + "\r\n").getBytes());
+        baos.write("\r\n".getBytes());
+        baos.write(fileBytes);
+        baos.write("\r\n".getBytes());
+    }
+
+    public interface CreateSchematicCallback {
+        void onSuccess(JsonObject responseData);
+        void onError(String message);
     }
 
     public interface UploadCallback {

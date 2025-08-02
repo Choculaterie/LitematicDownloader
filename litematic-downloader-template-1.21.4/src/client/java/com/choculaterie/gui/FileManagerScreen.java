@@ -527,7 +527,7 @@ public class FileManagerScreen extends Screen {
                         String sizeText = fileSizeKB + " KB";
                         int sizeWidth = this.textRenderer.getWidth(sizeText);
                         context.drawTextWithShadow(this.textRenderer, Text.literal(sizeText),
-                                scrollAreaX + scrollAreaWidth - sizeWidth - 35, y + 4, 0xFFCCCCCC);
+                                scrollAreaX + scrollAreaWidth - sizeWidth - 45, y + 4, 0xFFCCCCCC);
                     }
 
                     // Draw delete button
@@ -540,15 +540,26 @@ public class FileManagerScreen extends Screen {
 
                     // Draw upload button for .litematic files
                     if (file.getName().toLowerCase().endsWith(".litematic")) {
+                        // Publish button (new)
+                        int publishX = scrollAreaX + scrollAreaWidth - 40; // Position for publish button
+                        int publishY = y + 5;
+                        boolean isPublishHovered = mouseX >= publishX - 2 && mouseX <= publishX + 12 &&
+                                mouseY >= publishY && mouseY <= publishY + 10;
+
+                        String publishIcon = "📤";
+                        int publishColor = isPublishHovered ? 0xFF55FF55 : 0xFF55AA55;
+                        context.drawTextWithShadow(this.textRenderer, Text.literal(publishIcon), publishX, publishY - 2, publishColor);
+
+                        // Upload button (existing, repositioned)
                         int uploadX = scrollAreaX + scrollAreaWidth - 29; // Adjusted for better alignment
                         int uploadY = y + 5;
                         boolean isUploadHovered = mouseX >= uploadX - 2 && mouseX <= uploadX + 12 &&
                                 mouseY >= uploadY && mouseY <= uploadY + 10;
 
                         // Show different icon if upload is in progress
-                        String uploadIcon = filesBeingUploaded.contains(file) ? "⏳" : "📤";
+                        String uploadIcon = filesBeingUploaded.contains(file) ? "⏳" : "📋";
                         int uploadColor = isUploadHovered ? 0xFF55AAFF : 0xFF5555AA;
-                        context.drawTextWithShadow(this.textRenderer, Text.literal(uploadIcon), uploadX, uploadY - 1, uploadColor);
+                        context.drawTextWithShadow(this.textRenderer, Text.literal(uploadIcon), uploadX + 2, uploadY - 2, uploadColor);
                     }
 
                     // Draw separator line - placed lower for items with paths
@@ -666,6 +677,16 @@ public class FileManagerScreen extends Screen {
                             }
                             return true;
                         }
+
+                        // Publish button click handling
+                        int publishX = scrollAreaX + scrollAreaWidth - 45; // Position for publish button
+                        int publishY = y + 5;
+                        if (mouseX >= publishX - 2 && mouseX <= publishX + 12 &&
+                                mouseY >= publishY && mouseY <= publishY + 10) {
+                            // Publish button clicked
+                            handlePublishRequest(file);
+                            return true;
+                        }
                     }
 
                     // Check if delete button was clicked
@@ -780,6 +801,15 @@ public class FileManagerScreen extends Screen {
                         if (!filesBeingUploaded.contains(clickedFile)) {
                             uploadLitematicFile(clickedFile);
                         }
+                        return true;
+                    }
+
+                    // Publish button click handling
+                    int publishX = scrollAreaX + scrollAreaWidth - 47; // Position for publish button
+                    if (mouseX >= publishX - 2 && mouseX <= publishX + 12 &&
+                            mouseY >= lineY && mouseY <= lineY + 10) {
+                        // Publish button clicked
+                        handlePublishRequest(clickedFile);
                         return true;
                     }
                 }
@@ -1469,5 +1499,25 @@ public class FileManagerScreen extends Screen {
         }
         return file.delete();
     }
-}
 
+    private void handlePublishRequest(File fileToPublish) {
+        // Check if user has API token configured
+        if (!SettingsManager.hasApiToken()) {
+            // No token - redirect to settings with link account message
+            MinecraftClient.getInstance().setScreen(new SettingsScreen(this, (changed) -> {
+                if (changed) {
+                    // After settings are saved, check if token is now available
+                    if (SettingsManager.hasApiToken()) {
+                        ToastManager.addToast("✅ Account linked! You can now publish schematics.", false);
+                        // Automatically open publish screen
+                        MinecraftClient.getInstance().setScreen(new PublishScreen(this, fileToPublish));
+                    }
+                }
+            }, true)); // Pass true to show the "please link account" message
+            return;
+        }
+
+        // Token exists - open publish screen
+        MinecraftClient.getInstance().setScreen(new PublishScreen(this, fileToPublish));
+    }
+}

@@ -43,7 +43,7 @@ public class ToastManager {
             }
 
             int width = MinecraftClient.getInstance().textRenderer.getWidth(toast.message) + 20;
-            int x = screenWidth - width - TOAST_MARGIN;
+            int x = TOAST_MARGIN;
 
             // Apply alpha to colors using ColorHelper
             int textColor = ColorHelper.withAlpha(alpha, 0xFFFFFF);
