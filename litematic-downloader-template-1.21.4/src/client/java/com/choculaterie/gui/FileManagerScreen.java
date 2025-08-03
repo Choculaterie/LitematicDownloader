@@ -9,6 +9,7 @@ import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 import net.minecraft.client.util.InputUtil;
 import com.choculaterie.config.SettingsManager;
+import org.lwjgl.glfw.GLFW;
 
 import java.awt.*;
 import java.io.File;
@@ -55,6 +56,24 @@ public class FileManagerScreen extends Screen {
 
     // Litematic upload tracking
     private Set<File> filesBeingUploaded = new HashSet<>();
+
+    // Undo functionality
+    private static class MoveOperation {
+        final File movedFile;
+        final File originalParent;
+        final File newParent;
+        final long timestamp;
+
+        MoveOperation(File movedFile, File originalParent, File newParent) {
+            this.movedFile = new File(newParent, movedFile.getName()); // The file at its new location
+            this.originalParent = originalParent;
+            this.newParent = newParent;
+            this.timestamp = System.currentTimeMillis();
+        }
+    }
+
+    private final Deque<MoveOperation> undoStack = new ArrayDeque<>();
+    private static final int MAX_UNDO_OPERATIONS = 50; // Limit undo history
 
     public FileManagerScreen(Screen parentScreen) {
         super(Text.literal("")); //Title (removed because of search bar)
@@ -1130,6 +1149,10 @@ public class FileManagerScreen extends Screen {
                 // For single files, move directly
                 boolean success = performMove(sourceFile, destFile);
                 System.out.println("DEBUG: Move result: " + success);
+                if (success) {
+                    // Record the move operation for undo
+                    recordMoveOperation(sourceFile, sourceFile.getParentFile(), targetFolder);
+                }
                 loadFilesFromCurrentDirectory(); // Refresh after direct move
                 updateScrollbarDimensions();
             }
@@ -1157,6 +1180,8 @@ public class FileManagerScreen extends Screen {
                         File destFile = new File(targetFolder, sourceFolder.getName());
                         boolean success = performRecursiveMove(sourceFolder, destFile);
                         if (success) {
+                            // Record the move operation for undo
+                            recordMoveOperation(sourceFolder, sourceFolder.getParentFile(), targetFolder);
                             ToastManager.addToast("Successfully moved " + sourceFolder.getName(), false);
                         } else {
                             ToastManager.addToast("Failed to move " + sourceFolder.getName(), true);
@@ -1519,5 +1544,51 @@ public class FileManagerScreen extends Screen {
 
         // Token exists - open publish screen
         MinecraftClient.getInstance().setScreen(new PublishScreen(this, fileToPublish));
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // Handle Ctrl+Z for undo
+        if (keyCode == GLFW.GLFW_KEY_Z && (modifiers & GLFW.GLFW_MOD_ALT) == 0) {
+            if (Screen.hasControlDown()) {
+                // Ctrl+Z pressed
+                undoLastMove();
+                return true;
+            }
+        }
+
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    private void undoLastMove() {
+        if (!undoStack.isEmpty()) {
+            MoveOperation lastOperation = undoStack.removeLast();
+
+            // Move the file back to its original location
+            File fileToMove = lastOperation.movedFile;
+            File originalParent = lastOperation.originalParent;
+
+            System.out.println("DEBUG: Undoing move - file: " + fileToMove.getName() + ", originalParent: " + originalParent.getAbsolutePath());
+
+            // Perform the move operation
+            boolean success = fileToMove.renameTo(new File(originalParent, fileToMove.getName()));
+
+            if (success) {
+                ToastManager.addToast("Undid move of " + fileToMove.getName(), false);
+                loadFilesFromCurrentDirectory(); // Refresh listing
+                updateScrollbarDimensions();
+            } else {
+                ToastManager.addToast("Failed to undo move", true);
+            }
+        }
+    }
+
+    private void recordMoveOperation(File movedFile, File originalParent, File newParent) {
+        // Limit the size of the undo stack
+        if (undoStack.size() >= MAX_UNDO_OPERATIONS) {
+            undoStack.removeFirst(); // Remove oldest operation
+        }
+
+        undoStack.addLast(new MoveOperation(movedFile, originalParent, newParent));
     }
 }
