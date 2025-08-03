@@ -3,6 +3,7 @@ package com.choculaterie.gui;
 import com.choculaterie.models.SchematicInfo;
 import com.choculaterie.models.SchematicDetailInfo;
 import com.choculaterie.networking.LitematicHttpClient;
+import it.unimi.dsi.fastutil.objects.ReferenceImmutableList;
 import net.minecraft.client.MinecraftClient;
 
 import java.util.ArrayList;
@@ -46,15 +47,14 @@ public class CacheManager {
                 // Get the static cache manager instance that will be used by the screen
                 CacheManager staticCacheManager = LitematicDownloaderScreen.getCacheManager();
 
-                // Only pre-load first page for instant access
+                // Only preload first page for instant access
                 // Other pages will be cached as they are accessed
                 LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(1, 15);
 
                 // Cache the result directly in the static cache manager
                 if (MinecraftClient.getInstance() != null) {
                     MinecraftClient.getInstance().execute(() -> {
-                        staticCacheManager.putSchematicCache(1, result.getItems(),
-                            result.getTotalPages(), result.getTotalItems(), 15 * 60 * 1000); // 15 minutes
+                        staticCacheManager.putSchematicCache(result); // 15 minutes
                         System.out.println("Pre-cached page 1 with " + result.getItems().size() + " items (Total pages: " + result.getTotalPages() + ")");
                     });
                 }
@@ -71,7 +71,7 @@ public class CacheManager {
         });
     }
 
-    // Pre-load first few pages of schematics at game startup for instant access
+    // Preload first few pages of schematics at game startup for instant access
     public void preloadInitialData() {
         if (hasPreloaded || isPreloading) {
             return; // Already preloaded or in progress
@@ -90,11 +90,11 @@ public class CacheManager {
         return schematicCache.get(page);
     }
 
-    public void putSchematicCache(int page, List<SchematicInfo> items, int totalPages, int totalItems, long maxAge) {
-        // Create a defensive copy of the items list to prevent external modifications
-        List<SchematicInfo> itemsCopy = new ArrayList<>(items);
-        schematicCache.put(page, new SchematicCacheEntry(itemsCopy, totalPages, totalItems, page));
-        System.out.println("Cached schematics page " + page + " (" + itemsCopy.size() + " items)");
+    public void putSchematicCache(LitematicHttpClient.PaginatedResult result) {
+        var cache = new SchematicCacheEntry(result);
+        int page = cache.getCurrentPage();
+        schematicCache.put(page, cache);
+        System.out.println("Cached schematics page " + page + " (" + result.getItems().size() + " items)");
 
         // Debug: verify the cache is correct after insertion
         SchematicCacheEntry verifyEntry = schematicCache.get(page);
@@ -118,7 +118,7 @@ public class CacheManager {
         return searchCache.get(searchTerm.toLowerCase());
     }
 
-    public void putSearchCache(String searchTerm, List<SchematicInfo> items, long maxAge) {
+    public void putSearchCache(String searchTerm, ReferenceImmutableList<SchematicInfo> items) {
         searchCache.put(searchTerm.toLowerCase(), new SearchCacheEntry(items, searchTerm));
         System.out.println("Cached search results for '" + searchTerm + "' (" + items.size() + " results)");
     }
@@ -209,7 +209,7 @@ public class CacheManager {
                 long ageMinutes = ageMs / (60 * 1000);
                 boolean expired = cacheEntry.isExpired(15 * 60 * 1000);
                 System.out.println(String.format("Page %d: %d items, %d minutes old, %s",
-                    page, cacheEntry.items.size(), ageMinutes, expired ? "EXPIRED" : "VALID"));
+                    page, cacheEntry.result.getItems().size(), ageMinutes, expired ? "EXPIRED" : "VALID"));
             }
         }
         System.out.println("=== END DEBUG ===");
@@ -217,24 +217,18 @@ public class CacheManager {
 
     // Cache entry classes
     public static class SchematicCacheEntry {
-        private final List<SchematicInfo> items;
-        private final int totalPages;
-        private final int totalItems;
-        private final int currentPage;
+        private final LitematicHttpClient.PaginatedResult result;
         private final long timestamp;
 
-        public SchematicCacheEntry(List<SchematicInfo> items, int totalPages, int totalItems, int currentPage) {
-            this.items = items;
-            this.totalPages = totalPages;
-            this.totalItems = totalItems;
-            this.currentPage = currentPage;
+        public SchematicCacheEntry(LitematicHttpClient.PaginatedResult result) {
+            this.result = result;
             this.timestamp = System.currentTimeMillis();
         }
 
-        public List<SchematicInfo> getItems() { return items; }
-        public int getTotalPages() { return totalPages; }
-        public int getTotalItems() { return totalItems; }
-        public int getCurrentPage() { return currentPage; }
+        public ReferenceImmutableList<SchematicInfo> getItems() { return result.getItems(); }
+        public int getTotalPages() { return result.getTotalPages(); }
+        public int getTotalItems() { return result.getTotalItems(); }
+        public int getCurrentPage() { return result.getCurrentPage(); }
 
         public boolean isExpired(long maxAge) {
             return System.currentTimeMillis() - timestamp > maxAge;
@@ -242,17 +236,17 @@ public class CacheManager {
     }
 
     public static class SearchCacheEntry {
-        private final List<SchematicInfo> items;
+        private final ReferenceImmutableList<SchematicInfo> items;
         private final String searchTerm;
         private final long timestamp;
 
-        public SearchCacheEntry(List<SchematicInfo> items, String searchTerm) {
+        public SearchCacheEntry(ReferenceImmutableList<SchematicInfo> items, String searchTerm) {
             this.items = items;
             this.searchTerm = searchTerm;
             this.timestamp = System.currentTimeMillis();
         }
 
-        public List<SchematicInfo> getItems() { return items; }
+        public ReferenceImmutableList<SchematicInfo> getItems() { return items; }
         public String getSearchTerm() { return searchTerm; }
 
         public boolean isExpired(long maxAge) {
