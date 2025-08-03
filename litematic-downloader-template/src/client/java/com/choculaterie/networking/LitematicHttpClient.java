@@ -6,6 +6,7 @@ import com.choculaterie.models.SchematicInfo;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import it.unimi.dsi.fastutil.objects.ReferenceImmutableList;
 import net.minecraft.client.MinecraftClient;
 import com.choculaterie.config.SettingsManager;
 
@@ -24,16 +25,8 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.io.ByteArrayOutputStream;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import javax.net.ssl.HttpsURLConnection;
 
 public class LitematicHttpClient {
     // Change this URL for development/production environments
@@ -68,25 +61,28 @@ public class LitematicHttpClient {
     }
 
     public static class PaginatedResult {
-        private final List<SchematicInfo> items;
+        private final ReferenceImmutableList<SchematicInfo> items;
         private final int totalPages;
         private final int currentPage;
         private final int totalItems;
 
-        public PaginatedResult(List<SchematicInfo> items, int totalPages, int currentPage, int totalItems) {
-            this.items = items;
+        public PaginatedResult(ArrayList<SchematicInfo> items, int totalPages, int currentPage, int totalItems) {
+            this.items = new ReferenceImmutableList<>(items);
             this.totalPages = totalPages;
             this.currentPage = currentPage;
             this.totalItems = totalItems;
         }
 
-        public List<SchematicInfo> getItems() { return items; }
+        public ReferenceImmutableList<SchematicInfo> getItems() { return items; }
         public int getTotalPages() { return totalPages; }
         public int getCurrentPage() { return currentPage; }
-        public int getTotalItems() { return totalItems; }
+        public int getTotalItems() { return totalItems; } // TODO: Verify if useful
     }
 
     public static PaginatedResult fetchSchematicsPaginated(int page, int pageSize) {
+        final ArrayList<SchematicInfo> schematicItems = new ArrayList<>();
+        PaginatedResult result = new PaginatedResult(schematicItems, 0, 0, 0);
+
         try {
             String url = BASE_URL + "/GetPaginated?page=" + page + "&pageSize=" + pageSize;
             HttpRequest request = HttpRequest.newBuilder()
@@ -105,7 +101,7 @@ public class LitematicHttpClient {
 
             if (response.body() == null || response.body().trim().isEmpty()) {
                 System.out.println("Empty response body");
-                return new PaginatedResult(new ArrayList<>(), 0, 0, 0);
+                return result;
             }
 
             // Parse as JsonObject since your API returns a paginated object
@@ -115,12 +111,12 @@ public class LitematicHttpClient {
             } catch (Exception e) {
                 System.err.println("Failed to parse JSON response as object: " + e.getMessage());
                 System.err.println("Response body: " + response.body());
-                return new PaginatedResult(new ArrayList<>(), 0, 0, 0);
+                return result;
             }
 
             if (jsonResponse == null) {
                 System.err.println("JsonObject is null");
-                return new PaginatedResult(new ArrayList<>(), 0, 0, 0);
+                return result;
             }
 
             // Extract the schematics array
@@ -131,10 +127,9 @@ public class LitematicHttpClient {
 
             if (schematicsArray == null) {
                 System.err.println("Schematics array is null or missing");
-                return new PaginatedResult(new ArrayList<>(), 0, 0, 0);
+                return result;
             }
 
-            List<SchematicInfo> schematics = new ArrayList<>();
             for (int i = 0; i < schematicsArray.size(); i++) {
                 try {
                     JsonObject json = schematicsArray.get(i).getAsJsonObject();
@@ -147,7 +142,7 @@ public class LitematicHttpClient {
                             json.has("downloadCount") ? json.get("downloadCount").getAsInt() : 0,
                             json.has("username") ? json.get("username").getAsString() : "Unknown"
                     );
-                    schematics.add(schematic);
+                    schematicItems.add(schematic);
                 } catch (Exception e) {
                     System.err.println("Error parsing schematic item " + i + ": " + e.getMessage());
                 }
@@ -156,17 +151,19 @@ public class LitematicHttpClient {
             // Extract pagination metadata
             int totalPages = jsonResponse.has("totalPages") ? jsonResponse.get("totalPages").getAsInt() : 1;
             int currentPage = jsonResponse.has("currentPage") ? jsonResponse.get("currentPage").getAsInt() : 1;
-            int totalCount = jsonResponse.has("totalCount") ? jsonResponse.get("totalCount").getAsInt() : schematics.size();
+            int totalCount = jsonResponse.has("totalCount") ? jsonResponse.get("totalCount").getAsInt() : schematicItems.size();
+            result = new PaginatedResult(schematicItems, totalPages, currentPage, totalCount);
 
-            return new PaginatedResult(schematics, totalPages, currentPage, totalCount);
+            return result;
         } catch (Exception e) {
             System.err.println("Error in fetchSchematicsPaginated: " + e.getMessage());
             e.printStackTrace();
-            return new PaginatedResult(new ArrayList<>(), 0, 0, 0);
+            return result;
         }
     }
 
     public static List<SchematicInfo> searchSchematics(String query) {
+        List<SchematicInfo> schematics = new ArrayList<>();
         try {
             String encodedQuery = java.net.URLEncoder.encode(query, StandardCharsets.UTF_8);
             String url = BASE_URL + "/Search?query=" + encodedQuery;
@@ -187,7 +184,7 @@ public class LitematicHttpClient {
 
             if (response.body() == null || response.body().trim().isEmpty()) {
                 System.out.println("Empty search response body");
-                return new ArrayList<>();
+                return schematics;
             }
 
             // Try to parse as paginated object first (same format as pagination)
@@ -198,7 +195,6 @@ public class LitematicHttpClient {
                     // Parse as paginated response
                     JsonArray schematicsArray = jsonResponse.getAsJsonArray("schematics");
 
-                    List<SchematicInfo> schematics = new ArrayList<>();
                     for (int i = 0; i < schematicsArray.size(); i++) {
                         try {
                             JsonObject json = schematicsArray.get(i).getAsJsonObject();
@@ -228,10 +224,9 @@ public class LitematicHttpClient {
 
                 if (jsonArray == null) {
                     System.err.println("Search JsonArray is null");
-                    return new ArrayList<>();
+                    return schematics;
                 }
 
-                List<SchematicInfo> schematics = new ArrayList<>();
                 for (int i = 0; i < jsonArray.size(); i++) {
                     try {
                         JsonObject json = jsonArray.get(i).getAsJsonObject();
@@ -252,23 +247,15 @@ public class LitematicHttpClient {
                 return schematics;
             } catch (Exception e) {
                 System.err.println("Failed to parse search response as array: " + e.getMessage());
-                return new ArrayList<>();
+                return schematics;
             }
         } catch (Exception e) {
             System.err.println("Error in searchSchematics: " + e.getMessage());
             e.printStackTrace();
-            return new ArrayList<>();
+            return schematics;
         }
     }
 
-    // Keep the old method for backward compatibility, but use pagination
-    @Deprecated
-    public static List<SchematicInfo> fetchSchematicList() {
-        PaginatedResult result = fetchSchematicsPaginated(1, 50);
-        return result.getItems();
-    }
-
-    // Rest of the methods remain the same...
     public static SchematicDetailInfo fetchSchematicDetail(String id) {
         try {
             HttpRequest request = HttpRequest.newBuilder()

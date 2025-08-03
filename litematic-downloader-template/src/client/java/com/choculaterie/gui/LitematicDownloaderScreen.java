@@ -2,6 +2,7 @@ package com.choculaterie.gui;
 
 import com.choculaterie.models.SchematicInfo;
 import com.choculaterie.networking.LitematicHttpClient;
+import it.unimi.dsi.fastutil.objects.ReferenceImmutableList;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -9,14 +10,16 @@ import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+
 import com.choculaterie.config.SettingsManager;
-import org.joml.Matrix3x2f;
+import org.jetbrains.annotations.Nullable;
 
 public class LitematicDownloaderScreen extends Screen {
-    private List<SchematicInfo> schematics = new ArrayList<>();
+    private ReferenceImmutableList<SchematicInfo> schematics = new ReferenceImmutableList<>(new ArrayList<>()); // absolute peak I know
     private TextFieldWidget searchField;
     private String searchTerm = "";
     private boolean isSearchMode = false;
@@ -27,8 +30,8 @@ public class LitematicDownloaderScreen extends Screen {
     private int totalItems = 0;
     private final int pageSize = 15;
 
-    // Enhanced cache fields with multi-page support
-    private static CacheManager cacheManager = new CacheManager();
+    // Enhanced cache fields with multipage support
+    private static final CacheManager cacheManager = new CacheManager();
     private static final long CACHE_DURATION_MS = 15 * 60 * 1000; // 15 minutes
     private static final long DETAIL_CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes for details
 
@@ -64,7 +67,7 @@ public class LitematicDownloaderScreen extends Screen {
     private long statusMessageDisplayTime = 0;
     private static final long STATUS_MESSAGE_DURATION = 3000;
 
-    // For double click detection
+    // For double-click detection
     private int lastClickedIndex = -1;
     private long lastClickTime = 0;
 
@@ -81,7 +84,7 @@ public class LitematicDownloaderScreen extends Screen {
     private long hoverStartTime = 0;
     private static final long HOVER_DELAY_MS = 200; // 0.5 seconds
     private boolean isPreloadingHoveredItem = false;
-    private String currentlyPreloadingId = null;
+    private @Nullable String currentlyPreloadingId = null;
 
     // Pagination preloading fields
     private boolean isPreloadingPagination = false;
@@ -96,13 +99,14 @@ public class LitematicDownloaderScreen extends Screen {
         super(Text.literal(""));
         if (restoreState) {
             // State will be restored in init() method
+            // TODO(?)
         }
     }
 
     // Method to restore navigation state (called by NavigationState)
     public void restoreNavigationState(int currentPage, int totalPages, int totalItems,
-                                     boolean isSearchMode, String searchTerm, String lastSearchedTerm,
-                                     int scrollOffset) {
+                                       boolean isSearchMode, String searchTerm, String lastSearchedTerm,
+                                       int scrollOffset) {
         this.currentPage = currentPage;
         this.totalPages = totalPages;
         this.totalItems = totalItems;
@@ -175,6 +179,7 @@ public class LitematicDownloaderScreen extends Screen {
         this.searchField.setChangedListener(text -> {
             searchTerm = text.trim();
             // Don't perform search here - only on Enter key press
+            // TODO(?)
         });
 
         this.addSelectableChild(this.searchField);
@@ -309,7 +314,7 @@ public class LitematicDownloaderScreen extends Screen {
             return;
         }
 
-        schematics.clear();
+        schematics = new ReferenceImmutableList<>(new ArrayList<>());
         updateScrollbarDimensions();
         scrollOffset = 0;
 
@@ -317,14 +322,14 @@ public class LitematicDownloaderScreen extends Screen {
         loadingStartTime = System.currentTimeMillis();
 
         new Thread(() -> {
-            List<SchematicInfo> searchResults = LitematicHttpClient.searchSchematics(searchTerm);
+            ReferenceImmutableList<SchematicInfo> searchResults = new ReferenceImmutableList<>(LitematicHttpClient.searchSchematics(searchTerm));
             MinecraftClient.getInstance().execute(() -> {
                 schematics = searchResults;
                 totalPages = 1;
                 totalItems = searchResults.size();
 
                 // Cache the search response
-                cacheManager.putSearchCache(searchTerm, searchResults, CACHE_DURATION_MS);
+                cacheManager.putSearchCache(searchTerm, searchResults);
 
                 updateScrollbarDimensions();
                 isLoading = false;
@@ -361,8 +366,7 @@ public class LitematicDownloaderScreen extends Screen {
             System.out.println("Using cached data for page " + currentPage);
             CacheManager.SchematicCacheEntry cachedEntry = cacheManager.getSchematicCache(currentPage);
 
-            // Create a defensive copy to prevent cache corruption
-            schematics = new ArrayList<>(cachedEntry.getItems());
+            schematics = cachedEntry.getItems();
             totalPages = cachedEntry.getTotalPages();
             totalItems = cachedEntry.getTotalItems();
             updateScrollbarDimensions();
@@ -382,7 +386,7 @@ public class LitematicDownloaderScreen extends Screen {
         activeRequestPage = currentPage;
         lastRequestTime = currentTime;
 
-        schematics.clear();
+        schematics = new ReferenceImmutableList<>(new ArrayList<>());
         updateScrollbarDimensions();
         scrollOffset = 0;
 
@@ -420,7 +424,7 @@ public class LitematicDownloaderScreen extends Screen {
                         if (cacheManager.hasValidSchematicCache(currentPage, CACHE_DURATION_MS)) {
                             System.out.println("Loading cached data for current page " + currentPage + " after discarding response");
                             CacheManager.SchematicCacheEntry cachedEntry = cacheManager.getSchematicCache(currentPage);
-                            schematics = new ArrayList<>(cachedEntry.getItems());
+                            schematics = cachedEntry.getItems();
                             totalPages = cachedEntry.getTotalPages();
                             totalItems = cachedEntry.getTotalItems();
                             updateScrollbarDimensions();
@@ -432,8 +436,9 @@ public class LitematicDownloaderScreen extends Screen {
                             new Thread(() -> {
                                 try {
                                     Thread.sleep(50); // Small delay to avoid race conditions
-                                    MinecraftClient.getInstance().execute(() -> loadSchematics());
-                                } catch (InterruptedException ignored) {}
+                                    MinecraftClient.getInstance().execute(this::loadSchematics);
+                                } catch (InterruptedException ignored) {
+                                }
                             }).start();
                         }
                         return;
@@ -442,14 +447,14 @@ public class LitematicDownloaderScreen extends Screen {
                     System.out.println("Server response received for page " + requestedPage + ": " + result.getItems().size() + " items");
 
                     // Create a defensive copy before assigning to schematics
-                    schematics = new ArrayList<>(result.getItems());
+                    schematics = result.getItems();
                     totalPages = result.getTotalPages();
                     totalItems = result.getTotalItems();
 
                     // Cache the response with proper error handling
                     try {
                         // Pass the original result items to cache (cache will make its own copy)
-                        cacheManager.putSchematicCache(requestedPage, result.getItems(), result.getTotalPages(), result.getTotalItems(), CACHE_DURATION_MS);
+                        cacheManager.putSchematicCache(result);
                         System.out.println("Successfully cached page " + requestedPage);
                     } catch (Exception e) {
                         System.err.println("Failed to cache page " + requestedPage + ": " + e.getMessage());
@@ -501,7 +506,7 @@ public class LitematicDownloaderScreen extends Screen {
         handlePaginationHoverPreloading(mouseX, mouseY);
 
         // Render title
-        context.drawCenteredTextWithShadow(textRenderer, this.title, this.width / 2 - searchField.getWidth()/4, 10, 0xFFFFFFFF);
+        context.drawCenteredTextWithShadow(textRenderer, this.title, this.width / 2 - searchField.getWidth() / 4, 10, 0xFFFFFFFF);
 
         // Render search field
         this.searchField.render(context, mouseX, mouseY, delta);
@@ -561,7 +566,7 @@ public class LitematicDownloaderScreen extends Screen {
                 if (y + itemHeight >= scrollAreaY && y <= scrollAreaY + scrollAreaHeight) {
                     renderSchematicItem(context, schematic, scrollAreaX, y, scrollAreaWidth, mouseX, mouseY, i);
                     context.fill(scrollAreaX, y + itemHeight - 5,
-                            scrollAreaX + scrollAreaWidth - 10, y + itemHeight -4, 0x22FFFFFF);
+                            scrollAreaX + scrollAreaWidth - 10, y + itemHeight - 4, 0x22FFFFFF);
                 }
 
                 y += itemHeight;
@@ -575,7 +580,7 @@ public class LitematicDownloaderScreen extends Screen {
             int scrollBarWidth = 6;
             scrollBarHeight = Math.max(20, scrollAreaHeight * scrollAreaHeight / totalContentHeight);
             scrollBarX = scrollAreaX + scrollAreaWidth;
-            scrollBarY = scrollAreaY + (int)((float)scrollOffset / (totalContentHeight - scrollAreaHeight)
+            scrollBarY = scrollAreaY + (int) ((float) scrollOffset / (totalContentHeight - scrollAreaHeight)
                     * (scrollAreaHeight - scrollBarHeight));
 
             context.fill(scrollBarX, scrollAreaY,
@@ -623,13 +628,12 @@ public class LitematicDownloaderScreen extends Screen {
         float rotation = (elapsedTime % animationDuration) / (float) animationDuration;
 
         for (int i = 0; i < segments; i++) {
-            float angle = (float) (i * 2 * Math.PI / segments);
-            angle += rotation * 2 * Math.PI;
+            final float angle = (float) ((i * 2 * Math.PI / segments) + (rotation * 2 * Math.PI));
 
-            int x1 = centerX + (int)(Math.sin(angle) * (radius - 3));
-            int y1 = centerY + (int)(Math.cos(angle) * (radius - 3));
-            int x2 = centerX + (int)(Math.sin(angle) * radius);
-            int y2 = centerY + (int)(Math.cos(angle) * radius);
+            int x1 = centerX + (int) (Math.sin(angle) * (radius - 3));
+            int y1 = centerY + (int) (Math.cos(angle) * (radius - 3));
+            int x2 = centerX + (int) (Math.sin(angle) * radius);
+            int y2 = centerY + (int) (Math.cos(angle) * radius);
 
             int alpha = 255 - (i * 255 / segments);
             int color = 0xFFFFFFFF | (alpha << 24);
@@ -745,14 +749,14 @@ public class LitematicDownloaderScreen extends Screen {
                     mouseY >= scrollBarY && mouseY <= scrollBarY + scrollBarHeight) {
                 isScrolling = true;
                 lastMouseY = (int) mouseY;
-                scrollDragOffset = (int)(mouseY - scrollBarY);
+                scrollDragOffset = (int) (mouseY - scrollBarY);
                 return true;
             }
 
             if (mouseX >= scrollBarX && mouseX <= scrollBarX + 6 &&
                     mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
-                float clickPercent = ((float)mouseY - scrollAreaY) / scrollAreaHeight;
-                scrollOffset = (int)(clickPercent * (totalContentHeight - scrollAreaHeight));
+                float clickPercent = ((float) mouseY - scrollAreaY) / scrollAreaHeight;
+                scrollOffset = (int) (clickPercent * (totalContentHeight - scrollAreaHeight));
                 scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));
                 return true;
             }
@@ -762,7 +766,7 @@ public class LitematicDownloaderScreen extends Screen {
         if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
-            int index = (int)((mouseY - scrollAreaY + scrollOffset) / itemHeight);
+            int index = (int) ((mouseY - scrollAreaY + scrollOffset) / itemHeight);
             if (index >= 0 && index < schematics.size()) {
                 SchematicInfo schematic = schematics.get(index);
 
@@ -780,9 +784,9 @@ public class LitematicDownloaderScreen extends Screen {
                     if (index == lastClickedIndex && currentTime - lastClickTime < 500) {
                         // Save current navigation state before going to detail screen
                         NavigationState.getInstance().saveState(
-                            currentPage, totalPages, totalItems,
-                            isSearchMode, searchTerm, lastSearchedTerm,
-                            scrollOffset
+                                currentPage, totalPages, totalItems,
+                                isSearchMode, searchTerm, lastSearchedTerm,
+                                scrollOffset
                         );
 
                         MinecraftClient.getInstance().setScreen(new DetailScreen(schematic.getId()));
@@ -863,8 +867,8 @@ public class LitematicDownloaderScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         if (isScrolling) {
-            float dragPosition = (float)(mouseY - scrollDragOffset - scrollAreaY) / (scrollAreaHeight - scrollBarHeight);
-            scrollOffset = (int)(dragPosition * (totalContentHeight - scrollAreaHeight));
+            float dragPosition = (float) (mouseY - scrollDragOffset - scrollAreaY) / (scrollAreaHeight - scrollBarHeight);
+            scrollOffset = (int) (dragPosition * (totalContentHeight - scrollAreaHeight));
             scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));
             return true;
         }
@@ -888,7 +892,7 @@ public class LitematicDownloaderScreen extends Screen {
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
             if (totalContentHeight > scrollAreaHeight) {
-                int scrollAmount = (int)(-verticalAmount * 20);
+                int scrollAmount = (int) (-verticalAmount * 20);
                 scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight,
                         scrollOffset + scrollAmount));
                 return true;
@@ -908,7 +912,7 @@ public class LitematicDownloaderScreen extends Screen {
                 !schematics.isEmpty()) {
 
             // Calculate which item the mouse is over
-            int itemIndex = (int)((mouseY - scrollAreaY + scrollOffset) / itemHeight);
+            int itemIndex = (int) ((mouseY - scrollAreaY + scrollOffset) / itemHeight);
 
             // Check if the index is valid
             if (itemIndex >= 0 && itemIndex < schematics.size()) {
@@ -927,10 +931,7 @@ public class LitematicDownloaderScreen extends Screen {
                     }
                 }
                 // If we've been hovering the same item for 0.5+ seconds and haven't started preloading yet
-                else if (itemIndex == hoveredItemIndex &&
-                         System.currentTimeMillis() - hoverStartTime >= HOVER_DELAY_MS &&
-                         !isPreloadingHoveredItem &&
-                         !cacheManager.hasValidDetailCache(hoveredSchematic.getId(), DETAIL_CACHE_DURATION_MS)) {
+                else if (System.currentTimeMillis() - hoverStartTime >= HOVER_DELAY_MS && !isPreloadingHoveredItem && !cacheManager.hasValidDetailCache(hoveredSchematic.getId(), DETAIL_CACHE_DURATION_MS)) {
 
                     // Start preloading this schematic's details
                     startHoverPreload(hoveredSchematic);
@@ -976,19 +977,15 @@ public class LitematicDownloaderScreen extends Screen {
                 }
 
                 com.choculaterie.models.SchematicDetailInfo detailInfo =
-                    LitematicHttpClient.fetchSchematicDetail(schematicId);
+                        LitematicHttpClient.fetchSchematicDetail(schematicId);
 
                 // Update on main thread
                 MinecraftClient.getInstance().execute(() -> {
                     // Double-check we should still cache this (user might have moved away)
                     if (isPreloadingHoveredItem && schematicId.equals(currentlyPreloadingId)) {
-                        if (detailInfo != null) {
-                            // Cache the preloaded detail
-                            cacheManager.putDetailCache(schematicId, detailInfo, DETAIL_CACHE_DURATION_MS);
-                            System.out.println("Successfully preloaded and cached details for: " + detailInfo.getName());
-                        } else {
-                            System.out.println("Preload failed for " + schematicId + " - null response");
-                        }
+                        // Cache the preloaded detail
+                        cacheManager.putDetailCache(schematicId, detailInfo, DETAIL_CACHE_DURATION_MS);
+                        System.out.println("Successfully preloaded and cached details for: " + detailInfo.getName());
                     } else {
                         System.out.println("Discarded preload result for " + schematicId + " - user moved away");
                     }
@@ -1046,7 +1043,7 @@ public class LitematicDownloaderScreen extends Screen {
 
         // Previous page button (◀)
         if (mouseX >= centerX - 100 && mouseX <= centerX - 100 + buttonWidth &&
-            mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
+                mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
             if (currentPage > 1) {
                 targetPage = currentPage - 1;
                 isHoveringAnyButton = true;
@@ -1054,7 +1051,7 @@ public class LitematicDownloaderScreen extends Screen {
         }
         // Next page button (▶)
         else if (mouseX >= centerX + 80 && mouseX <= centerX + 80 + buttonWidth &&
-                 mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
+                mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
             if (currentPage < totalPages) {
                 targetPage = currentPage + 1;
                 isHoveringAnyButton = true;
@@ -1062,7 +1059,7 @@ public class LitematicDownloaderScreen extends Screen {
         }
         // First page button (⏮)
         else if (mouseX >= centerX - 125 && mouseX <= centerX - 125 + buttonWidth &&
-                 mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
+                mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
             if (currentPage > 1) {
                 targetPage = 1;
                 isHoveringAnyButton = true;
@@ -1070,7 +1067,7 @@ public class LitematicDownloaderScreen extends Screen {
         }
         // Last page button (⏭)
         else if (mouseX >= centerX + 105 && mouseX <= centerX + 105 + buttonWidth &&
-                 mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
+                mouseY >= paginationY && mouseY <= paginationY + buttonHeight) {
             if (currentPage < totalPages) {
                 targetPage = totalPages;
                 isHoveringAnyButton = true;
@@ -1081,7 +1078,7 @@ public class LitematicDownloaderScreen extends Screen {
         if (isHoveringAnyButton && targetPage != -1) {
             if (!isPreloadingPagination || preloadingPageNumber != targetPage) {
                 // Cancel any existing preload if switching to different page
-                if (isPreloadingPagination && preloadingPageNumber != targetPage) {
+                if (isPreloadingPagination) {
                     System.out.println("Switching pagination preload from page " + preloadingPageNumber + " to " + targetPage);
                 }
 
@@ -1095,6 +1092,7 @@ public class LitematicDownloaderScreen extends Screen {
         } else {
             // Not hovering over any pagination button - reset state but don't cancel ongoing preloads
             // This prevents cancelling preloads when mouse briefly moves outside button bounds
+            // TODO(?)
         }
     }
 
@@ -1125,7 +1123,7 @@ public class LitematicDownloaderScreen extends Screen {
                 MinecraftClient.getInstance().execute(() -> {
                     // Final check before caching
                     if (isPreloadingPagination && preloadingPageNumber == pageNumber) {
-                        cacheManager.putSchematicCache(pageNumber, result.getItems(), result.getTotalPages(), result.getTotalItems(), CACHE_DURATION_MS);
+                        cacheManager.putSchematicCache(result);
                         System.out.println("Successfully preloaded and cached page: " + pageNumber + " (" + result.getItems().size() + " items)");
                     } else {
                         System.out.println("Discarded pagination preload result for page " + pageNumber + " - cancelled");
