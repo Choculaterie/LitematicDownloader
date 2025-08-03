@@ -614,8 +614,26 @@ public class PublishScreen extends Screen {
         if (tag.isEmpty()) {
             return tag;
         }
-        // Capitalize first letter, keep rest as is
-        return tag.substring(0, 1).toUpperCase() + tag.substring(1);
+        // Split by spaces and capitalize first letter of each word
+        String[] words = tag.toLowerCase().split("\\s+");
+        StringBuilder formattedTag = new StringBuilder();
+
+        for (int i = 0; i < words.length; i++) {
+            String word = words[i];
+            if (!word.isEmpty()) {
+                // Capitalize first letter, keep rest lowercase
+                formattedTag.append(word.substring(0, 1).toUpperCase());
+                if (word.length() > 1) {
+                    formattedTag.append(word.substring(1));
+                }
+                // Add space between words (except for last word)
+                if (i < words.length - 1) {
+                    formattedTag.append(" ");
+                }
+            }
+        }
+
+        return formattedTag.toString();
     }
 
     private boolean isFormValid() {
@@ -665,6 +683,7 @@ public class PublishScreen extends Screen {
             System.out.println("Opening image selector at: " + currentPath);
 
             ProcessBuilder pb;
+            Process process = null;
 
             if (os.contains("win")) {
                 // Windows - use PowerShell for multi-selection
@@ -726,96 +745,109 @@ public class PublishScreen extends Screen {
                 return false;
             }
 
-            // Start the process and read output with timeout
-            Process process = pb.start();
+            // Start the process with proper resource management
+            try {
+                process = pb.start();
 
-            // Clear previous selections and read new ones
-            selectedImages.clear();
-            int rejectedCount = 0;
-
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(process.getInputStream()));
-                 java.io.BufferedReader errorReader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(process.getErrorStream()))) {
-
-                String line;
-                System.out.println("Reading file selections:");
-
-                // Set a timeout for the process (30 seconds)
+                // Set a timeout to prevent hanging
                 boolean finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
 
                 if (!finished) {
-                    System.err.println("File chooser process timed out, destroying...");
                     process.destroyForcibly();
                     ToastManager.addToast("File chooser timed out", true);
                     return false;
                 }
 
-                // Check for errors first
-                String errorLine;
-                StringBuilder errors = new StringBuilder();
-                while ((errorLine = errorReader.readLine()) != null) {
-                    errors.append(errorLine).append("\n");
-                }
+                // Clear previous selections and read new ones
+                selectedImages.clear();
+                int rejectedCount = 0;
 
-                if (errors.length() > 0) {
-                    System.err.println("File chooser errors: " + errors.toString());
-                    // Don't fail completely on errors, as some tools produce warnings
-                }
+                // Read the output with proper resource management
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getInputStream()));
+                     java.io.BufferedReader errorReader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getErrorStream()))) {
 
-                // Read output even if there were errors
-                while ((line = reader.readLine()) != null) {
-                    System.out.println("Read line: " + line); // Debug
+                    String line;
+                    System.out.println("Reading file selections:");
 
-                    String filePath = line.trim();
-                    if (filePath.isEmpty()) continue;
-
-                    // Handle macOS format
-                    if (os.contains("mac") && filePath.startsWith("alias ")) {
-                        filePath = filePath.substring(6);
+                    // Check for errors first
+                    String errorLine;
+                    StringBuilder errors = new StringBuilder();
+                    while ((errorLine = errorReader.readLine()) != null) {
+                        errors.append(errorLine).append("\n");
                     }
 
-                    // For Linux with zenity, it might return paths separated by '|'
-                    if (os.contains("nix") || os.contains("nux")) {
-                        if (filePath.contains("|")) {
-                            String[] paths = filePath.split("\\|");
-                            for (String path : paths) {
-                                if (!addImageFile(new File(path.trim()))) {
-                                    rejectedCount++;
+                    if (errors.length() > 0) {
+                        System.err.println("File chooser errors: " + errors.toString());
+                        // Don't fail completely on errors, as some tools produce warnings
+                    }
+
+                    // Read output even if there were errors
+                    while ((line = reader.readLine()) != null) {
+                        System.out.println("Read line: " + line); // Debug
+
+                        String filePath = line.trim();
+                        if (filePath.isEmpty()) continue;
+
+                        // Handle macOS format
+                        if (os.contains("mac") && filePath.startsWith("alias ")) {
+                            filePath = filePath.substring(6);
+                        }
+
+                        // For Linux with zenity, it might return paths separated by '|'
+                        if (os.contains("nix") || os.contains("nux")) {
+                            if (filePath.contains("|")) {
+                                String[] paths = filePath.split("\\|");
+                                for (String path : paths) {
+                                    if (!addImageFile(new File(path.trim()))) {
+                                        rejectedCount++;
+                                    }
                                 }
+                                continue;
                             }
-                            continue;
+                        }
+
+                        // Normal single file handling
+                        if (!addImageFile(new File(filePath))) {
+                            rejectedCount++;
                         }
                     }
 
-                    // Normal single file handling
-                    if (!addImageFile(new File(filePath))) {
-                        rejectedCount++;
+                    int exitCode = process.exitValue();
+                    if (exitCode == 0) {
+                        System.out.println("Selected " + selectedImages.size() + " images");
+
+                        // Show appropriate message based on whether files were rejected
+                        if (rejectedCount > 0) {
+                            ToastManager.addToast("Only first " + MAX_IMAGES + " images selected. " + rejectedCount + " images were not loaded.", true);
+                        } else {
+                            ToastManager.addToast("Selected " + selectedImages.size() + " image(s)", false);
+                        }
+
+                        this.init(); // Refresh UI
+                        return true;
+                    } else {
+                        System.err.println("File chooser exited with code: " + exitCode);
+                        if (errors.length() > 0) {
+                            ToastManager.addToast("File chooser failed: " + errors.toString().substring(0, Math.min(50, errors.length())), true);
+                        }
                     }
                 }
 
-                int exitCode = process.exitValue();
-                if (exitCode == 0) {
-                    System.out.println("Selected " + selectedImages.size() + " images");
+                return false;
 
-                    // Show appropriate message based on whether files were rejected
-                    if (rejectedCount > 0) {
-                        ToastManager.addToast("Only first " + MAX_IMAGES + " images selected. " + rejectedCount + " images were not loaded.", true);
-                    } else {
-                        ToastManager.addToast("Selected " + selectedImages.size() + " image(s)", false);
-                    }
-
-                    this.init(); // Refresh UI
-                    return true;
-                } else {
-                    System.err.println("File chooser exited with code: " + exitCode);
-                    if (errors.length() > 0) {
-                        ToastManager.addToast("File chooser failed: " + errors.toString().substring(0, Math.min(50, errors.length())), true);
+            } finally {
+                // Ensure process cleanup
+                if (process != null && process.isAlive()) {
+                    try {
+                        process.destroyForcibly();
+                        process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (Exception e) {
+                        System.err.println("Error cleaning up image file dialog process: " + e.getMessage());
                     }
                 }
             }
-
-            return false;
 
         } catch (Exception e) {
             System.err.println("Native image file chooser error: " + e.getMessage());
@@ -839,6 +871,7 @@ public class PublishScreen extends Screen {
             System.out.println("Opening litematic selector at: " + currentPath);
 
             ProcessBuilder pb;
+            Process process = null;
 
             if (os.contains("win")) {
                 // Windows - modified to output each file on a separate line
@@ -900,96 +933,109 @@ public class PublishScreen extends Screen {
                 return false;
             }
 
-            // Start the process and read output with timeout
-            Process process = pb.start();
+            // Start the process with proper resource management
+            try {
+                process = pb.start();
 
-            // Keep the original file and read new ones
-            // Create a temporary list to store all selected files
-            List<File> tempSelectedFiles = new ArrayList<>();
-            tempSelectedFiles.add(litematicFile); // Keep the original file
-            int rejectedCount = 0;
-
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(process.getInputStream()));
-                 java.io.BufferedReader errorReader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(process.getErrorStream()))) {
-
-                String line;
-                System.out.println("Reading litematic file selections:");
-
-                // Set a timeout for the process (30 seconds)
+                // Set a timeout to prevent hanging
                 boolean finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
 
                 if (!finished) {
-                    System.err.println("Litematic selector process timed out, destroying...");
                     process.destroyForcibly();
                     ToastManager.addToast("Litematic selector timed out", true);
                     return false;
                 }
 
-                // Check for errors first
-                String errorLine;
-                StringBuilder errors = new StringBuilder();
-                while ((errorLine = errorReader.readLine()) != null) {
-                    errors.append(errorLine).append("\n");
-                }
+                // Keep the original file and read new ones
+                // Create a temporary list to store all selected files
+                List<File> tempSelectedFiles = new ArrayList<>();
+                tempSelectedFiles.add(litematicFile); // Keep the original file
+                int rejectedCount = 0;
 
-                if (errors.length() > 0) {
-                    System.err.println("Litematic selector errors: " + errors.toString());
-                    // Don't fail completely on errors, as some tools produce warnings
-                }
+                // Read the output with proper resource management
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getInputStream()));
+                     java.io.BufferedReader errorReader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getErrorStream()))) {
 
-                // Read all lines from the process
-                while ((line = reader.readLine()) != null) {
-                    System.out.println("Read line: " + line); // Debug
+                    String line;
+                    System.out.println("Reading litematic file selections:");
 
-                    String filePath = line.trim();
-                    if (filePath.isEmpty()) continue;
-
-                    // Handle macOS format
-                    if (os.contains("mac") && filePath.startsWith("alias ")) {
-                        filePath = filePath.substring(6);
+                    // Check for errors first
+                    String errorLine;
+                    StringBuilder errors = new StringBuilder();
+                    while ((errorLine = errorReader.readLine()) != null) {
+                        errors.append(errorLine).append("\n");
                     }
 
-                    // For Linux with zenity, it might return paths separated by '|'
-                    if (os.contains("nix") || os.contains("nux")) {
-                        if (filePath.contains("|")) {
-                            String[] paths = filePath.split("\\|");
-                            for (String path : paths) {
-                                if (!addLitematicFile(tempSelectedFiles, new File(path.trim()))) {
-                                    rejectedCount++;
+                    if (errors.length() > 0) {
+                        System.err.println("Litematic selector errors: " + errors.toString());
+                        // Don't fail completely on errors, as some tools produce warnings
+                    }
+
+                    // Read all lines from the process
+                    while ((line = reader.readLine()) != null) {
+                        System.out.println("Read line: " + line); // Debug
+
+                        String filePath = line.trim();
+                        if (filePath.isEmpty()) continue;
+
+                        // Handle macOS format
+                        if (os.contains("mac") && filePath.startsWith("alias ")) {
+                            filePath = filePath.substring(6);
+                        }
+
+                        // For Linux with zenity, it might return paths separated by '|'
+                        if (os.contains("nix") || os.contains("nux")) {
+                            if (filePath.contains("|")) {
+                                String[] paths = filePath.split("\\|");
+                                for (String path : paths) {
+                                    if (!addLitematicFile(tempSelectedFiles, new File(path.trim()))) {
+                                        rejectedCount++;
+                                    }
                                 }
+                                continue;
                             }
-                            continue;
+                        }
+
+                        // Normal single file handling
+                        if (!addLitematicFile(tempSelectedFiles, new File(filePath))) {
+                            rejectedCount++;
                         }
                     }
 
-                    // Normal single file handling
-                    if (!addLitematicFile(tempSelectedFiles, new File(filePath))) {
-                        rejectedCount++;
+                    int exitCode = process.exitValue();
+                    if (exitCode == 0) {
+                        // Update the main list with the new selection
+                        selectedLitematicFiles.clear();
+                        selectedLitematicFiles.addAll(tempSelectedFiles);
+
+                        // Show appropriate message based on whether files were rejected
+                        if (rejectedCount > 0) {
+                            ToastManager.addToast("Only first " + (MAX_LITEMATIC_FILES-1) + " additional files selected. " + rejectedCount + " files were not loaded.", true);
+                        } else if (tempSelectedFiles.size() > 1) // More than just the original file
+                            ToastManager.addToast("Selected " + (selectedLitematicFiles.size() - 1) + " additional litematic file(s)", false);
+
+
+                        System.out.println("Selected " + (selectedLitematicFiles.size() - 1) + " additional litematic files");
+                        this.init(); // Refresh UI
+                        return true;
                     }
                 }
 
-                int exitCode = process.exitValue();
-                if (exitCode == 0) {
-                    // Update the main list with the new selection
-                    selectedLitematicFiles.clear();
-                    selectedLitematicFiles.addAll(tempSelectedFiles);
+                return false;
 
-                    // Show appropriate message based on whether files were rejected
-                    if (rejectedCount > 0) {
-                        ToastManager.addToast("Only first " + (MAX_LITEMATIC_FILES-1) + " additional files selected. " + rejectedCount + " files were not loaded.", true);
-                    } else if (tempSelectedFiles.size() > 1) // More than just the original file
-                        ToastManager.addToast("Selected " + (selectedLitematicFiles.size() - 1) + " additional litematic file(s)", false);
-
-
-                    System.out.println("Selected " + (selectedLitematicFiles.size() - 1) + " additional litematic files");
-                    this.init(); // Refresh UI
-                    return true;
+            } finally {
+                // Ensure process cleanup
+                if (process != null && process.isAlive()) {
+                    try {
+                        process.destroyForcibly();
+                        process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (Exception e) {
+                        System.err.println("Error cleaning up litematic file dialog process: " + e.getMessage());
+                    }
                 }
             }
-
-            return false;
 
         } catch (Exception e) {
             System.err.println("Native litematic file chooser error: " + e.getMessage());
@@ -1125,17 +1171,40 @@ public class PublishScreen extends Screen {
                     return false;
             }
 
+            // Set environment to avoid X11 issues
+            testPb.environment().put("DISPLAY", System.getenv("DISPLAY"));
+
             // Set a very short timeout for the test
             Process testProcess = testPb.start();
-            boolean finished = testProcess.waitFor(2, java.util.concurrent.TimeUnit.SECONDS);
+            boolean finished = testProcess.waitFor(3, java.util.concurrent.TimeUnit.SECONDS);
 
             if (!finished) {
                 testProcess.destroyForcibly();
                 return false;
             }
 
-            // Check exit code - 0 means the tool is available and working
+            // Check exit code and stderr for X11 errors
             int exitCode = testProcess.exitValue();
+
+            // Read stderr to check for X11 errors
+            try (java.io.BufferedReader errorReader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(testProcess.getErrorStream()))) {
+
+                String errorLine;
+                while ((errorLine = errorReader.readLine()) != null) {
+                    String lowerError = errorLine.toLowerCase();
+                    // Check for common X11 error patterns
+                    if (lowerError.contains("x error") ||
+                        lowerError.contains("badwindow") ||
+                        lowerError.contains("cannot open display") ||
+                        lowerError.contains("no display") ||
+                        lowerError.contains("connection refused")) {
+                        System.err.println("X11 error detected in " + tool + ": " + errorLine);
+                        return false;
+                    }
+                }
+            }
+
             return exitCode == 0;
 
         } catch (Exception e) {

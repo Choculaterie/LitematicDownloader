@@ -76,7 +76,7 @@ public class SettingsScreen extends Screen {
 
         int centerX = this.width / 2;
         int baseY = scrollAreaY - scrollOffset;
-        int currentY = baseY; // Moved up by 20 pixels (was baseY + 20)
+        int currentY = baseY; // Moved up to align with new section titles
 
         // Back button (always visible at top, outside scroll area)
         this.addDrawableChild(ButtonWidget.builder(Text.literal("←"), button -> {
@@ -400,7 +400,7 @@ public class SettingsScreen extends Screen {
 
     private void openTokenGenerationPage() {
         try {
-            String url = "https://localhost:7282/api/LitematicDownloaderModAPI/GenerateApiToken";
+            String url = "https://choculaterie.com/api/LitematicDownloaderModAPI/GenerateApiToken";
             // For production, you might want to use:
             // String url = "https://choculaterie.com/api/LitematicDownloaderModAPI/GenerateApiToken";
 
@@ -440,6 +440,7 @@ public class SettingsScreen extends Screen {
             }
 
             ProcessBuilder pb;
+            Process process = null;
 
             if (os.contains("win")) {
                 // Windows - use PowerShell with folder browser
@@ -486,15 +487,26 @@ public class SettingsScreen extends Screen {
                 return false; // Unsupported OS
             }
 
-            // Start the process
-            Process process = pb.start();
+            // Start the process with proper resource management
+            try {
+                process = pb.start();
 
-            // Read the output
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(process.getInputStream()))) {
+                // Set a timeout to prevent hanging
+                boolean finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
 
-                String selectedPath = reader.readLine();
-                int exitCode = process.waitFor();
+                if (!finished) {
+                    process.destroyForcibly();
+                    return false;
+                }
+
+                // Read the output with proper resource management
+                String selectedPath = null;
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getInputStream()))) {
+                    selectedPath = reader.readLine();
+                }
+
+                int exitCode = process.exitValue();
 
                 if (exitCode == 0 && selectedPath != null && !selectedPath.trim().isEmpty()) {
                     // macOS returns POSIX path format, convert if needed
@@ -505,9 +517,20 @@ public class SettingsScreen extends Screen {
                     pathField.setText(selectedPath.trim());
                     return true;
                 }
-            }
 
-            return false;
+                return false;
+
+            } finally {
+                // Ensure process cleanup
+                if (process != null && process.isAlive()) {
+                    try {
+                        process.destroyForcibly();
+                        process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (Exception e) {
+                        System.err.println("Error cleaning up file dialog process: " + e.getMessage());
+                    }
+                }
+            }
 
         } catch (Exception e) {
             System.err.println("Native file chooser error: " + e.getMessage());
@@ -554,6 +577,7 @@ public class SettingsScreen extends Screen {
             }
 
             ProcessBuilder pb;
+            Process process = null;
 
             if (os.contains("win")) {
                 // Windows - use PowerShell with folder browser
@@ -600,15 +624,26 @@ public class SettingsScreen extends Screen {
                 return false; // Unsupported OS
             }
 
-            // Start the process
-            Process process = pb.start();
+            // Start the process with proper resource management
+            try {
+                process = pb.start();
 
-            // Read the output
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(process.getInputStream()))) {
+                // Set a timeout to prevent hanging
+                boolean finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
 
-                String selectedPath = reader.readLine();
-                int exitCode = process.waitFor();
+                if (!finished) {
+                    process.destroyForcibly();
+                    return false;
+                }
+
+                // Read the output with proper resource management
+                String selectedPath = null;
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getInputStream()))) {
+                    selectedPath = reader.readLine();
+                }
+
+                int exitCode = process.exitValue();
 
                 if (exitCode == 0 && selectedPath != null && !selectedPath.trim().isEmpty()) {
                     // macOS returns POSIX path format, convert if needed
@@ -619,9 +654,20 @@ public class SettingsScreen extends Screen {
                     imagePathField.setText(selectedPath.trim());
                     return true;
                 }
-            }
 
-            return false;
+                return false;
+
+            } finally {
+                // Ensure process cleanup
+                if (process != null && process.isAlive()) {
+                    try {
+                        process.destroyForcibly();
+                        process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (Exception e) {
+                        System.err.println("Error cleaning up file dialog process: " + e.getMessage());
+                    }
+                }
+            }
 
         } catch (Exception e) {
             System.err.println("Native image file chooser error: " + e.getMessage());
