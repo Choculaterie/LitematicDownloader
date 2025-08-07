@@ -30,8 +30,8 @@ import java.nio.file.Files;
 
 public class LitematicHttpClient {
     // Change this URL for development/production environments
-    private static final String BASE_URL = "https://localhost:7282/api/LitematicDownloaderModAPI";
-    //private static final String BASE_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI";
+    //private static final String BASE_URL = "https://localhost:7282/api/LitematicDownloaderModAPI";
+    private static final String BASE_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI";
 
     private static final Gson gson = new Gson();
     private static final HttpClient client;
