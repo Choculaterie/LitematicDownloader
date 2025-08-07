@@ -30,8 +30,8 @@ import java.nio.file.Files;
 
 public class LitematicHttpClient {
     // Change this URL for development/production environments
-    //private static final String BASE_URL = "https://localhost:7282/api/LitematicDownloaderModAPI";
-    private static final String BASE_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI";
+    private static final String BASE_URL = "https://localhost:7282/api/LitematicDownloaderModAPI";
+    //private static final String BASE_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI";
 
     private static final Gson gson = new Gson();
     private static final HttpClient client;
@@ -84,7 +84,7 @@ public class LitematicHttpClient {
         PaginatedResult result = new PaginatedResult(schematicItems, 0, 0, 0);
 
         try {
-            String url = BASE_URL + "/GetPaginated?page=" + page + "&pageSize=" + pageSize;
+            String url = BASE_URL + "/GetPaginatedFtp?page=" + page + "&pageSize=" + pageSize;
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .GET()
@@ -288,6 +288,69 @@ public class LitematicHttpClient {
         }
     }
 
+    /**
+     * Downloads a file from URL to local path
+     */
+    public static String downloadFileFromUrl(String downloadUrl, String fileName) {
+        try {
+            // Use SettingsManager to get the configured schematics path
+            String savePath = SettingsManager.getSchematicsPath() + File.separator;
+
+            File directory = new File(savePath);
+            if (!directory.exists()) {
+                directory.mkdirs();
+            }
+
+            String filePath = savePath + fileName + ".litematic";
+
+            // Properly encode the URL to handle spaces and special characters
+            String encodedUrl;
+            try {
+                // Parse the URL to extract components
+                java.net.URL url = new java.net.URL(downloadUrl);
+
+                // Encode only the path part to preserve the scheme and host
+                String encodedPath = java.net.URLEncoder.encode(url.getPath(), StandardCharsets.UTF_8)
+                    .replace("%2F", "/"); // Keep forward slashes unencoded for path separators
+
+                // Reconstruct the URL with encoded path
+                encodedUrl = url.getProtocol() + "://" + url.getHost() +
+                    (url.getPort() != -1 ? ":" + url.getPort() : "") + encodedPath;
+
+                System.out.println("Original URL: " + downloadUrl);
+                System.out.println("Encoded URL: " + encodedUrl);
+            } catch (Exception e) {
+                // Fallback: if URL parsing fails, try simple encoding
+                encodedUrl = downloadUrl.replace(" ", "%20");
+                System.out.println("Fallback encoding - Original: " + downloadUrl + ", Encoded: " + encodedUrl);
+            }
+
+            // Create HTTP request to download the file
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(encodedUrl))
+                    .GET()
+                    .build();
+
+            HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("Failed to download file from URL: " + response.statusCode());
+            }
+
+            // Write the downloaded bytes to file
+            try (FileOutputStream fos = new FileOutputStream(filePath)) {
+                fos.write(response.body());
+            }
+
+            return filePath;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Failed to download file: " + e.getMessage(), e);
+        }
+    }
+
+    // Keep the old method for backward compatibility, but mark as deprecated
+    @Deprecated
     public static String downloadSchematic(String base64Data, String fileName) {
         try {
             // Use SettingsManager to get the configured schematics path
@@ -326,8 +389,15 @@ public class LitematicHttpClient {
 
             JsonObject json = gson.fromJson(response.body(), JsonObject.class);
             if (json.has("files") && json.getAsJsonArray("files").size() > 0) {
-                String base64Data = json.getAsJsonArray("files").get(0).getAsString();
-                return downloadSchematic(base64Data, fileName);
+                // Get first file from the response - now expecting URL format
+                JsonObject firstFile = json.getAsJsonArray("files").get(0).getAsJsonObject();
+
+                if (firstFile.has("url")) {
+                    String downloadUrl = firstFile.get("url").getAsString();
+                    return downloadFileFromUrl(downloadUrl, fileName);
+                } else {
+                    throw new RuntimeException("No download URL found in response");
+                }
             } else {
                 throw new RuntimeException("No schematic file found");
             }
@@ -588,5 +658,10 @@ public class LitematicHttpClient {
     public interface UploadCallback {
         void onSuccess(String url);
         void onError(String message);
+    }
+
+    // Static method to access the HTTP client from other classes
+    public static HttpClient getClient() {
+        return client;
     }
 }

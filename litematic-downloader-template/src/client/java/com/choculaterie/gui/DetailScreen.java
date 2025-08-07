@@ -24,6 +24,9 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.net.URI;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -241,127 +244,136 @@ public class DetailScreen extends Screen {
         }
     }
 
-    private void loadCoverImage(String base64Image) {
-        try {
-            // Remove data URI prefix if present (e.g., "data:image/png;base64,")
-            String base64Data = base64Image;
-            String detectedFormat = "unknown";
-
-            // Extract format from data URI if present
-            if (base64Data.contains(",")) {
-                String prefix = base64Data.substring(0, base64Data.indexOf(","));
-                if (prefix.contains("image/")) {
-                    detectedFormat = prefix.substring(prefix.indexOf("image/") + 6);
-                    if (detectedFormat.contains(";")) {
-                        detectedFormat = detectedFormat.substring(0, detectedFormat.indexOf(";"));
-                    }
-                }
-                base64Data = base64Data.split(",")[1];
-            }
-
-            // Validate base64 string before decoding
-            if (base64Data == null || base64Data.trim().isEmpty()) {
-                System.err.println("Base64 image data is empty");
-                ToastManager.addToast("Image data is empty", true);
-                coverImageTexture = null;
-                return;
-            }
-
-            // Decode the base64 string to binary data
-            byte[] imageData;
-            try {
-                imageData = Base64.getDecoder().decode(base64Data);
-            } catch (IllegalArgumentException e) {
-                System.err.println("Invalid base64 image data: " + e.getMessage());
-                ToastManager.addToast("Invalid image data format", true);
-                coverImageTexture = null;
-                return;
-            }
-
-            // Validate that we have actual image data
-            if (imageData.length == 0) {
-                System.err.println("Decoded image data is empty");
-                ToastManager.addToast("Image data is empty", true);
-                coverImageTexture = null;
-                return;
-            }
-
-            // Check for minimum file size (corrupted images are often very small)
-            if (imageData.length < 100) {
-                System.err.println("Image data too small, likely corrupted: " + imageData.length + " bytes");
-                ToastManager.addToast("Image file too small (corrupted)", true);
-                createAndRegisterPlaceholder("Image data too small (corrupted)");
-                return;
-            }
-
-            // Detect image format from binary signature if not detected from data URI
-            if (detectedFormat.equals("unknown")) {
-                detectedFormat = detectImageFormat(imageData);
-            }
-
-            System.out.println("Detected image format: " + detectedFormat);
-
-            // Generate a unique identifier for this texture
-            String uniqueId = UUID.randomUUID().toString().replace("-", "");
-            coverImageTexture = Identifier.of("minecraft", "textures/dynamic/" + uniqueId);
-
-            // Try to read the image and handle potential format exceptions
-            NativeImage nativeImage;
-            boolean isPlaceholder = false;
-            String placeholderReason = "";
-
-            try {
-                // Try to convert different formats to PNG first if needed
-                byte[] processedImageData = convertImageToPng(imageData, detectedFormat);
-                nativeImage = NativeImage.read(new ByteArrayInputStream(processedImageData));
-
-                // Additional validation: check if image dimensions are reasonable
-                if (nativeImage.getWidth() <= 0 || nativeImage.getHeight() <= 0) {
-                    System.err.println("Invalid image dimensions: " + nativeImage.getWidth() + "x" + nativeImage.getHeight());
-                    ToastManager.addToast("Image has invalid dimensions", true);
-                    nativeImage.close();
-                    nativeImage = createPlaceholderImage(256, 256, "Invalid dimensions");
-                    isPlaceholder = true;
-                    placeholderReason = "Invalid image dimensions";
-                } else if (nativeImage.getWidth() > 4096 || nativeImage.getHeight() > 4096) {
-                    System.err.println("Image too large: " + nativeImage.getWidth() + "x" + nativeImage.getHeight());
-                    ToastManager.addToast("Image too large (" + nativeImage.getWidth() + "x" + nativeImage.getHeight() + ")", true);
-                    nativeImage.close();
-                    nativeImage = createPlaceholderImage(256, 256, "Image too large");
-                    isPlaceholder = true;
-                    placeholderReason = "Image too large (" + nativeImage.getWidth() + "x" + nativeImage.getHeight() + ")";
-                }
-            } catch (Exception e) {
-                System.err.println("Error loading image (corrupted or unsupported format '" + detectedFormat + "'): " + e.getMessage());
-                ToastManager.addToast("Could not load " + detectedFormat + " image: " + getSimpleErrorMessage(e.getMessage()), true);
-                nativeImage = createPlaceholderImage(256, 256, "Image corrupted");
-                isPlaceholder = true;
-                placeholderReason = "Image corrupted (" + e.getMessage() + ")";
-            }
-
-            // Store image dimensions and register texture
-            if (nativeImage != null) {
-                imageWidth = nativeImage.getWidth();
-                imageHeight = nativeImage.getHeight();
-
-                // Register the texture with Minecraft's texture manager
-                MinecraftClient.getInstance().getTextureManager().registerTexture(
-                        coverImageTexture,
-                        new NativeImageBackedTexture(() -> "cover_image", nativeImage)
-                );
-
-                if (isPlaceholder) {
-                    System.out.println("Placeholder image created due to: " + placeholderReason + " (" + imageWidth + "x" + imageHeight + ")");
-                } else {
-                    System.out.println("Cover image loaded successfully (" + detectedFormat + "): " + imageWidth + "x" + imageHeight);
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to load cover image: " + e.getMessage());
-            ToastManager.addToast("Failed to load image", true);
-            e.printStackTrace();
+    private void loadCoverImage(String imageUrl) {
+        if (imageUrl == null || imageUrl.trim().isEmpty()) {
+            System.out.println("No cover image URL provided");
             coverImageTexture = null;
+            return;
         }
+
+        System.out.println("Loading cover image from URL: " + imageUrl);
+
+        // Load image from URL in background thread
+        new Thread(() -> {
+            try {
+                // Create HTTP request to download the image
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(imageUrl))
+                        .GET()
+                        .build();
+
+                HttpResponse<byte[]> response = LitematicHttpClient.getClient().send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+                if (response.statusCode() != 200) {
+                    System.err.println("Failed to load image from URL: " + response.statusCode());
+                    MinecraftClient.getInstance().execute(() -> {
+                        ToastManager.addToast("Failed to load image: HTTP " + response.statusCode(), true);
+                        createAndRegisterPlaceholder("HTTP " + response.statusCode());
+                    });
+                    return;
+                }
+
+                byte[] imageData = response.body();
+
+                // Validate that we have actual image data
+                if (imageData.length == 0) {
+                    System.err.println("Downloaded image data is empty");
+                    MinecraftClient.getInstance().execute(() -> {
+                        ToastManager.addToast("Image data is empty", true);
+                        createAndRegisterPlaceholder("Image data is empty");
+                    });
+                    return;
+                }
+
+                // Check for minimum file size (corrupted images are often very small)
+                if (imageData.length < 100) {
+                    System.err.println("Image data too small, likely corrupted: " + imageData.length + " bytes");
+                    MinecraftClient.getInstance().execute(() -> {
+                        ToastManager.addToast("Image file too small (corrupted)", true);
+                        createAndRegisterPlaceholder("Image data too small (corrupted)");
+                    });
+                    return;
+                }
+
+                // Detect image format from binary signature
+                String detectedFormat = detectImageFormat(imageData);
+                System.out.println("Detected image format: " + detectedFormat);
+
+                // Process on main thread
+                MinecraftClient.getInstance().execute(() -> {
+                    try {
+                        // Generate a unique identifier for this texture
+                        String uniqueId = UUID.randomUUID().toString().replace("-", "");
+                        coverImageTexture = Identifier.of("minecraft", "textures/dynamic/" + uniqueId);
+
+                        // Try to read the image and handle potential format exceptions
+                        NativeImage nativeImage;
+                        boolean isPlaceholder = false;
+                        String placeholderReason = "";
+
+                        try {
+                            // Try to convert different formats to PNG first if needed
+                            byte[] processedImageData = convertImageToPng(imageData, detectedFormat);
+                            nativeImage = NativeImage.read(new ByteArrayInputStream(processedImageData));
+
+                            // Additional validation: check if image dimensions are reasonable
+                            if (nativeImage.getWidth() <= 0 || nativeImage.getHeight() <= 0) {
+                                System.err.println("Invalid image dimensions: " + nativeImage.getWidth() + "x" + nativeImage.getHeight());
+                                ToastManager.addToast("Image has invalid dimensions", true);
+                                nativeImage.close();
+                                nativeImage = createPlaceholderImage(256, 256, "Invalid dimensions");
+                                isPlaceholder = true;
+                                placeholderReason = "Invalid image dimensions";
+                            } else if (nativeImage.getWidth() > 4096 || nativeImage.getHeight() > 4096) {
+                                System.err.println("Image too large: " + nativeImage.getWidth() + "x" + nativeImage.getHeight());
+                                ToastManager.addToast("Image too large (" + nativeImage.getWidth() + "x" + nativeImage.getHeight() + ")", true);
+                                nativeImage.close();
+                                nativeImage = createPlaceholderImage(256, 256, "Image too large");
+                                isPlaceholder = true;
+                                placeholderReason = "Image too large (" + nativeImage.getWidth() + "x" + nativeImage.getHeight() + ")";
+                            }
+                        } catch (Exception e) {
+                            System.err.println("Error loading image (corrupted or unsupported format '" + detectedFormat + "'): " + e.getMessage());
+                            ToastManager.addToast("Could not load " + detectedFormat + " image: " + getSimpleErrorMessage(e.getMessage()), true);
+                            nativeImage = createPlaceholderImage(256, 256, "Image corrupted");
+                            isPlaceholder = true;
+                            placeholderReason = "Image corrupted (" + e.getMessage() + ")";
+                        }
+
+                        // Store image dimensions and register texture
+                        if (nativeImage != null) {
+                            imageWidth = nativeImage.getWidth();
+                            imageHeight = nativeImage.getHeight();
+
+                            // Register the texture with Minecraft's texture manager
+                            MinecraftClient.getInstance().getTextureManager().registerTexture(
+                                    coverImageTexture,
+                                    new NativeImageBackedTexture(() -> "cover_image", nativeImage)
+                            );
+
+                            if (isPlaceholder) {
+                                System.out.println("Placeholder image created due to: " + placeholderReason + " (" + imageWidth + "x" + imageHeight + ")");
+                            } else {
+                                System.out.println("Cover image loaded successfully (" + detectedFormat + "): " + imageWidth + "x" + imageHeight);
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Failed to process downloaded image: " + e.getMessage());
+                        ToastManager.addToast("Failed to process image", true);
+                        e.printStackTrace();
+                        coverImageTexture = null;
+                    }
+                });
+
+            } catch (Exception e) {
+                System.err.println("Failed to download cover image: " + e.getMessage());
+                MinecraftClient.getInstance().execute(() -> {
+                    ToastManager.addToast("Failed to load image", true);
+                    createAndRegisterPlaceholder("Download failed");
+                });
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     // Helper method to detect image format from binary signature
@@ -535,18 +547,36 @@ public class DetailScreen extends Screen {
             int contentWidth = this.width - rightSectionX - padding;
             int topMargin = 40;
 
-            // Draw the image on the left
-            context.drawTexture(
-                    RenderPipelines.GUI_TEXTURED,
-                    coverImageTexture,
-                    padding,
-                    topMargin,
-                    0, 0,
-                    leftSectionWidth,
-                    leftSectionWidth,
-                    leftSectionWidth,
-                    leftSectionWidth
-            );
+            // Draw the image on the left (only if we have a valid texture)
+            if (coverImageTexture != null) {
+                context.drawTexture(
+                        RenderPipelines.GUI_TEXTURED,
+                        coverImageTexture,
+                        padding,
+                        topMargin,
+                        0, 0,
+                        leftSectionWidth,
+                        leftSectionWidth,
+                        leftSectionWidth,
+                        leftSectionWidth
+                );
+            } else {
+                // Draw a placeholder rectangle when no image is available
+                context.fill(
+                        padding,
+                        topMargin,
+                        padding + leftSectionWidth,
+                        topMargin + leftSectionWidth,
+                        0x33FFFFFF
+                );
+
+                // Draw "No Image" text in the center of the placeholder
+                String noImageText = "No Image";
+                int textWidth = this.textRenderer.getWidth(noImageText);
+                int textX = padding + (leftSectionWidth - textWidth) / 2;
+                int textY = topMargin + (leftSectionWidth / 2) - 4;
+                context.drawText(this.textRenderer, noImageText, textX, textY, 0xFFAAAAAA, false);
+            }
 
             // Draw information on the right
             int y = topMargin;
