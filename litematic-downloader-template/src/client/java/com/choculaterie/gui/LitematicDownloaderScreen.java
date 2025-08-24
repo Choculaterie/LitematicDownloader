@@ -30,6 +30,9 @@ public class LitematicDownloaderScreen extends Screen {
     private int totalItems = 0;
     private final int pageSize = 15;
 
+    // Unverified toggle field
+    private boolean showUnverified = false;
+
     // Enhanced cache fields with multipage support
     private static final CacheManager cacheManager = new CacheManager();
     private static final long CACHE_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -153,6 +156,25 @@ public class LitematicDownloaderScreen extends Screen {
                     }
                 }
         ).dimensions(this.width - 40, 10, 20, 20).build());
+
+        // Unverified toggle button
+        this.addDrawableChild(ButtonWidget.builder(
+                Text.literal(showUnverified ? "✓" : "✗"),
+                button -> {
+                    showUnverified = !showUnverified;
+                    button.setMessage(Text.literal(showUnverified ? "✓" : "✗"));
+
+                    // Clear cache and reload with new unverified setting
+                    cacheManager.clearAllCache();
+                    currentPage = 1; // Reset to first page
+
+                    if (isSearchMode) {
+                        performSearch();
+                    } else {
+                        loadSchematics();
+                    }
+                }
+        ).dimensions(this.width - 115, 10, 20, 20).build());
 
         // Set up scroll area dimensions
         int contentWidth = Math.min(600, this.width - 80);
@@ -399,7 +421,7 @@ public class LitematicDownloaderScreen extends Screen {
         new Thread(() -> {
             try {
                 System.out.println("Fetching page " + requestedPage + " from server...");
-                LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(requestedPage, pageSize);
+                LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(requestedPage, pageSize, showUnverified);
 
                 MinecraftClient.getInstance().execute(() -> {
                     // Verify this response is still relevant (user might have navigated away)
@@ -1118,7 +1140,7 @@ public class LitematicDownloaderScreen extends Screen {
                 }
 
                 // Fetch and cache the target page
-                LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(pageNumber, pageSize);
+                LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(pageNumber, pageSize, showUnverified);
 
                 MinecraftClient.getInstance().execute(() -> {
                     // Final check before caching

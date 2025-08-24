@@ -80,16 +80,21 @@ public class LitematicHttpClient {
     }
 
     public static PaginatedResult fetchSchematicsPaginated(int page, int pageSize) {
+        return fetchSchematicsPaginated(page, pageSize, false);
+    }
+
+    public static PaginatedResult fetchSchematicsPaginated(int page, int pageSize, boolean showUnverified) {
         final ArrayList<SchematicInfo> schematicItems = new ArrayList<>();
         PaginatedResult result = new PaginatedResult(schematicItems, 0, 0, 0);
 
         try {
-            String url = BASE_URL + "/GetPaginatedFtp?page=" + page + "&pageSize=" + pageSize;
+            String url = BASE_URL + "/GetPaginatedFtp?page=" + page + "&pageSize=" + pageSize + "&showUnverified=" + showUnverified;
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .GET()
                     .build();
 
+            System.out.println("Pagination API Request URL: " + url);
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             System.out.println("Pagination API Response Status: " + response.statusCode());
