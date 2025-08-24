@@ -256,9 +256,13 @@ public class DetailScreen extends Screen {
         // Load image from URL in background thread
         new Thread(() -> {
             try {
+                // Encode the URL to handle spaces and special characters
+                String encodedUrl = encodeImageUrl(imageUrl);
+                System.out.println("Encoded URL: " + encodedUrl);
+
                 // Create HTTP request to download the image
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(imageUrl))
+                        .uri(URI.create(encodedUrl))
                         .GET()
                         .build();
 
@@ -378,7 +382,7 @@ public class DetailScreen extends Screen {
 
     // Helper method to detect image format from binary signature
     private String detectImageFormat(byte[] imageData) {
-        if (imageData.length < 8) {
+        if (imageData.length < 12) {
             return "unknown";
         }
 
@@ -411,6 +415,44 @@ public class DetailScreen extends Screen {
             return "webp";
         }
 
+        // TIFF signature: II* (little endian) or MM* (big endian)
+        if (imageData.length >= 4 &&
+            ((imageData[0] == 0x49 && imageData[1] == 0x49 && imageData[2] == 0x2A && imageData[3] == 0x00) ||
+             (imageData[0] == 0x4D && imageData[1] == 0x4D && imageData[2] == 0x00 && imageData[3] == 0x2A))) {
+            return "tiff";
+        }
+
+        // ICO signature: 00 00 01 00
+        if (imageData.length >= 4 &&
+            imageData[0] == 0x00 && imageData[1] == 0x00 && imageData[2] == 0x01 && imageData[3] == 0x00) {
+            return "ico";
+        }
+
+        // AVIF signature: ....ftypavif or ....ftypavis
+        if (imageData.length >= 12 &&
+            imageData[4] == 0x66 && imageData[5] == 0x74 && imageData[6] == 0x79 && imageData[7] == 0x70 &&
+            imageData[8] == 0x61 && imageData[9] == 0x76 && imageData[10] == 0x69 &&
+            (imageData[11] == 0x66 || imageData[11] == 0x73)) {
+            return "avif";
+        }
+
+        // HEIF/HEIC signature: ....ftypheic or ....ftypmif1
+        if (imageData.length >= 12 &&
+            imageData[4] == 0x66 && imageData[5] == 0x74 && imageData[6] == 0x79 && imageData[7] == 0x70) {
+            if ((imageData[8] == 0x68 && imageData[9] == 0x65 && imageData[10] == 0x69 && imageData[11] == 0x63) ||
+                (imageData[8] == 0x6D && imageData[9] == 0x69 && imageData[10] == 0x66 && imageData[11] == 0x31)) {
+                return "heif";
+            }
+        }
+
+        // SVG signature: <svg or <?xml (for XML-based SVG)
+        if (imageData.length >= 5) {
+            String startString = new String(imageData, 0, Math.min(100, imageData.length)).toLowerCase();
+            if (startString.contains("<svg") || (startString.startsWith("<?xml") && startString.contains("svg"))) {
+                return "svg";
+            }
+        }
+
         return "unknown";
     }
 
@@ -421,24 +463,90 @@ public class DetailScreen extends Screen {
             return imageData;
         }
 
-        // For non-PNG formats, we'll try to use Java's built-in image processing
+        // Special handling for SVG - cannot be converted via standard Java ImageIO
+        if (format.equals("svg")) {
+            throw new Exception("SVG format is not supported for conversion");
+        }
+
+        // Special handling for AVIF and HEIF - not supported by standard Java ImageIO
+        if (format.equals("avif") || format.equals("heif")) {
+            throw new Exception(format.toUpperCase() + " format is not supported by Java ImageIO");
+        }
+
+        // For supported formats, try to use Java's built-in image processing
         try {
-            java.awt.image.BufferedImage bufferedImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(imageData));
+            // Try multiple readers for better format support
+            java.awt.image.BufferedImage bufferedImage = null;
+
+            // First try standard ImageIO
+            try {
+                bufferedImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(imageData));
+            } catch (Exception e) {
+                System.out.println("Standard ImageIO failed for " + format + ", trying alternative approach");
+            }
+
+            // If standard ImageIO failed, try with explicit format readers
+            if (bufferedImage == null && !format.equals("unknown")) {
+                try {
+                    java.util.Iterator<javax.imageio.ImageReader> readers =
+                        javax.imageio.ImageIO.getImageReadersByFormatName(format.toUpperCase());
+
+                    if (readers.hasNext()) {
+                        javax.imageio.ImageReader reader = readers.next();
+                        javax.imageio.stream.ImageInputStream iis =
+                            javax.imageio.ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(imageData));
+                        reader.setInput(iis);
+                        bufferedImage = reader.read(0);
+                        reader.dispose();
+                        iis.close();
+                    }
+                } catch (Exception e) {
+                    System.out.println("Alternative ImageIO approach failed for " + format + ": " + e.getMessage());
+                }
+            }
 
             if (bufferedImage == null) {
-                throw new Exception("Could not decode " + format + " image");
+                throw new Exception("Could not decode " + format + " image with any available reader");
+            }
+
+            // Ensure we have RGB/RGBA format for PNG conversion
+            java.awt.image.BufferedImage convertedImage;
+            if (bufferedImage.getType() != java.awt.image.BufferedImage.TYPE_INT_RGB &&
+                bufferedImage.getType() != java.awt.image.BufferedImage.TYPE_INT_ARGB) {
+
+                // Convert to ARGB for maximum compatibility
+                convertedImage = new java.awt.image.BufferedImage(
+                    bufferedImage.getWidth(),
+                    bufferedImage.getHeight(),
+                    java.awt.image.BufferedImage.TYPE_INT_ARGB
+                );
+
+                java.awt.Graphics2D g2d = convertedImage.createGraphics();
+                g2d.drawImage(bufferedImage, 0, 0, null);
+                g2d.dispose();
+            } else {
+                convertedImage = bufferedImage;
             }
 
             // Convert to PNG format
             java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-            javax.imageio.ImageIO.write(bufferedImage, "PNG", baos);
+            boolean success = javax.imageio.ImageIO.write(convertedImage, "PNG", baos);
 
-            System.out.println("Successfully converted " + format + " to PNG format");
+            if (!success) {
+                throw new Exception("Failed to write PNG output");
+            }
+
+            System.out.println("Successfully converted " + format + " to PNG format (" +
+                              bufferedImage.getWidth() + "x" + bufferedImage.getHeight() + ")");
             return baos.toByteArray();
 
         } catch (Exception e) {
             System.err.println("Failed to convert " + format + " image: " + e.getMessage());
-            // Fallback: try the original data anyway
+            // For unsupported formats, throw the exception rather than fallback
+            if (format.equals("svg") || format.equals("avif") || format.equals("heif")) {
+                throw e;
+            }
+            // For other formats, try the original data anyway as fallback
             return imageData;
         }
     }
@@ -785,5 +893,26 @@ public class DetailScreen extends Screen {
 
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
-}
 
+    // Helper method to properly encode URLs
+    private String encodeImageUrl(String url) {
+        try {
+            // Parse the URL to separate components
+            java.net.URL parsedUrl = new java.net.URL(url);
+
+            // Encode only the path part to preserve the protocol and host
+            String encodedPath = java.net.URLEncoder.encode(parsedUrl.getPath(), "UTF-8")
+                    .replace("%2F", "/")  // Keep forward slashes as they are path separators
+                    .replace("+", "%20"); // Use %20 for spaces instead of +
+
+            // Reconstruct the URL
+            return parsedUrl.getProtocol() + "://" + parsedUrl.getHost() +
+                   (parsedUrl.getPort() != -1 ? ":" + parsedUrl.getPort() : "") +
+                   encodedPath;
+        } catch (Exception e) {
+            System.err.println("Failed to encode URL, using original: " + e.getMessage());
+            // Fallback: manually encode spaces if URL parsing fails
+            return url.replace(" ", "%20");
+        }
+    }
+}
