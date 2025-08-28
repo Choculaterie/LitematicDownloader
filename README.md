@@ -1,4 +1,5 @@
 # Public Repo For The LitematicDownloader Mod
+https://modrinth.com/mod/litematicdownloader
 
 Compile yourself in Intellij IDEA :
 
