@@ -30,8 +30,8 @@ import java.nio.file.Files;
 
 public class LitematicHttpClient {
     // Change this URL for development/production environments
-    //private static final String BASE_URL = "https://localhost:7282/api/LitematicDownloaderModAPI";
-    private static final String BASE_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI";
+    private static final String BASE_URL = "https://localhost:7282/api/LitematicDownloaderModAPI";
+    //private static final String BASE_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI";
 
     private static final Gson gson = new Gson();
     private static final HttpClient client;
@@ -439,12 +439,11 @@ public class LitematicHttpClient {
 
                 if (response.statusCode() == 200) {
                     JsonObject json = gson.fromJson(response.body(), JsonObject.class);
-                    String fileUrl = json.get("fileUrl").getAsString();
-                    String viewerUrl = json.get("viewerUrl").getAsString();
+                    String shortUrl = json.get("shortUrl").getAsString();
 
                     MinecraftClient.getInstance().execute(() -> {
-                        MinecraftClient.getInstance().keyboard.setClipboard(viewerUrl);
-                        callback.onSuccess(viewerUrl);
+                        MinecraftClient.getInstance().keyboard.setClipboard(shortUrl);
+                        callback.onSuccess(shortUrl);
                     });
                 } else {
                     MinecraftClient.getInstance().execute(() ->
