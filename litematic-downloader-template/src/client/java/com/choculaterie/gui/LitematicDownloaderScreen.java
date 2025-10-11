@@ -239,20 +239,22 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (this.searchField.isFocused() && keyCode == 257) { // 257 is Enter key
-            String text = this.searchField.getText().trim();
-            if (!text.isEmpty()) {
-                searchTerm = text;
-                lastSearchedTerm = text; // Save the actual searched term
-                isSearchMode = true;
-                currentPage = 1;
-                performSearch();
-                return true;
+    public boolean keyPressed(net.minecraft.client.input.KeyInput input) {
+        if (this.searchField.isFocused()) {
+            int key = input.key();
+            if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER || key == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER) {
+                String text = this.searchField.getText().trim();
+                if (!text.isEmpty()) {
+                    searchTerm = text;
+                    lastSearchedTerm = text; // Save the actual searched term
+                    isSearchMode = true;
+                    currentPage = 1;
+                    performSearch();
+                    return true;
+                }
             }
         }
-
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(input);
     }
 
     private void setupPaginationControls() {
@@ -758,14 +760,19 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
+        // Unfocus search when clicking outside it
         if (searchField.isFocused() &&
                 (mouseX < searchField.getX() || mouseX > searchField.getX() + searchField.getWidth() ||
                         mouseY < searchField.getY() || mouseY > searchField.getY() + searchField.getHeight())) {
             searchField.setFocused(false);
         }
 
-        // Handle scrollbar interaction
+        // Scrollbar interaction
         if (button == 0 && totalContentHeight > scrollAreaHeight) {
             if (mouseX >= scrollBarX && mouseX <= scrollBarX + 6 &&
                     mouseY >= scrollBarY && mouseY <= scrollBarY + scrollBarHeight) {
@@ -774,7 +781,6 @@ public class LitematicDownloaderScreen extends Screen {
                 scrollDragOffset = (int) (mouseY - scrollBarY);
                 return true;
             }
-
             if (mouseX >= scrollBarX && mouseX <= scrollBarX + 6 &&
                     mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
                 float clickPercent = ((float) mouseY - scrollAreaY) / scrollAreaHeight;
@@ -784,43 +790,53 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
-        // Handle item clicks
+        // List area interaction
         if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
-                mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
+                mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight &&
+                !schematics.isEmpty()) {
 
             int index = (int) ((mouseY - scrollAreaY + scrollOffset) / itemHeight);
             if (index >= 0 && index < schematics.size()) {
                 SchematicInfo schematic = schematics.get(index);
 
-                // Check for download button click
+                // Download button hit test (aligned with render: buttonY == y)
                 int buttonX = scrollAreaX + scrollAreaWidth - 30;
-                int buttonY = scrollAreaY - scrollOffset + (index * itemHeight) + 5;
-
+                int buttonY = scrollAreaY - scrollOffset + (index * itemHeight);
                 if (mouseX >= buttonX && mouseX <= buttonX + 20 &&
                         mouseY >= buttonY && mouseY <= buttonY + 20) {
                     handleDownload(schematic);
+                    // Prevent accidental double‑open after download click
+                    lastClickedIndex = -1;
+                    lastClickTime = 0;
                     return true;
-                } else if (button == 0) {
-                    // Handle double click for item detail
-                    long currentTime = System.currentTimeMillis();
-                    if (index == lastClickedIndex && currentTime - lastClickTime < 500) {
-                        // Save current navigation state before going to detail screen
-                        NavigationState.getInstance().saveState(
-                                currentPage, totalPages, totalItems,
-                                isSearchMode, searchTerm, lastSearchedTerm,
-                                scrollOffset
-                        );
+                }
 
-                        MinecraftClient.getInstance().setScreen(new DetailScreen(schematic.getId()));
-                        return true;
-                    }
+                // Robust double‑click detection
+                boolean isDouble = (button == 0 && doubled);
+                if (!isDouble) {
+                    long now = System.currentTimeMillis();
+                    isDouble = (button == 0 && index == lastClickedIndex && now - lastClickTime <= 300);
                     lastClickedIndex = index;
-                    lastClickTime = currentTime;
+                    lastClickTime = now;
+                }
+
+                if (isDouble) {
+                    NavigationState.getInstance().saveState(
+                            currentPage, totalPages, totalItems,
+                            isSearchMode, searchTerm, lastSearchedTerm,
+                            scrollOffset
+                    );
+                    MinecraftClient.getInstance().setScreen(new DetailScreen(schematic.getId()));
+                    return true;
                 }
             }
+        } else {
+            // Clicked outside list; reset manual double‑click tracking
+            lastClickedIndex = -1;
+            lastClickTime = 0;
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, doubled);
     }
 
     private void handleDownload(SchematicInfo schematic) {
@@ -887,25 +903,23 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+    public boolean mouseDragged(net.minecraft.client.gui.Click click, double offsetX, double offsetY) {
         if (isScrolling) {
-            float dragPosition = (float) (mouseY - scrollDragOffset - scrollAreaY) / (scrollAreaHeight - scrollBarHeight);
+            float dragPosition = (float) (click.y() - scrollDragOffset - scrollAreaY) / (scrollAreaHeight - scrollBarHeight);
             scrollOffset = (int) (dragPosition * (totalContentHeight - scrollAreaHeight));
             scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));
             return true;
         }
-
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(click, offsetX, offsetY);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && isScrolling) {
+    public boolean mouseReleased(net.minecraft.client.gui.Click click) {
+        if (click.button() == 0 && isScrolling) {
             isScrolling = false;
             return true;
         }
-
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 
     @Override

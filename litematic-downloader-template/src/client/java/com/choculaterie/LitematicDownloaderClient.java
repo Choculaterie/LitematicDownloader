@@ -11,28 +11,27 @@ import com.choculaterie.gui.CacheManager;
 
 public class LitematicDownloaderClient implements ClientModInitializer {
 
-	private static KeyBinding keyBinding;
+    private static KeyBinding keyBinding;
 
-	@Override
-	public void onInitializeClient() {
-		// Initialize cache system with background preloading
-		System.out.println("Starting LitematicDownloader cache initialization...");
-		CacheManager.initializeAtGameStartup();
+    @Override
+    public void onInitializeClient() {
+        // Initialize cache system with background preloading
+        System.out.println("Starting LitematicDownloader cache initialization...");
+        CacheManager.initializeAtGameStartup();
 
-		// Register keybinding with translation key and miscellaneous category
-		keyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-				"key.litematic-downloader.open_menu", // Translation key
-				InputUtil.Type.KEYSYM,
-				GLFW.GLFW_KEY_N, // Default to 'N' key
-				KeyBinding.MISC_CATEGORY // Use the built-in miscellaneous category
-		));
+        // Register keybinding using the Category enum
+        keyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.litematic-downloader.open_menu",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_N,
+                KeyBinding.Category.MISC
+        ));
 
-		// Register tick event to check for keybinding presses
-		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			if (keyBinding.wasPressed()) {
-				// Open your GUI when the key is pressed
-				MinecraftClient.getInstance().setScreen(new com.choculaterie.gui.LitematicDownloaderScreen());
-			}
-		});
-	}
+        // Register tick event to check for keybinding presses
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (keyBinding.wasPressed()) {
+                MinecraftClient.getInstance().setScreen(new com.choculaterie.gui.LitematicDownloaderScreen());
+            }
+        });
+    }
 }

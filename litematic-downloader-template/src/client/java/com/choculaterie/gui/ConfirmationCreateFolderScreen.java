@@ -6,6 +6,7 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
+import net.minecraft.client.input.KeyInput;
 
 import java.io.File;
 import java.util.function.Consumer;
@@ -117,13 +118,16 @@ public class ConfirmationCreateFolderScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == 257 || keyCode == 335) { // Enter key
+    public boolean keyPressed(KeyInput input) {
+        if (input.key() == 257 || input.key() == 335) { // Enter key
             createFolder();
             return true;
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(input);
     }
+
+
+
 
     @Override
     public boolean shouldCloseOnEsc() {

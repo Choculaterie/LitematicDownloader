@@ -764,7 +764,11 @@ public class SettingsScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
         // Handle scrollbar interaction
         if (button == 0 && totalContentHeight > scrollAreaHeight) {
             // Check if click is on scroll bar
@@ -779,8 +783,8 @@ public class SettingsScreen extends Screen {
             if (mouseX >= scrollBarX && mouseX <= scrollBarX + 6 &&
                     mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
                 // Calculate new scroll position based on click location
-                float clickPercent = ((float)mouseY - scrollAreaY) / scrollAreaHeight;
-                scrollOffset = (int)(clickPercent * (totalContentHeight - scrollAreaHeight));
+                float clickPercent = ((float) mouseY - scrollAreaY) / scrollAreaHeight;
+                scrollOffset = (int) (clickPercent * (totalContentHeight - scrollAreaHeight));
                 scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));
 
                 // Reinitialize widgets to update their positions
@@ -790,24 +794,22 @@ public class SettingsScreen extends Screen {
             }
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, doubled);
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+    public boolean mouseDragged(net.minecraft.client.gui.Click click, double offsetX, double offsetY) {
+        double mouseY = click.y();
+
         if (isScrolling) {
-            if (mouseY != lastMouseY) {
-                // Calculate how far we've dragged as a percentage of the scroll area
-                float dragPercentage = (float)(mouseY - lastMouseY) / (scrollAreaHeight - scrollBarHeight);
+            int currentMouseY = (int) mouseY;
+            if (currentMouseY != lastMouseY) {
+                float denom = Math.max(1, (scrollAreaHeight - scrollBarHeight));
+                float dragPercentage = (float) (currentMouseY - lastMouseY) / denom;
+                int scrollAmount = (int) (dragPercentage * (totalContentHeight - scrollAreaHeight));
 
-                // Convert that to a scroll amount
-                int scrollAmount = (int)(dragPercentage * (totalContentHeight - scrollAreaHeight));
-
-                // Update scroll position
-                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight,
-                        scrollOffset + scrollAmount));
-
-                lastMouseY = (int) mouseY;
+                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset + scrollAmount));
+                lastMouseY = currentMouseY;
 
                 // Reinitialize widgets to update their positions
                 this.init();
@@ -815,17 +817,16 @@ public class SettingsScreen extends Screen {
             return true;
         }
 
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(click, offsetX, offsetY);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && isScrolling) {
+    public boolean mouseReleased(net.minecraft.client.gui.Click click) {
+        if (click.button() == 0 && isScrolling) {
             isScrolling = false;
             return true;
         }
-
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 
     @Override

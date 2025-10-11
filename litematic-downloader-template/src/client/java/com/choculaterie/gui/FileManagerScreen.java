@@ -8,6 +8,7 @@ import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.client.input.KeyInput;
 import com.choculaterie.config.SettingsManager;
 import org.lwjgl.glfw.GLFW;
 
@@ -658,7 +659,11 @@ public class FileManagerScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
         // Check if clicked outside the search field to unfocus it
         if (searchField.isFocused() &&
                 (mouseX < searchField.getX() || mouseX > searchField.getX() + searchField.getWidth() ||
@@ -719,15 +724,16 @@ public class FileManagerScreen extends Screen {
                     }
 
                     // Check if Shift is held down to initiate drag and drop
-                    if (Screen.hasShiftDown()) {
+                    if (InputUtil.isKeyPressed(MinecraftClient.getInstance().getWindow(), GLFW.GLFW_KEY_LEFT_SHIFT) ||
+                            InputUtil.isKeyPressed(MinecraftClient.getInstance().getWindow(), GLFW.GLFW_KEY_RIGHT_SHIFT)) {
                         System.out.println("DEBUG: Shift held down, starting drag for: " + file.getName());
                         // Start drag operation
                         isDragging = true;
                         draggedFile = file;
-                        dragStartX = (int)mouseX;
-                        dragStartY = (int)mouseY;
-                        dragCurrentX = (int)mouseX;
-                        dragCurrentY = (int)mouseY;
+                        dragStartX = (int) mouseX;
+                        dragStartY = (int) mouseY;
+                        dragCurrentX = (int) mouseX;
+                        dragCurrentY = (int) mouseY;
                         return true;
                     }
 
@@ -749,7 +755,7 @@ public class FileManagerScreen extends Screen {
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
             // Calculate which item was clicked
-            int index = (int)((mouseY - scrollAreaY + scrollOffset) / itemHeight);
+            int index = (int) ((mouseY - scrollAreaY + scrollOffset) / itemHeight);
             if (index >= 0 && index < displayedFiles.size()) {
                 File clickedFile = displayedFiles.get(index);
                 startRenaming(clickedFile);
@@ -794,7 +800,7 @@ public class FileManagerScreen extends Screen {
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
             // Calculate which item was clicked
-            int index = (int)((mouseY - scrollAreaY + scrollOffset) / itemHeight);
+            int index = (int) ((mouseY - scrollAreaY + scrollOffset) / itemHeight);
             if (index >= 0 && index < displayedFiles.size()) {
                 File clickedFile = displayedFiles.get(index);
 
@@ -860,14 +866,14 @@ public class FileManagerScreen extends Screen {
             if (mouseX >= scrollBarX && mouseX <= scrollBarX + 6 &&
                     mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
                 // Calculate new scroll position based on click location
-                float clickPercent = ((float)mouseY - scrollAreaY) / scrollAreaHeight;
-                scrollOffset = (int)(clickPercent * (totalContentHeight - scrollAreaHeight));
+                float clickPercent = ((float) mouseY - scrollAreaY) / scrollAreaHeight;
+                scrollOffset = (int) (clickPercent * (totalContentHeight - scrollAreaHeight));
                 scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));
                 return true;
             }
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, doubled);
     }
 
     // Add the new method to handle litematic file uploads
@@ -972,35 +978,34 @@ public class FileManagerScreen extends Screen {
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+    public boolean mouseDragged(net.minecraft.client.gui.Click click, double offsetX, double offsetY) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+
         if (isScrolling) {
-            if (mouseY != lastMouseY) {
-                // Calculate how far we've dragged as a percentage of the scroll area
-                float dragPercentage = (float)(mouseY - lastMouseY) / (scrollAreaHeight - scrollBarHeight);
+            int currentMouseY = (int) mouseY;
+            if (currentMouseY != lastMouseY) {
+                float denom = Math.max(1, (scrollAreaHeight - scrollBarHeight));
+                float dragPercentage = (float) (currentMouseY - lastMouseY) / denom;
+                int scrollAmount = (int) (dragPercentage * (totalContentHeight - scrollAreaHeight));
 
-                // Convert that to a scroll amount
-                int scrollAmount = (int)(dragPercentage * (totalContentHeight - scrollAreaHeight));
-
-                // Update scroll position
-                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight,
-                        scrollOffset + scrollAmount));
-
-                lastMouseY = (int) mouseY;
+                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset + scrollAmount));
+                lastMouseY = currentMouseY;
             }
             return true;
         }
 
         // Handle file dragging
         if (isDragging && draggedFile != null) {
-            dragCurrentX = (int)mouseX;
-            dragCurrentY = (int)mouseY;
+            dragCurrentX = (int) mouseX;
+            dragCurrentY = (int) mouseY;
 
             // Find potential drop target
-            dropTargetFolder = findDropTarget((int)mouseX, (int)mouseY);
+            dropTargetFolder = findDropTarget((int) mouseX, (int) mouseY);
             return true;
         }
 
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(click, offsetX, offsetY);
     }
 
     @Override
@@ -1026,7 +1031,11 @@ public class FileManagerScreen extends Screen {
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    public boolean mouseReleased(net.minecraft.client.gui.Click click) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
         // Handle scrollbar release
         if (button == 0 && isScrolling) {
             isScrolling = false;
@@ -1037,7 +1046,7 @@ public class FileManagerScreen extends Screen {
         if (button == 0 && isDragging && draggedFile != null) {
             System.out.println("DEBUG: Mouse released while dragging: " + draggedFile.getName());
             // Check if we're over a valid folder target
-            File targetFolder = findDropTarget((int)mouseX, (int)mouseY);
+            File targetFolder = findDropTarget((int) mouseX, (int) mouseY);
             System.out.println("DEBUG: Drop target found: " + (targetFolder != null ? targetFolder.getName() : "null"));
 
             if (targetFolder != null && targetFolder.isDirectory()) {
@@ -1078,7 +1087,7 @@ public class FileManagerScreen extends Screen {
             return true;
         }
 
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 
     private File findDropTarget(int mouseX, int mouseY) {
@@ -1547,18 +1556,28 @@ public class FileManagerScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Handle Ctrl+Z for undo
-        if (keyCode == GLFW.GLFW_KEY_Z && (modifiers & GLFW.GLFW_MOD_ALT) == 0) {
-            if (Screen.hasControlDown()) {
-                // Ctrl+Z pressed
-                undoLastMove();
-                return true;
-            }
+    public boolean keyPressed(KeyInput input) {
+        int key = input.key();              // fixed from keyCode()
+        int modifiers = input.modifiers();
+
+        // Let focused text fields handle their own shortcuts
+        if (this.searchField != null && this.searchField.isFocused()) {
+            return super.keyPressed(input);
         }
 
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
+        boolean alt = (modifiers & GLFW.GLFW_MOD_ALT) != 0;
+
+        // Handle Ctrl+Z for undo (but not Alt+Z)
+        if (!alt && ctrl && key == GLFW.GLFW_KEY_Z) {
+            undoLastMove();
+            return true;
+        }
+
+        return super.keyPressed(input);
     }
+
+
 
     private void undoLastMove() {
         if (!undoStack.isEmpty()) {

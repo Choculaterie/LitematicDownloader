@@ -6,6 +6,7 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -260,9 +261,13 @@ public class ConfirmationDeleteScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Check for tree expansion clicks
-        if (button == 0 && mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
+    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
+        // Handle tree expansion clicks
+        if (mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
             int index = getVisibleIndexAtY(mouseY);
             if (index >= 0 && index < treeEntries.size()) {
                 TreeEntry entry = treeEntries.get(index);
@@ -289,7 +294,7 @@ public class ConfirmationDeleteScreen extends Screen {
         }
 
         // Handle scrollbar interaction
-        if (button == 0 && totalContentHeight > scrollAreaHeight) {
+        if (totalContentHeight > scrollAreaHeight) {
             // Check if click is on scroll bar
             if (mouseX >= scrollBarX && mouseX <= scrollBarX + 6 &&
                     mouseY >= scrollBarY && mouseY <= scrollBarY + scrollBarHeight) {
@@ -304,15 +309,45 @@ public class ConfirmationDeleteScreen extends Screen {
                     mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
                 // Calculate new scroll position based on click location
-                float clickPercent = ((float)mouseY - scrollAreaY) / scrollAreaHeight;
-                scrollOffset = (int)(clickPercent * (totalContentHeight - scrollAreaHeight));
+                float clickPercent = ((float) mouseY - scrollAreaY) / scrollAreaHeight;
+                scrollOffset = (int) (clickPercent * (totalContentHeight - scrollAreaHeight));
                 scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));
                 return true;
             }
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, doubled);
     }
+
+    @Override
+    public boolean mouseDragged(net.minecraft.client.gui.Click click, double offsetX, double offsetY) {
+        double mouseY = click.y();
+
+        if (isScrolling) {
+            int currentMouseY = (int) mouseY;
+            if (currentMouseY != lastMouseY) {
+                float dragPercentage = (float) (currentMouseY - lastMouseY) / Math.max(1, (scrollAreaHeight - scrollBarHeight));
+                int scrollAmount = (int) (dragPercentage * (totalContentHeight - scrollAreaHeight));
+
+                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset + scrollAmount));
+                lastMouseY = currentMouseY;
+            }
+            return true;
+        }
+
+        return super.mouseDragged(click, offsetX, offsetY);
+    }
+
+    @Override
+    public boolean mouseReleased(net.minecraft.client.gui.Click click) {
+        if (click.button() == 0 && isScrolling) {
+            isScrolling = false;
+            return true;
+        }
+        return super.mouseReleased(click);
+    }
+
+
 
     private int getVisibleIndexAtY(double mouseY) {
         int y = scrollAreaY - scrollOffset;
@@ -329,38 +364,6 @@ public class ConfirmationDeleteScreen extends Screen {
         }
 
         return -1;
-    }
-
-    @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-        if (isScrolling) {
-            if (mouseY != lastMouseY) {
-                // Calculate how far we've dragged as a percentage of the scroll area
-                float dragPercentage = (float)(mouseY - lastMouseY) / (scrollAreaHeight - scrollBarHeight);
-
-                // Convert that to a scroll amount
-                int scrollAmount = (int)(dragPercentage * (totalContentHeight - scrollAreaHeight));
-
-                // Update scroll position
-                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight,
-                        scrollOffset + scrollAmount));
-
-                lastMouseY = (int) mouseY;
-            }
-            return true;
-        }
-
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
-    }
-
-    @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && isScrolling) {
-            isScrolling = false;
-            return true;
-        }
-
-        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override

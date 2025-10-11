@@ -1,11 +1,15 @@
 package com.choculaterie.gui;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.input.CharInput;
+import net.minecraft.client.input.KeyInput;
 import net.minecraft.text.Text;
+import org.lwjgl.glfw.GLFW;
 
 import java.io.File;
 import java.util.function.Consumer;
@@ -30,20 +34,18 @@ public class RenameItemSceen extends Screen {
 
     @Override
     protected void init() {
-        // Add confirm and cancel buttons
         int buttonWidth = 100;
         int spacing = 10;
 
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Confirm"), button -> {
             renameFile();
-        }).dimensions(this.width / 2 - buttonWidth - spacing/2, this.height / 2 + 40, buttonWidth, 20).build());
+        }).dimensions(this.width / 2 - buttonWidth - spacing / 2, this.height / 2 + 40, buttonWidth, 20).build());
 
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), button -> {
             MinecraftClient.getInstance().setScreen(parent);
             callback.accept(false);
-        }).dimensions(this.width / 2 + spacing/2, this.height / 2 + 40, buttonWidth, 20).build());
+        }).dimensions(this.width / 2 + spacing / 2, this.height / 2 + 40, buttonWidth, 20).build());
 
-        // Create text field for the new name
         int fieldWidth = 300;
         nameField = new TextFieldWidget(
                 this.textRenderer,
@@ -54,18 +56,13 @@ public class RenameItemSceen extends Screen {
                 Text.literal("")
         );
 
-        // Always put the complete original filename in the text field
         nameField.setText(originalFileName);
         nameField.setMaxLength(255);
 
-        // Selection behavior: for files with extensions, select only the name part
-        // This doesn't change the text content, only what part is selected
         if (fileToRename.isDirectory() || !originalFileName.contains(".")) {
-            // For directories or files without extensions, select all text
             nameField.setSelectionStart(0);
             nameField.setSelectionEnd(originalFileName.length());
         } else {
-            // For files with extensions, select only the name part before extension
             nameField.setSelectionStart(0);
             nameField.setSelectionEnd(originalFileName.lastIndexOf('.'));
         }
@@ -78,22 +75,17 @@ public class RenameItemSceen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-
-
         super.render(context, mouseX, mouseY, delta);
-        // Draw title
+
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 20, 0xFFFFFF);
 
-        // Draw instructions - simplified to avoid duplicating the filename
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal("Enter a new name:"),
                 this.width / 2, this.height / 2 - 30, 0xFFCCCCCC);
 
-        // Draw file type info
         String typeInfo = fileToRename.isDirectory() ? "Folder" : "File";
         context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(typeInfo),
                 this.width / 2, this.height / 2 - 45, 0xFFAAAAAA);
 
-        // Draw error message if present
         if (errorMessage != null && System.currentTimeMillis() - errorDisplayTime < 3000) {
             context.drawCenteredTextWithShadow(
                     this.textRenderer,
@@ -103,35 +95,59 @@ public class RenameItemSceen extends Screen {
                     0xFFFF5555
             );
         }
+    }
 
+    // New input API overrides (1.21+)
 
+    @Override
+    public boolean mouseClicked(Click click, boolean doubled) {
+        // Your existing logic using click.x(), click.y(), click.button()
+        return super.mouseClicked(click, doubled);
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == 257 || keyCode == 335) { // Enter key
+    public boolean mouseDragged(Click click, double offsetX, double offsetY) {
+        // Your existing logic
+        return super.mouseDragged(click, offsetX, offsetY);
+    }
+
+    @Override
+    public boolean mouseReleased(Click click) {
+        // Your existing logic using click.button()
+        return super.mouseReleased(click);
+    }
+
+    @Override
+    public boolean keyPressed(KeyInput input) {
+        // Confirm rename on Enter and KP\_Enter
+        int key = input.key();
+        if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
             renameFile();
             return true;
         }
-        if (keyCode == 256) { // Escape key
-            MinecraftClient.getInstance().setScreen(parent);
-            callback.accept(false);
-            return true;
-        }
+        // Defer Escape, Tab/Arrow navigation, and focused element handling to parent
+        return super.keyPressed(input);
+    }
 
-        return super.keyPressed(keyCode, scanCode, modifiers);
+
+    @Override
+    public boolean keyReleased(KeyInput input) {
+        return super.keyReleased(input);
+    }
+
+    @Override
+    public boolean charTyped(CharInput input) {
+        return super.charTyped(input);
     }
 
     private void renameFile() {
         String newName = nameField.getText().trim();
 
-        // Validate new name
         if (newName.isEmpty()) {
             showError("Name cannot be empty");
             return;
         }
 
-        // Check for invalid characters
         if (newName.contains("/") || newName.contains("\\") || newName.contains(":") ||
                 newName.contains("*") || newName.contains("?") || newName.contains("\"") ||
                 newName.contains("<") || newName.contains(">") || newName.contains("|")) {
@@ -139,14 +155,12 @@ public class RenameItemSceen extends Screen {
             return;
         }
 
-        // If name didn't change, just return to parent
         if (newName.equals(originalFileName)) {
             MinecraftClient.getInstance().setScreen(parent);
             callback.accept(false);
             return;
         }
 
-        // Attempt rename
         File newFile = new File(fileToRename.getParentFile(), newName);
         if (newFile.exists()) {
             showError("A file with this name already exists");

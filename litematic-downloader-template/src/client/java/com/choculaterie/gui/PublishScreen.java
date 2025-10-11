@@ -369,46 +369,44 @@ public class PublishScreen extends Screen {
         }
 
         @Override
-        public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-            if (keyCode == InputUtil.GLFW_KEY_ENTER) {
-                // Allow Enter to add line breaks by inserting newline character
+        public boolean keyPressed(net.minecraft.client.input.KeyInput input) {
+            int key = input.key();
+
+            // Insert newline on Enter / KP_Enter
+            if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER || key == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER) {
                 String currentText = this.getText();
                 int cursorPos = this.getCursor();
                 String newText = currentText.substring(0, cursorPos) + "\n" + currentText.substring(cursorPos);
                 this.setText(newText);
                 this.setCursor(cursorPos + 1, false);
                 return true;
-            } else if (keyCode == InputUtil.GLFW_KEY_BACKSPACE) {
-                // Handle backspace to remove empty lines
+            }
+
+            // Smart backspace handling for empty lines
+            if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) {
                 String currentText = this.getText();
                 int cursorPos = this.getCursor();
 
-                if (cursorPos > 0) {
-                    // If we're at the start of a line and the previous character is a newline
-                    if (cursorPos > 0 && currentText.charAt(cursorPos - 1) == '\n') {
-                        // Check if the current line is empty
-                        String beforeCursor = currentText.substring(0, cursorPos);
-                        String afterCursor = currentText.substring(cursorPos);
+                if (cursorPos > 0 && currentText.charAt(cursorPos - 1) == '\n') {
+                    String beforeCursor = currentText.substring(0, cursorPos);
+                    String afterCursor = currentText.substring(cursorPos);
 
-                        // Find if we're on an empty line
-                        int currentLineStart = beforeCursor.lastIndexOf('\n') + 1;
-                        int nextLineEnd = afterCursor.indexOf('\n');
-                        if (nextLineEnd == -1) nextLineEnd = afterCursor.length();
+                    int currentLineStart = beforeCursor.lastIndexOf('\n') + 1;
+                    int nextLineEnd = afterCursor.indexOf('\n');
+                    if (nextLineEnd == -1) nextLineEnd = afterCursor.length();
 
-                        String currentLineContent = currentText.substring(currentLineStart, cursorPos + nextLineEnd);
+                    String currentLineContent = currentText.substring(currentLineStart, cursorPos + nextLineEnd);
 
-                        // If current line is empty (just the newline we're about to delete)
-                        if (currentLineContent.trim().isEmpty() || currentLineContent.equals("\n")) {
-                            // Remove the newline character
-                            String newText = beforeCursor.substring(0, beforeCursor.length() - 1) + afterCursor;
-                            this.setText(newText);
-                            this.setCursor(cursorPos - 1, false);
-                            return true;
-                        }
+                    if (currentLineContent.trim().isEmpty() || currentLineContent.equals("\n")) {
+                        String newText = beforeCursor.substring(0, beforeCursor.length() - 1) + afterCursor;
+                        this.setText(newText);
+                        this.setCursor(cursorPos - 1, false);
+                        return true;
                     }
                 }
             }
-            return super.keyPressed(keyCode, scanCode, modifiers);
+
+            return super.keyPressed(input);
         }
 
         @Override
@@ -1600,17 +1598,23 @@ public class PublishScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Handle Enter key in tags field
-        if (tagsField.isFocused() && keyCode == InputUtil.GLFW_KEY_ENTER) {
-            addTagFromField();
-            return true;
+    public boolean keyPressed(net.minecraft.client.input.KeyInput input) {
+        if (this.tagsField != null && this.tagsField.isFocused()) {
+            int key = input.key();
+            if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER || key == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER) {
+                addTagFromField();
+                return true;
+            }
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(input);
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
         // Handle tag badge removal - use same positioning logic as rendering
         if (button == 0) {
             int centerX = this.width / 2;
@@ -1634,7 +1638,7 @@ public class PublishScreen extends Screen {
 
                     // Check if X button was clicked
                     if (mouseX >= badgeX + badgeWidth - 12 && mouseX <= badgeX + badgeWidth - 4 &&
-                        mouseY >= badgeY + 4 && mouseY <= badgeY + 12) {
+                            mouseY >= badgeY + 4 && mouseY <= badgeY + 12) {
                         tagBadges.remove(tag);
                         ToastManager.addToast("Tag \"" + tag + "\" removed", false);
                         this.init(); // Refresh UI to update badge display
@@ -1665,7 +1669,7 @@ public class PublishScreen extends Screen {
                     if (mouseX >= x && mouseX <= x + previewSize &&
                             mouseY >= y && mouseY <= y + previewSize) {
                         selectedCoverImageIndex = i;
-                        ToastManager.addToast("Set image " + (i+1) + " as cover", false);
+                        ToastManager.addToast("Set image " + (i + 1) + " as cover", false);
                         return true;
                     }
                 }
@@ -1685,30 +1689,31 @@ public class PublishScreen extends Screen {
             // Check if click is in scroll area but not on the handle (jump scroll)
             if (mouseX >= scrollBarX && mouseX <= scrollBarX + 6 &&
                     mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
-                float clickPercent = ((float)mouseY - scrollAreaY) / scrollAreaHeight;
-                scrollOffset = (int)(clickPercent * (totalContentHeight - scrollAreaHeight));
+                float clickPercent = ((float) mouseY - scrollAreaY) / scrollAreaHeight;
+                scrollOffset = (int) (clickPercent * (totalContentHeight - scrollAreaHeight));
                 scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));
                 this.init();
                 return true;
             }
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, doubled);
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+    public boolean mouseDragged(net.minecraft.client.gui.Click click, double offsetX, double offsetY) {
+        double mouseY = click.y();
+
         if (isScrolling) {
             if (mouseY != lastMouseY) {
                 // Calculate how far we've dragged as a percentage of the scroll area
-                float dragPercentage = (float)(mouseY - lastMouseY) / (scrollAreaHeight - scrollBarHeight);
+                float dragPercentage = (float) (mouseY - lastMouseY) / (scrollAreaHeight - scrollBarHeight);
 
                 // Convert that to a scroll amount
-                int scrollAmount = (int)(dragPercentage * (totalContentHeight - scrollAreaHeight));
+                int scrollAmount = (int) (dragPercentage * (totalContentHeight - scrollAreaHeight));
 
                 // Update scroll position
-                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight,
-                        scrollOffset + scrollAmount));
+                scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset + scrollAmount));
 
                 lastMouseY = (int) mouseY;
 
@@ -1718,15 +1723,15 @@ public class PublishScreen extends Screen {
             return true;
         }
 
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(click, offsetX, offsetY);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0) {
+    public boolean mouseReleased(net.minecraft.client.gui.Click click) {
+        if (click.button() == 0) {
             isScrolling = false;
         }
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 
     @Override

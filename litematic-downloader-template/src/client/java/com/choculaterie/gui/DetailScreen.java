@@ -816,9 +816,13 @@ public class DetailScreen extends Screen {
     private int lastMouseY;
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
         if (button == 0 && this.totalContentHeight > this.scrollAreaHeight) { // Left click
-            // Check if click is on scroll bar
+            // Check if click is on scroll bar handle
             if (mouseX >= this.scrollBarX && mouseX <= this.scrollBarX + 6 &&
                     mouseY >= this.scrollBarY && mouseY <= this.scrollBarY + this.scrollBarHeight) {
 
@@ -827,51 +831,58 @@ public class DetailScreen extends Screen {
                 return true;
             }
 
-            // Check if click is in scroll area but not on the handle (jump scroll)
+            // Check if click is on the scroll bar track (jump scroll)
             if (mouseX >= this.scrollBarX && mouseX <= this.scrollBarX + 6 &&
                     mouseY >= this.scrollAreaY && mouseY <= this.scrollAreaY + this.scrollAreaHeight) {
 
-                // Calculate new scroll position based on click location
-                float clickPercent = ((float)mouseY - this.scrollAreaY) / this.scrollAreaHeight;
-                this.descriptionScrollPos = (int)(clickPercent * (this.totalContentHeight - this.scrollAreaHeight));
+                int denom = Math.max(1, this.scrollAreaHeight);
+                float clickPercent = ((float) mouseY - this.scrollAreaY) / denom;
+                this.descriptionScrollPos = (int) (clickPercent * (this.totalContentHeight - this.scrollAreaHeight));
                 this.descriptionScrollPos = Math.max(0, Math.min(this.totalContentHeight - this.scrollAreaHeight, this.descriptionScrollPos));
                 return true;
             }
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, doubled);
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+    public boolean mouseDragged(net.minecraft.client.gui.Click click, double offsetX, double offsetY) {
+        double mouseY = click.y();
+
         if (this.isScrolling) {
-            if (mouseY != this.lastMouseY) {
-                // Calculate how far we've dragged as a percentage of the scroll area
-                float dragPercentage = (float)(mouseY - this.lastMouseY) / (this.scrollAreaHeight - this.scrollBarHeight);
+            int currentMouseY = (int) mouseY;
+            if (currentMouseY != this.lastMouseY) {
+                int denom = Math.max(1, this.scrollAreaHeight - this.scrollBarHeight);
+                float dragPercentage = (float) (currentMouseY - this.lastMouseY) / denom;
+                int scrollAmount = (int) (dragPercentage * (this.totalContentHeight - this.scrollAreaHeight));
 
-                // Convert that to a scroll amount
-                int scrollAmount = (int)(dragPercentage * (this.totalContentHeight - this.scrollAreaHeight));
+                this.descriptionScrollPos = Math.max(
+                        0,
+                        Math.min(this.totalContentHeight - this.scrollAreaHeight, this.descriptionScrollPos + scrollAmount)
+                );
 
-                // Update scroll position
-                this.descriptionScrollPos = Math.max(0, Math.min(this.totalContentHeight - this.scrollAreaHeight,
-                        this.descriptionScrollPos + scrollAmount));
-
-                this.lastMouseY = (int) mouseY;
+                this.lastMouseY = currentMouseY;
             }
             return true;
         }
 
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(click, offsetX, offsetY);
     }
 
+
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    public boolean mouseReleased(net.minecraft.client.gui.Click click) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
         if (button == 0 && this.isScrolling) {
             this.isScrolling = false;
             return true;
         }
 
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 
     @Override
@@ -881,18 +892,24 @@ public class DetailScreen extends Screen {
                 mouseY >= this.scrollAreaY && mouseY <= this.scrollAreaY + this.scrollAreaHeight) {
 
             if (this.totalContentHeight > this.scrollAreaHeight) {
-                // Calculate scroll amount (10 pixels per mouse wheel tick)
-                int scrollAmount = (int)(-verticalAmount * 20);
+                // Use vertical wheel delta; fall back to horizontal if vertical is zero
+                double amount = verticalAmount != 0.0 ? verticalAmount : horizontalAmount;
 
-                // Update scroll position
-                this.descriptionScrollPos = Math.max(0, Math.min(this.totalContentHeight - this.scrollAreaHeight,
-                        this.descriptionScrollPos + scrollAmount));
+                // Calculate scroll amount (20 pixels per mouse wheel tick)
+                int scrollAmount = (int) (-amount * 20);
+
+                // Update scroll position (clamped)
+                this.descriptionScrollPos = Math.max(
+                        0,
+                        Math.min(this.totalContentHeight - this.scrollAreaHeight, this.descriptionScrollPos + scrollAmount)
+                );
                 return true;
             }
         }
 
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
+
 
     // Helper method to properly encode URLs
     private String encodeImageUrl(String url) {
