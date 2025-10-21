@@ -176,6 +176,8 @@ public class MinemevDetailScreen extends Screen {
                 imageUrls = postDetail.getImages();
                 currentImageIndex = 0;
                 loadCoverImage(imageUrls[currentImageIndex]);
+                // Preload all images for this post
+                preloadImages(imageUrls);
             } else {
                 String imgUrl = postDetail.getThumbnailUrl();
                 if (imgUrl != null && !imgUrl.isEmpty()) loadCoverImage(imgUrl);
@@ -203,6 +205,8 @@ public class MinemevDetailScreen extends Screen {
                         imageUrls = detail.getImages();
                         currentImageIndex = 0;
                         loadCoverImage(imageUrls[currentImageIndex]);
+                        // Preload all images for this post (background)
+                        preloadImages(imageUrls);
                     } else {
                         String imgUrl = detail.getThumbnailUrl();
                         if ((imgUrl == null || imgUrl.isEmpty()) && detail.getImages() != null && detail.getImages().length > 0) {
@@ -223,6 +227,74 @@ public class MinemevDetailScreen extends Screen {
                 });
             }
         }).start();
+    }
+
+    // Preload all images for a post in background and put them into CacheManager so navigation is instant
+    private void preloadImages(String[] urls) {
+        if (urls == null || urls.length == 0) return;
+        for (String url : urls) {
+            if (url == null || url.isEmpty()) continue;
+            // Skip if already cached and valid
+            try {
+                if (cacheManager != null && cacheManager.hasValidImageCache(url, DETAIL_CACHE_DURATION_MS)) continue;
+            } catch (Exception ignored) {}
+
+            // Spawn a background thread to download and register each image
+            new Thread(() -> {
+                try {
+                    String encodedUrl = encodeImageUrl(url);
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create(encodedUrl))
+                            .GET()
+                            .build();
+                    HttpResponse<byte[]> response = LitematicHttpClient.getClient().send(request, HttpResponse.BodyHandlers.ofByteArray());
+                    if (response.statusCode() != 200) return;
+                    byte[] imageData = response.body();
+                    if (imageData == null || imageData.length < 100) return; // skip tiny/corrupt
+                    String detectedFormat = detectImageFormat(imageData);
+
+                    MinecraftClient.getInstance().execute(() -> {
+                        try {
+                            // If another thread already cached it while we were waiting, skip
+                            try {
+                                if (cacheManager != null && cacheManager.hasValidImageCache(url, DETAIL_CACHE_DURATION_MS)) return;
+                            } catch (Exception ignore) {}
+
+                            String uniqueId = UUID.randomUUID().toString().replace("-", "");
+                            Identifier texId = Identifier.of("minecraft", "textures/dynamic/" + uniqueId);
+
+                            NativeImage nativeImage;
+                            try {
+                                byte[] processed = convertImageToPng(imageData, detectedFormat);
+                                nativeImage = NativeImage.read(new ByteArrayInputStream(processed));
+                                if (nativeImage.getWidth() <= 0 || nativeImage.getHeight() <= 0) {
+                                    nativeImage.close();
+                                    nativeImage = createPlaceholderImage(256, 256, "Invalid dims");
+                                } else if (nativeImage.getWidth() > 4096 || nativeImage.getHeight() > 4096) {
+                                    nativeImage.close();
+                                    nativeImage = createPlaceholderImage(256, 256, "Too large");
+                                }
+                            } catch (Exception e) {
+                                nativeImage = createPlaceholderImage(256, 256, "Unsupported");
+                            }
+
+                            if (nativeImage != null) {
+                                MinecraftClient.getInstance().getTextureManager().registerTexture(
+                                        texId,
+                                        new NativeImageBackedTexture(() -> "minemev_preload_image", nativeImage)
+                                );
+                                // Put into cache
+                                try {
+                                    if (cacheManager != null) cacheManager.putImageCache(url, texId);
+                                } catch (Exception ignore) {}
+                            }
+                        } catch (Exception ignored) {
+                        }
+                    });
+                } catch (Exception ignored) {
+                }
+            }).start();
+        }
     }
 
     private void loadFilesList() {
@@ -301,6 +373,23 @@ public class MinemevDetailScreen extends Screen {
             coverImageTexture = null;
             return;
         }
+
+        // Check image cache first (do not preload; only use cached textures if present and valid)
+        final long IMAGE_CACHE_DURATION_MS = DETAIL_CACHE_DURATION_MS;
+        try {
+            if (cacheManager != null && cacheManager.hasValidImageCache(imageUrl, IMAGE_CACHE_DURATION_MS)) {
+                CacheManager.ImageCacheEntry cached = cacheManager.getImageCache(imageUrl);
+                if (cached != null && cached.getTextureId() != null) {
+                    coverImageTexture = cached.getTextureId();
+                    isImageLoading = false;
+                    System.out.println("Using cached Minemev image texture for URL: " + imageUrl);
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Minemev image cache check failed: " + e.getMessage());
+        }
+
         isImageLoading = true;
         new Thread(() -> {
             try {
@@ -331,7 +420,6 @@ public class MinemevDetailScreen extends Screen {
                         String uniqueId = UUID.randomUUID().toString().replace("-", "");
                         coverImageTexture = Identifier.of("minecraft", "textures/dynamic/" + uniqueId);
                         NativeImage nativeImage;
-                        boolean isPlaceholder = false;
 
                         try {
                             byte[] processed = convertImageToPng(imageData, detectedFormat);
@@ -340,17 +428,14 @@ public class MinemevDetailScreen extends Screen {
                                 ToastManager.addToast("Image has invalid dimensions", true);
                                 nativeImage.close();
                                 nativeImage = createPlaceholderImage(256, 256, "Invalid dims");
-                                isPlaceholder = true;
                             } else if (nativeImage.getWidth() > 4096 || nativeImage.getHeight() > 4096) {
                                 ToastManager.addToast("Image too large", true);
                                 nativeImage.close();
                                 nativeImage = createPlaceholderImage(256, 256, "Too large");
-                                isPlaceholder = true;
                             }
                         } catch (Exception e) {
                             ToastManager.addToast("Could not load " + detectedFormat + " image", true);
                             nativeImage = createPlaceholderImage(256, 256, "Unsupported");
-                            isPlaceholder = true;
                         }
 
                         if (nativeImage != null) {
@@ -360,6 +445,11 @@ public class MinemevDetailScreen extends Screen {
                                     coverImageTexture,
                                     new NativeImageBackedTexture(() -> "minemev_cover_image", nativeImage)
                             );
+
+                            // Store into image cache for later reuse (no preloading)
+                            try {
+                                if (cacheManager != null) cacheManager.putImageCache(imageUrl, coverImageTexture);
+                            } catch (Exception ignore) {}
                         }
                     } catch (Exception e) {
                         ToastManager.addToast("Failed to process image", true);

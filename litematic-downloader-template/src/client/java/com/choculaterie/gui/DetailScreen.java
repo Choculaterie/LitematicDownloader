@@ -252,6 +252,22 @@ public class DetailScreen extends Screen {
             return;
         }
 
+        // Check image cache first (do not preload; only use cached textures if present and valid)
+        final long IMAGE_CACHE_DURATION_MS = DETAIL_CACHE_DURATION_MS;
+        try {
+            if (cacheManager != null && cacheManager.hasValidImageCache(imageUrl, IMAGE_CACHE_DURATION_MS)) {
+                CacheManager.ImageCacheEntry cached = cacheManager.getImageCache(imageUrl);
+                if (cached != null && cached.getTextureId() != null) {
+                    coverImageTexture = cached.getTextureId();
+                    isImageLoading = false;
+                    System.out.println("Using cached image texture for URL: " + imageUrl);
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Image cache check failed: " + e.getMessage());
+        }
+
         System.out.println("Loading cover image from URL: " + imageUrl);
         isImageLoading = true;
 
@@ -314,71 +330,49 @@ public class DetailScreen extends Screen {
 
                         // Try to read the image and handle potential format exceptions
                         NativeImage nativeImage;
-                        boolean isPlaceholder = false;
-                        String placeholderReason = "";
 
                         try {
-                            // Try to convert different formats to PNG first if needed
-                            byte[] processedImageData = convertImageToPng(imageData, detectedFormat);
-                            nativeImage = NativeImage.read(new ByteArrayInputStream(processedImageData));
-
-                            // Additional validation: check if image dimensions are reasonable
+                            byte[] processed = convertImageToPng(imageData, detectedFormat);
+                            nativeImage = NativeImage.read(new ByteArrayInputStream(processed));
                             if (nativeImage.getWidth() <= 0 || nativeImage.getHeight() <= 0) {
-                                System.err.println("Invalid image dimensions: " + nativeImage.getWidth() + "x" + nativeImage.getHeight());
                                 ToastManager.addToast("Image has invalid dimensions", true);
                                 nativeImage.close();
-                                nativeImage = createPlaceholderImage(256, 256, "Invalid dimensions");
-                                isPlaceholder = true;
-                                placeholderReason = "Invalid image dimensions";
+                                nativeImage = createPlaceholderImage(256, 256, "Invalid dims");
                             } else if (nativeImage.getWidth() > 4096 || nativeImage.getHeight() > 4096) {
-                                System.err.println("Image too large: " + nativeImage.getWidth() + "x" + nativeImage.getHeight());
-                                ToastManager.addToast("Image too large (" + nativeImage.getWidth() + "x" + nativeImage.getHeight() + ")", true);
+                                ToastManager.addToast("Image too large", true);
                                 nativeImage.close();
-                                nativeImage = createPlaceholderImage(256, 256, "Image too large");
-                                isPlaceholder = true;
-                                placeholderReason = "Image too large (" + nativeImage.getWidth() + "x" + nativeImage.getHeight() + ")";
+                                nativeImage = createPlaceholderImage(256, 256, "Too large");
                             }
                         } catch (Exception e) {
-                            System.err.println("Error loading image (corrupted or unsupported format '" + detectedFormat + "'): " + e.getMessage());
-                            ToastManager.addToast("Could not load " + detectedFormat + " image: " + getSimpleErrorMessage(e.getMessage()), true);
-                            nativeImage = createPlaceholderImage(256, 256, "Image corrupted");
-                            isPlaceholder = true;
-                            placeholderReason = "Image corrupted (" + e.getMessage() + ")";
+                            ToastManager.addToast("Could not load " + detectedFormat + " image", true);
+                            nativeImage = createPlaceholderImage(256, 256, "Unsupported");
                         }
 
-                        // Store image dimensions and register texture
                         if (nativeImage != null) {
                             imageWidth = nativeImage.getWidth();
                             imageHeight = nativeImage.getHeight();
-
-                            // Register the texture with Minecraft's texture manager
                             MinecraftClient.getInstance().getTextureManager().registerTexture(
                                     coverImageTexture,
                                     new NativeImageBackedTexture(() -> "cover_image", nativeImage)
                             );
 
-                            if (isPlaceholder) {
-                                System.out.println("Placeholder image created due to: " + placeholderReason + " (" + imageWidth + "x" + imageHeight + ")");
-                            } else {
-                                System.out.println("Cover image loaded successfully (" + detectedFormat + "): " + imageWidth + "x" + imageHeight);
-                            }
+                            // Store the registered texture in the image cache for future use (no preloading)
+                            try {
+                                if (cacheManager != null) cacheManager.putImageCache(imageUrl, coverImageTexture);
+                            } catch (Exception ignore) {}
                         }
                     } catch (Exception e) {
-                        System.err.println("Failed to process downloaded image: " + e.getMessage());
                         ToastManager.addToast("Failed to process image", true);
-                        e.printStackTrace();
                         coverImageTexture = null;
                     }
-                    isImageLoading = false;
                 });
-
             } catch (Exception e) {
-                System.err.println("Failed to download cover image: " + e.getMessage());
                 MinecraftClient.getInstance().execute(() -> {
                     ToastManager.addToast("Failed to load image", true);
                     createAndRegisterPlaceholder("Download failed");
                 });
-                e.printStackTrace();
+            } finally {
+                isImageLoading = false;
             }
         }).start();
     }

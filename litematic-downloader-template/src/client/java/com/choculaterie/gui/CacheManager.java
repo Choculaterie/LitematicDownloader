@@ -6,6 +6,7 @@ import com.choculaterie.models.MinemevPostDetailInfo;
 import com.choculaterie.networking.LitematicHttpClient;
 import it.unimi.dsi.fastutil.objects.ReferenceImmutableList;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.util.Identifier;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,6 +26,9 @@ public class CacheManager {
 
     // New: Cache for Minemev detailed information
     private final Map<String, MinemevDetailCacheEntry> minemevDetailCache = new HashMap<>();
+
+    // New: Cache for downloaded images (keyed by URL)
+    private final Map<String, ImageCacheEntry> imageCache = new HashMap<>();
 
     // Static initialization flag to prevent multiple pre-loading
     private static boolean hasPreloaded = false;
@@ -172,12 +176,39 @@ public class CacheManager {
         System.out.println("Cleared Minemev detail cache for " + uuid);
     }
 
+    // New: Image cache methods (store registered texture Identifier keyed by image URL)
+    public boolean hasValidImageCache(String imageUrl, long maxAge) {
+        ImageCacheEntry entry = imageCache.get(imageUrl);
+        return entry != null && !entry.isExpired(maxAge);
+    }
+
+    public ImageCacheEntry getImageCache(String imageUrl) {
+        return imageCache.get(imageUrl);
+    }
+
+    public void putImageCache(String imageUrl, Identifier textureId) {
+        if (imageUrl == null || imageUrl.isEmpty() || textureId == null) return;
+        imageCache.put(imageUrl, new ImageCacheEntry(textureId));
+        System.out.println("Cached image texture for URL: " + imageUrl);
+    }
+
+    public void clearImageCache(String imageUrl) {
+        imageCache.remove(imageUrl);
+        System.out.println("Cleared image cache for URL: " + imageUrl);
+    }
+
+    public void clearAllImageCache() {
+        imageCache.clear();
+        System.out.println("Cleared ALL image cache entries");
+    }
+
     // Clear all cache
     public void clearAllCache() {
         schematicCache.clear();
         searchCache.clear();
         detailCache.clear();
         minemevDetailCache.clear();
+        imageCache.clear();
         System.out.println("Cleared ALL cache entries");
     }
 
@@ -189,15 +220,15 @@ public class CacheManager {
 
     // Get cache statistics
     public String getCacheStats() {
-        return String.format("Cache: %d pages, %d searches, %d details",
-                schematicCache.size(), searchCache.size(), detailCache.size());
+        return String.format("Cache: %d pages, %d searches, %d details, %d images",
+                schematicCache.size(), searchCache.size(), detailCache.size(), imageCache.size());
     }
 
     // Get cache statistics with detailed info
     public String getCacheStatsDetailed() {
         StringBuilder stats = new StringBuilder();
-        stats.append(String.format("Cache: %d pages, %d searches, %d details\n",
-                schematicCache.size(), searchCache.size(), detailCache.size()));
+        stats.append(String.format("Cache: %d pages, %d searches, %d details, %d images\n",
+                schematicCache.size(), searchCache.size(), detailCache.size(), imageCache.size()));
 
         // List cached pages
         if (!schematicCache.isEmpty()) {
@@ -305,6 +336,23 @@ public class CacheManager {
         }
 
         public MinemevPostDetailInfo getDetail() { return detail; }
+
+        public boolean isExpired(long maxAge) {
+            return System.currentTimeMillis() - timestamp > maxAge;
+        }
+    }
+
+    // New: Image cache entry
+    public static class ImageCacheEntry {
+        private final Identifier textureId;
+        private final long timestamp;
+
+        public ImageCacheEntry(Identifier textureId) {
+            this.textureId = textureId;
+            this.timestamp = System.currentTimeMillis();
+        }
+
+        public Identifier getTextureId() { return textureId; }
 
         public boolean isExpired(long maxAge) {
             return System.currentTimeMillis() - timestamp > maxAge;
