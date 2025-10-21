@@ -119,6 +119,15 @@ public class LitematicDownloaderScreen extends Screen {
     private @Nullable String fileDropdownPostId = null;
     private String fileDropdownBaseName = "";
 
+    // Add fields to track previous state for debug logging
+    private String lastPaginationText = "";
+    private boolean lastIsLoading = false;
+    private boolean lastSchematicsEmpty = true;
+    private int lastSchematicsSize = 0;
+    private int lastCurrentPage = 0;
+    private int lastTotalPages = 0;
+    private int lastTotalItems = 0;
+
     public LitematicDownloaderScreen() {
         super(Text.literal(""));
     }
@@ -476,77 +485,176 @@ public class LitematicDownloaderScreen extends Screen {
             return;
         }
 
+        // If there's already an active request for a different page, cancel it and start new one
         if (activeRequestPage != -1 && activeRequestPage != currentPage) {
-            System.out.println("Ignoring request for page " + currentPage + " - already loading page " + activeRequestPage);
-            return;
+            System.out.println("Cancelling request for page " + activeRequestPage + " to load page " + currentPage);
+            activeRequestPage = -1; // Cancel the previous request
         }
 
         cacheManager.debugPrintCachedPages();
 
-        // If we have cached Choculaterie data, prefer it and avoid re-fetching the Choc API.
-        // In CHOCULATERIE mode we simply load the cache. In BOTH mode we display cached Choc
-        // immediately and fetch the Minemev portion in the background to merge later.
+        // NEW: Check BOTH Choculaterie AND Minemev caches - use cache if BOTH are available
+        if (serverMode == ServerMode.BOTH) {
+            boolean hasChocCache = chocEnabled && cacheManager.hasValidSchematicCache(currentPage, CACHE_DURATION_MS);
+            boolean hasMinemevCache = mineEnabled && cacheManager.hasValidMinemevCache(currentPage, CACHE_DURATION_MS);
+
+            if (hasChocCache && hasMinemevCache) {
+                // Both caches available - merge them immediately
+                CacheManager.SchematicCacheEntry chocEntry = cacheManager.getSchematicCache(currentPage);
+                CacheManager.MinemevCacheEntry minemevEntry = cacheManager.getMinemevCache(currentPage);
+
+                if (!chocEntry.getItems().isEmpty() || !minemevEntry.getItems().isEmpty()) {
+                    System.out.println("Using cached data from BOTH sources for page " + currentPage);
+
+                    // Merge cached items
+                    List<SchematicInfo> merged = new ArrayList<>();
+                    merged.addAll(chocEntry.getItems());
+
+                    // Convert Minemev posts to SchematicInfo
+                    for (var post : minemevEntry.getItems()) {
+                        merged.add(new SchematicInfo(
+                                post.getUuid(),
+                                post.getTitle(),
+                                post.getDescription(),
+                                0,
+                                post.getDownloads(),
+                                post.getAuthor(),
+                                SchematicInfo.SourceServer.MINEMEV
+                        ));
+                    }
+
+                    schematics = new ReferenceImmutableList<>(merged);
+                    totalPages = Math.max(chocEntry.getTotalPages(), minemevEntry.getTotalPages());
+                    totalItems = chocEntry.getTotalItems() + minemevEntry.getTotalItems();
+                    updateScrollbarDimensions();
+                    System.out.println("Loaded " + schematics.size() + " items from BOTH caches for page " + currentPage);
+                    return;
+                }
+            }
+        }
+
+        // Check individual caches for single-source modes
         if (cacheManager.hasValidSchematicCache(currentPage, CACHE_DURATION_MS) && chocEnabled) {
             CacheManager.SchematicCacheEntry cachedEntry = cacheManager.getSchematicCache(currentPage);
-            System.out.println("Using cached Choculaterie data for page " + currentPage);
 
-            if (serverMode == ServerMode.CHOCULATERIE) {
-                schematics = cachedEntry.getItems();
-                totalPages = cachedEntry.getTotalPages();
-                totalItems = cachedEntry.getTotalItems();
-                updateScrollbarDimensions();
-                System.out.println("Loaded " + schematics.size() + " items from cache for page " + currentPage);
-                return;
-            }
+            // Only use cache if it has actual items, otherwise fall through to fetch from server
+            if (!cachedEntry.getItems().isEmpty()) {
+                System.out.println("Using cached Choculaterie data for page " + currentPage);
 
-            if (serverMode == ServerMode.BOTH) {
-                // Show cached Choc items immediately
-                schematics = cachedEntry.getItems();
-                totalPages = cachedEntry.getTotalPages();
-                totalItems = cachedEntry.getTotalItems();
-                updateScrollbarDimensions();
-                System.out.println("Displayed cached Choc items for page " + currentPage + " while merging Minemev in background");
-
-                // Fetch Minemev portion in background and merge when ready (non-blocking)
-                if (mineEnabled) {
-                    final CacheManager.SchematicCacheEntry ce = cachedEntry;
-                    new Thread(() -> {
-                        try {
-                            MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(null, null, null, "newest", currentPage);
-                            List<SchematicInfo> merged = new ArrayList<>();
-                            merged.addAll(ce.getItems());
-                            for (var post : mres.getPosts()) {
-                                merged.add(new SchematicInfo(
-                                        post.getUuid(),
-                                        post.getTitle(),
-                                        post.getDescription(),
-                                        0,
-                                        post.getDownloads(),
-                                        post.getAuthor(),
-                                        SchematicInfo.SourceServer.MINEMEV
-                                ));
-                            }
-
-                            ReferenceImmutableList<SchematicInfo> items = new ReferenceImmutableList<>(merged);
-                            int pagesChoc = Math.max(1, ce.getTotalPages());
-                            int pagesMine = Math.max(1, mres.getTotalPages());
-                            int finalPages = Math.max(pagesChoc, pagesMine);
-                            int finalTotal = ce.getTotalItems() + Math.max(mres.getTotalResults(), mres.getPosts().size());
-
-                            MinecraftClient.getInstance().execute(() -> {
-                                schematics = items;
-                                totalPages = finalPages;
-                                totalItems = finalTotal > 0 ? finalTotal : items.size();
-                                updateScrollbarDimensions();
-                                System.out.println("Merged Minemev items into cached Choc list for page " + currentPage);
-                            });
-                        } catch (Exception e) {
-                            System.err.println("Failed to fetch Minemev portion while merging cached Choc data: " + e.getMessage());
-                        }
-                    }).start();
+                if (serverMode == ServerMode.CHOCULATERIE) {
+                    schematics = cachedEntry.getItems();
+                    totalPages = cachedEntry.getTotalPages();
+                    totalItems = cachedEntry.getTotalItems();
+                    updateScrollbarDimensions();
+                    System.out.println("Loaded " + schematics.size() + " items from cache for page " + currentPage);
+                    return;
                 }
 
-                return;
+                // For BOTH mode, show cached Choc items and fetch Minemev in background (unchanged)
+                if (serverMode == ServerMode.BOTH) {
+                    schematics = cachedEntry.getItems();
+                    updateScrollbarDimensions();
+                    System.out.println("Displayed cached Choc items for page " + currentPage + " while merging Minemev in background");
+
+                    // Fetch Minemev portion in background and merge when ready (non-blocking)
+                    if (mineEnabled) {
+                        final CacheManager.SchematicCacheEntry ce = cachedEntry;
+                        final int requestedPage = currentPage; // Capture current page for this request
+                        new Thread(() -> {
+                            try {
+                                // Check if this request is still valid before making API call
+                                if (currentPage != requestedPage) {
+                                    System.out.println("Minemev merge cancelled - page changed from " + requestedPage + " to " + currentPage);
+                                    return;
+                                }
+
+                                MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(null, null, null, "newest", requestedPage);
+
+                                // Cache the Minemev result
+                                MinecraftClient.getInstance().execute(() -> {
+                                    cacheManager.putMinemevCache(mres);
+                                });
+
+                                List<SchematicInfo> merged = new ArrayList<>();
+                                merged.addAll(ce.getItems());
+                                for (var post : mres.getPosts()) {
+                                    merged.add(new SchematicInfo(
+                                            post.getUuid(),
+                                            post.getTitle(),
+                                            post.getDescription(),
+                                            0,
+                                            post.getDownloads(),
+                                            post.getAuthor(),
+                                            SchematicInfo.SourceServer.MINEMEV
+                                    ));
+                                }
+
+                                ReferenceImmutableList<SchematicInfo> items = new ReferenceImmutableList<>(merged);
+                                int pagesChoc = Math.max(1, ce.getTotalPages());
+                                int pagesMine = Math.max(1, mres.getTotalPages());
+                                int finalPages = Math.max(pagesChoc, pagesMine);
+                                int finalTotal = ce.getTotalItems() + Math.max(mres.getTotalResults(), mres.getPosts().size());
+
+                                MinecraftClient.getInstance().execute(() -> {
+                                    // Only update if we're still on the same page
+                                    if (currentPage == requestedPage) {
+                                        schematics = items;
+                                        totalPages = finalPages;
+                                        totalItems = finalTotal > 0 ? finalTotal : items.size();
+                                        updateScrollbarDimensions();
+                                        System.out.println("Merged Minemev items into cached Choc list for page " + requestedPage);
+                                    } else {
+                                        System.out.println("Discarded Minemev merge for page " + requestedPage + " - now on page " + currentPage);
+                                    }
+                                });
+                            } catch (Exception e) {
+                                System.err.println("Failed to fetch Minemev portion while merging cached Choc data: " + e.getMessage());
+                            }
+                        }).start();
+                    } else {
+                        // If Minemev is disabled, update pagination normally
+                        totalPages = cachedEntry.getTotalPages();
+                        totalItems = cachedEntry.getTotalItems();
+                    }
+
+                    return;
+                }
+            } else {
+                System.out.println("Cache entry exists but is empty for page " + currentPage + ", fetching from server...");
+            }
+        }
+
+        // NEW: Check Minemev cache for MINEMEV mode (same as Choculaterie above)
+        if (cacheManager.hasValidMinemevCache(currentPage, CACHE_DURATION_MS) && mineEnabled) {
+            CacheManager.MinemevCacheEntry cachedEntry = cacheManager.getMinemevCache(currentPage);
+
+            if (!cachedEntry.getItems().isEmpty()) {
+                System.out.println("Using cached Minemev data for page " + currentPage);
+
+                if (serverMode == ServerMode.MINEMEV) {
+                    // Convert cached Minemev posts to SchematicInfo
+                    List<SchematicInfo> converted = new ArrayList<>();
+                    for (var post : cachedEntry.getItems()) {
+                        converted.add(new SchematicInfo(
+                                post.getUuid(),
+                                post.getTitle(),
+                                post.getDescription(),
+                                0,
+                                post.getDownloads(),
+                                post.getAuthor(),
+                                SchematicInfo.SourceServer.MINEMEV
+                        ));
+                    }
+
+                    schematics = new ReferenceImmutableList<>(converted);
+                    totalPages = cachedEntry.getTotalPages();
+                    totalItems = cachedEntry.getTotalItems();
+                    updateScrollbarDimensions();
+                    System.out.println("Loaded " + schematics.size() + " Minemev items from cache for page " + currentPage);
+                    return;
+                }
+            } else {
+                System.out.println("Minemev cache entry exists but is empty for page " + currentPage + ", fetching from server...");
             }
         }
 
@@ -560,23 +668,42 @@ public class LitematicDownloaderScreen extends Screen {
         activeRequestPage = currentPage;
         lastRequestTime = currentTime;
 
-        schematics = new ReferenceImmutableList<>(new ArrayList<>());
-        updateScrollbarDimensions();
-        scrollOffset = 0;
+        // DON'T clear schematics immediately - preserve current display during loading
+        // The schematics will be updated when the new data arrives
+
+        // Reset scroll only if we're not preserving content
+        if (schematics.isEmpty()) {
+            scrollOffset = 0;
+        }
 
         isLoading = true;
         loadingStartTime = System.currentTimeMillis();
 
         final int requestedPage = currentPage;
+        final ReferenceImmutableList<SchematicInfo> previousSchematics = schematics; // Keep reference to current schematics
 
         new Thread(() -> {
             try {
+                // Check if this request is still valid before making API calls
+                if (activeRequestPage != requestedPage) {
+                    System.out.println("Request for page " + requestedPage + " cancelled - now loading page " + activeRequestPage);
+                    MinecraftClient.getInstance().execute(() -> isLoading = false);
+                    return;
+                }
+
                 List<SchematicInfo> merged = new ArrayList<>();
                 int pagesChoc = 1;
                 int pagesMine = 1;
                 int totalCount = 0;
 
                 if (serverMode == ServerMode.CHOCULATERIE) {
+                    // Check again before API call
+                    if (activeRequestPage != requestedPage) {
+                        System.out.println("Choculaterie request for page " + requestedPage + " cancelled before API call");
+                        MinecraftClient.getInstance().execute(() -> isLoading = false);
+                        return;
+                    }
+
                     // Use configured pageSize for Choculaterie-only
                     LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(requestedPage, pageSize, showUnverified);
                     merged.addAll(result.getItems());
@@ -584,8 +711,19 @@ public class LitematicDownloaderScreen extends Screen {
                     totalCount = result.getTotalItems();
                     cacheManager.putSchematicCache(result);
                 } else if (serverMode == ServerMode.MINEMEV) {
+                    // Check again before API call
+                    if (activeRequestPage != requestedPage) {
+                        System.out.println("Minemev request for page " + requestedPage + " cancelled before API call");
+                        MinecraftClient.getInstance().execute(() -> isLoading = false);
+                        return;
+                    }
+
                     // Minemev default page size is defined server-side (usually 10)
                     MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(null, null, null, "newest", requestedPage);
+
+                    // NEW: Cache the Minemev result (same as Choculaterie)
+                    cacheManager.putMinemevCache(mres);
+
                     for (var post : mres.getPosts()) {
                         merged.add(new SchematicInfo(
                                 post.getUuid(),
@@ -602,16 +740,37 @@ public class LitematicDownloaderScreen extends Screen {
                 } else { // BOTH
                     int chocPageSize = 10;
                     if (chocEnabled) {
+                        // Check before Choculaterie API call
+                        if (activeRequestPage != requestedPage) {
+                            System.out.println("BOTH mode Choculaterie request for page " + requestedPage + " cancelled");
+                            MinecraftClient.getInstance().execute(() -> isLoading = false);
+                            return;
+                        }
+
                         System.out.println("Fetching page " + requestedPage + " from Choculaterie (10 items)...");
                         LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(requestedPage, chocPageSize, showUnverified);
                         merged.addAll(result.getItems());
                         pagesChoc = Math.max(1, result.getTotalPages());
                         int chocTotal = result.getTotalItems();
                         totalCount += chocTotal;
+
+                        // Cache Choculaterie result
+                        cacheManager.putSchematicCache(result);
                     }
                     if (mineEnabled) {
+                        // Check before Minemev API call
+                        if (activeRequestPage != requestedPage) {
+                            System.out.println("BOTH mode Minemev request for page " + requestedPage + " cancelled");
+                            MinecraftClient.getInstance().execute(() -> isLoading = false);
+                            return;
+                        }
+
                         System.out.println("Fetching page " + requestedPage + " from Minemev (10 items)...");
                         MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(null, null, null, "newest", requestedPage);
+
+                        // NEW: Cache the Minemev result (same as Choculaterie)
+                        cacheManager.putMinemevCache(mres);
+
                         for (var post : mres.getPosts()) {
                             merged.add(new SchematicInfo(
                                     post.getUuid(),
@@ -636,7 +795,9 @@ public class LitematicDownloaderScreen extends Screen {
                 int finalTotal = totalCount > 0 ? totalCount : items.size();
 
                 MinecraftClient.getInstance().execute(() -> {
-                    if (activeRequestPage != requestedPage) {
+                    // Final check - only update if this request is still active and for the current page
+                    if (activeRequestPage != requestedPage || currentPage != requestedPage) {
+                        System.out.println("Discarding results for page " + requestedPage + " - current page is " + currentPage + ", active request is " + activeRequestPage);
                         isLoading = false;
                         return;
                     }
@@ -645,10 +806,13 @@ public class LitematicDownloaderScreen extends Screen {
                     totalPages = finalPages;
                     totalItems = finalTotal;
 
+                    // Reset scroll to top when new content is loaded
+                    scrollOffset = 0;
                     updateScrollbarDimensions();
                     isLoading = false;
                     activeRequestPage = -1;
 
+                    System.out.println("Successfully loaded page " + requestedPage + " with " + items.size() + " items");
                     cacheManager.debugPrintCachedPages();
                 });
             } catch (Exception e) {
@@ -656,7 +820,9 @@ public class LitematicDownloaderScreen extends Screen {
                 e.printStackTrace();
                 MinecraftClient.getInstance().execute(() -> {
                     isLoading = false;
-                    activeRequestPage = -1;
+                    if (activeRequestPage == requestedPage) {
+                        activeRequestPage = -1;
+                    }
                 });
             }
         }).start();
@@ -686,10 +852,66 @@ public class LitematicDownloaderScreen extends Screen {
         }
     }
 
+    // Helper method to check for state changes and log debug info only when needed
+    private void checkAndLogStateChanges() {
+        // Check pagination text changes
+        String currentPaginationText;
+        if (isSearchMode) {
+            currentPaginationText = "Found " + totalItems + " results";
+        } else {
+            currentPaginationText = "Page " + currentPage + " of " + totalPages + " (" + totalItems + " total)";
+        }
+
+        if (!currentPaginationText.equals(lastPaginationText)) {
+            System.out.println("DEBUG PAGINATION CHANGE: '" + lastPaginationText + "' -> '" + currentPaginationText + "'");
+            System.out.println("  currentPage: " + lastCurrentPage + " -> " + currentPage);
+            System.out.println("  totalPages: " + lastTotalPages + " -> " + totalPages);
+            System.out.println("  totalItems: " + lastTotalItems + " -> " + totalItems);
+            System.out.println("  isSearchMode: " + isSearchMode + ", serverMode: " + serverMode);
+            lastPaginationText = currentPaginationText;
+            lastCurrentPage = currentPage;
+            lastTotalPages = totalPages;
+            lastTotalItems = totalItems;
+        }
+
+        // Check loading/empty state changes
+        boolean currentSchematicsEmpty = schematics.isEmpty();
+        int currentSchematicsSize = schematics.size();
+
+        if (currentSchematicsEmpty != lastSchematicsEmpty ||
+            isLoading != lastIsLoading ||
+            currentSchematicsSize != lastSchematicsSize) {
+
+            System.out.println("DEBUG RENDER STATE CHANGE:");
+            System.out.println("  schematics.isEmpty(): " + lastSchematicsEmpty + " -> " + currentSchematicsEmpty);
+            System.out.println("  schematics.size(): " + lastSchematicsSize + " -> " + currentSchematicsSize);
+            System.out.println("  isLoading: " + lastIsLoading + " -> " + isLoading);
+            System.out.println("  isSearchMode: " + isSearchMode + ", serverMode: " + serverMode);
+
+            if (currentSchematicsEmpty) {
+                if (isLoading) {
+                    System.out.println("  -> Will display: 'Loading...'");
+                } else if (isSearchMode) {
+                    System.out.println("  -> Will display: 'No results found for: " + lastSearchedTerm + "'");
+                } else {
+                    System.out.println("  -> Will display: 'No schematics found'");
+                }
+            } else {
+                System.out.println("  -> Will display: " + currentSchematicsSize + " schematic items");
+            }
+
+            lastSchematicsEmpty = currentSchematicsEmpty;
+            lastSchematicsSize = currentSchematicsSize;
+            lastIsLoading = isLoading;
+        }
+    }
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
 
         super.render(context, mouseX, mouseY, delta);
+
+        // Check for state changes and log debug info only when values change
+        checkAndLogStateChanges();
 
         // Handle hover tracking for preloading
         handleHoverPreloading(mouseX, mouseY);
@@ -1407,7 +1629,7 @@ public class LitematicDownloaderScreen extends Screen {
 
         String uuid = schematic.getId();
         if (cacheManager.hasValidMinemevDetailCache(uuid, DETAIL_CACHE_DURATION_MS)) {
-            System.out.println("Skipping Minemev preload for " + uuid + " - already cached");
+            //System.out.println("Skipping Minemev preload for " + uuid + " - already cached");
             return;
         }
 
@@ -1451,7 +1673,7 @@ public class LitematicDownloaderScreen extends Screen {
 
         String schematicId = schematic.getId();
         if (cacheManager.hasValidDetailCache(schematicId, DETAIL_CACHE_DURATION_MS)) {
-            System.out.println("Skipping preload for " + schematicId + " - already cached");
+            //System.out.println("Skipping preload for " + schematicId + " - already cached");
             return;
         }
 
@@ -1565,22 +1787,24 @@ public class LitematicDownloaderScreen extends Screen {
                     System.out.println("Switching pagination preload from page " + preloadingPageNumber + " to " + targetPage);
                 }
 
-                // Check if target page is already cached
-                if (!cacheManager.hasValidSchematicCache(targetPage, CACHE_DURATION_MS)) {
+                // NEW: Check if we need to preload based on current server mode and what's already cached
+                boolean needsChoculateriePreload = chocEnabled && !cacheManager.hasValidSchematicCache(targetPage, CACHE_DURATION_MS);
+                boolean needsMinemevPreload = mineEnabled && !cacheManager.hasValidMinemevCache(targetPage, CACHE_DURATION_MS);
+
+                if (needsChoculateriePreload || needsMinemevPreload) {
                     startPaginationPreload(targetPage);
                 } else {
-                    System.out.println("Page " + targetPage + " already cached - no preload needed");
+                    //System.out.println("Page " + targetPage + " already fully cached - no preload needed");
                 }
             }
         } else {
             // Not hovering over any pagination button - reset state but don't cancel ongoing preloads
             // This prevents cancelling preloads when mouse briefly moves outside button bounds
-            // TODO(?)
         }
     }
 
     /**
-     * Start preloading a specific page for pagination
+     * Start preloading a specific page for pagination - now handles both sources
      */
     private void startPaginationPreload(int pageNumber) {
         if (pageNumber == currentPage) {
@@ -1600,18 +1824,55 @@ public class LitematicDownloaderScreen extends Screen {
                     return;
                 }
 
-                // Fetch and cache the target page
-                LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(pageNumber, pageSize, showUnverified);
+                // Determine what needs to be preloaded based on server mode and current cache state
+                boolean needsChoculateriePreload = chocEnabled && !cacheManager.hasValidSchematicCache(pageNumber, CACHE_DURATION_MS);
+                boolean needsMinemevPreload = mineEnabled && !cacheManager.hasValidMinemevCache(pageNumber, CACHE_DURATION_MS);
 
-                MinecraftClient.getInstance().execute(() -> {
-                    // Final check before caching
-                    if (isPreloadingPagination && preloadingPageNumber == pageNumber) {
-                        cacheManager.putSchematicCache(result);
-                        System.out.println("Successfully preloaded and cached page: " + pageNumber + " (" + result.getItems().size() + " items)");
-                    } else {
-                        System.out.println("Discarded pagination preload result for page " + pageNumber + " - cancelled");
+                // Preload Choculaterie if needed
+                if (needsChoculateriePreload) {
+                    if (!isPreloadingPagination || preloadingPageNumber != pageNumber) {
+                        System.out.println("Choculaterie pagination preload cancelled for page " + pageNumber);
+                        return;
                     }
 
+                    System.out.println("Preloading Choculaterie data for page " + pageNumber);
+                    LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(pageNumber, pageSize, showUnverified);
+
+                    MinecraftClient.getInstance().execute(() -> {
+                        if (isPreloadingPagination && preloadingPageNumber == pageNumber) {
+                            cacheManager.putSchematicCache(result);
+                            System.out.println("Successfully preloaded and cached Choculaterie page: " + pageNumber + " (" + result.getItems().size() + " items)");
+                        } else {
+                            System.out.println("Discarded Choculaterie pagination preload result for page " + pageNumber + " - cancelled");
+                        }
+                    });
+                } else if (chocEnabled) {
+                    System.out.println("Choculaterie page " + pageNumber + " already cached - skipping preload");
+                }
+
+                // Preload Minemev if needed
+                if (needsMinemevPreload) {
+                    if (!isPreloadingPagination || preloadingPageNumber != pageNumber) {
+                        System.out.println("Minemev pagination preload cancelled for page " + pageNumber);
+                        return;
+                    }
+
+                    System.out.println("Preloading Minemev data for page " + pageNumber);
+                    MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(null, null, null, "newest", pageNumber);
+
+                    MinecraftClient.getInstance().execute(() -> {
+                        if (isPreloadingPagination && preloadingPageNumber == pageNumber) {
+                            cacheManager.putMinemevCache(mres);
+                            System.out.println("Successfully preloaded and cached Minemev page: " + pageNumber + " (" + mres.getPosts().size() + " items)");
+                        } else {
+                            System.out.println("Discarded Minemev pagination preload result for page " + pageNumber + " - cancelled");
+                        }
+                    });
+                } else if (mineEnabled) {
+                    System.out.println("Minemev page " + pageNumber + " already cached - skipping preload");
+                }
+
+                MinecraftClient.getInstance().execute(() -> {
                     // Reset preload state only if this was the current preload
                     if (preloadingPageNumber == pageNumber) {
                         isPreloadingPagination = false;

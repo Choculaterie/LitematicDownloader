@@ -18,6 +18,9 @@ public class CacheManager {
     // Cache for paginated schematic lists
     private final Map<Integer, SchematicCacheEntry> schematicCache = new HashMap<>();
 
+    // NEW: Cache for paginated Minemev lists - same structure as Choculaterie
+    private final Map<Integer, MinemevCacheEntry> minemevCache = new HashMap<>();
+
     // Cache for search results
     private final Map<String, SearchCacheEntry> searchCache = new HashMap<>();
 
@@ -116,7 +119,35 @@ public class CacheManager {
         System.out.println("Cleared schematic cache for page " + page);
     }
 
-    // Search cache methods
+    // NEW: Minemev pagination cache methods - exact same as Choculaterie
+    public boolean hasValidMinemevCache(int page, long maxAge) {
+        MinemevCacheEntry entry = minemevCache.get(page);
+        return entry != null && !entry.isExpired(maxAge);
+    }
+
+    public MinemevCacheEntry getMinemevCache(int page) {
+        return minemevCache.get(page);
+    }
+
+    public void putMinemevCache(com.choculaterie.networking.MinemevHttpClient.MinemevSearchResult result) {
+        var cache = new MinemevCacheEntry(result);
+        int page = cache.getCurrentPage();
+        minemevCache.put(page, cache);
+        System.out.println("Cached Minemev page " + page + " (" + result.getPosts().size() + " items)");
+
+        // Debug: verify the cache is correct after insertion
+        MinemevCacheEntry verifyEntry = minemevCache.get(page);
+        if (verifyEntry != null) {
+            System.out.println("Minemev cache verification: Page " + page + " now has " + verifyEntry.getItems().size() + " items");
+        }
+    }
+
+    public void clearMinemevCache(int page) {
+        minemevCache.remove(page);
+        System.out.println("Cleared Minemev cache for page " + page);
+    }
+
+    // Cache for search results
     public boolean hasValidSearchCache(String searchTerm, long maxAge) {
         SearchCacheEntry entry = searchCache.get(searchTerm.toLowerCase());
         return entry != null && !entry.isExpired(maxAge);
@@ -205,6 +236,7 @@ public class CacheManager {
     // Clear all cache
     public void clearAllCache() {
         schematicCache.clear();
+        minemevCache.clear();
         searchCache.clear();
         detailCache.clear();
         minemevDetailCache.clear();
@@ -216,6 +248,12 @@ public class CacheManager {
     public void clearAllSchematicCache() {
         schematicCache.clear();
         System.out.println("Cleared ALL schematic page cache entries");
+    }
+
+    // Clear all Minemev cache (all pages)
+    public void clearAllMinemevCache() {
+        minemevCache.clear();
+        System.out.println("Cleared ALL Minemev page cache entries");
     }
 
     // Get cache statistics
@@ -284,6 +322,25 @@ public class CacheManager {
         public ReferenceImmutableList<SchematicInfo> getItems() { return result.getItems(); }
         public int getTotalPages() { return result.getTotalPages(); }
         public int getTotalItems() { return result.getTotalItems(); }
+        public int getCurrentPage() { return result.getCurrentPage(); }
+
+        public boolean isExpired(long maxAge) {
+            return System.currentTimeMillis() - timestamp > maxAge;
+        }
+    }
+
+    public static class MinemevCacheEntry {
+        private final com.choculaterie.networking.MinemevHttpClient.MinemevSearchResult result;
+        private final long timestamp;
+
+        public MinemevCacheEntry(com.choculaterie.networking.MinemevHttpClient.MinemevSearchResult result) {
+            this.result = result;
+            this.timestamp = System.currentTimeMillis();
+        }
+
+        public ReferenceImmutableList<com.choculaterie.models.MinemevPostInfo> getItems() { return result.getPosts(); }
+        public int getTotalPages() { return result.getTotalPages(); }
+        public int getTotalItems() { return result.getTotalResults(); }
         public int getCurrentPage() { return result.getCurrentPage(); }
 
         public boolean isExpired(long maxAge) {
