@@ -40,6 +40,7 @@ public class DetailScreen extends Screen {
     private Identifier coverImageTexture = null;
     private int imageWidth = 0;
     private int imageHeight = 0;
+    private boolean isImageLoading = false;
     private int descriptionScrollPos = 0; // Tracks the scroll position of the description
     private ButtonWidget backButton;
     private ButtonWidget downloadButton;
@@ -252,6 +253,7 @@ public class DetailScreen extends Screen {
         }
 
         System.out.println("Loading cover image from URL: " + imageUrl);
+        isImageLoading = true;
 
         // Load image from URL in background thread
         new Thread(() -> {
@@ -367,6 +369,7 @@ public class DetailScreen extends Screen {
                         e.printStackTrace();
                         coverImageTexture = null;
                     }
+                    isImageLoading = false;
                 });
 
             } catch (Exception e) {
@@ -684,17 +687,12 @@ public class DetailScreen extends Screen {
                         leftSectionWidth,
                         leftSectionWidth
                 );
+            } else if (isImageLoading) {
+                int centerX = padding + leftSectionWidth / 2;
+                int centerY = topMargin + leftSectionWidth / 2;
+                drawLoadingAnimation(context, centerX, centerY);
             } else {
-                // Draw a placeholder rectangle when no image is available
-                context.fill(
-                        padding,
-                        topMargin,
-                        padding + leftSectionWidth,
-                        topMargin + leftSectionWidth,
-                        0x33FFFFFF
-                );
-
-                // Draw "No Image" text in the center of the placeholder
+                context.fill(padding, topMargin, padding + leftSectionWidth, topMargin + leftSectionWidth, 0x33FFFFFF);
                 String noImageText = "No Image";
                 int textWidth = this.textRenderer.getWidth(noImageText);
                 int textX = padding + (leftSectionWidth - textWidth) / 2;
@@ -740,7 +738,7 @@ public class DetailScreen extends Screen {
             y += 25;
 
             // Description header
-            context.drawText(this.textRenderer, "Description:", rightSectionX, y, 0xFFFFFFFF, false);
+            context.drawText(this.textRenderer, "Description:", rightSectionX, y, 0xFFFFFFFF, true);
             y += 15;
 
             // Store scroll area parameters for mouse handling

@@ -41,6 +41,7 @@ public class MinemevDetailScreen extends Screen {
     private Identifier coverImageTexture = null;
     private int imageWidth = 0;
     private int imageHeight = 0;
+    private boolean isImageLoading = false;
 
     // Scrolling description
     private int descriptionScrollPos = 0;
@@ -251,6 +252,7 @@ public class MinemevDetailScreen extends Screen {
             coverImageTexture = null;
             return;
         }
+        isImageLoading = true;
         new Thread(() -> {
             try {
                 String encodedUrl = encodeImageUrl(imageUrl);
@@ -320,6 +322,8 @@ public class MinemevDetailScreen extends Screen {
                     ToastManager.addToast("Failed to load image", true);
                     createAndRegisterPlaceholder("Download failed");
                 });
+            } finally {
+                isImageLoading = false;
             }
         }).start();
     }
@@ -370,6 +374,10 @@ public class MinemevDetailScreen extends Screen {
                         leftSectionWidth,
                         leftSectionWidth
                 );
+            } else if (isImageLoading) {
+                int centerX = padding + leftSectionWidth / 2;
+                int centerY = topMargin + leftSectionWidth / 2;
+                drawLoadingAnimation(context, centerX, centerY);
             } else {
                 context.fill(padding, topMargin, padding + leftSectionWidth, topMargin + leftSectionWidth, 0x33FFFFFF);
                 String noImageText = "No Image";
@@ -414,7 +422,9 @@ public class MinemevDetailScreen extends Screen {
             // Versions
             String versionsJoined = joinArray(postDetail.getVersions());
             if (!versionsJoined.isEmpty()) {
-                List<OrderedText> vLines = this.textRenderer.wrapLines(Text.literal("Versions: " + versionsJoined), contentWidth);
+                context.drawText(this.textRenderer, "Versions:", rightSectionX, y, 0xFFFFFFFF, true);
+                y += 15;
+                List<OrderedText> vLines = this.textRenderer.wrapLines(Text.literal(versionsJoined), contentWidth);
                 for (OrderedText line : vLines) {
                     context.drawText(this.textRenderer, line, rightSectionX, y, 0xFFFFFFFF, false);
                     y += 10;
@@ -425,7 +435,9 @@ public class MinemevDetailScreen extends Screen {
             // Tags
             String tagsJoined = joinArray(postDetail.getTags());
             if (!tagsJoined.isEmpty()) {
-                List<OrderedText> tLines = this.textRenderer.wrapLines(Text.literal("Tags: " + tagsJoined), contentWidth);
+                context.drawText(this.textRenderer, "Tags:", rightSectionX, y, 0xFFFFFFFF, true);
+                y += 15;
+                List<OrderedText> tLines = this.textRenderer.wrapLines(Text.literal(tagsJoined), contentWidth);
                 for (OrderedText line : tLines) {
                     context.drawText(this.textRenderer, line, rightSectionX, y, 0xFFFFFFFF, false);
                     y += 10;
@@ -435,7 +447,7 @@ public class MinemevDetailScreen extends Screen {
 
             // Files section removed per request; use the download button (top-right) which opens a dropdown when multiple files exist
             // Description header
-            context.drawText(this.textRenderer, "Description:", rightSectionX, y, 0xFFFFFFFF, false);
+            context.drawText(this.textRenderer, "Description:", rightSectionX, y, 0xFFFFFFFF, true);
             y += 15;
 
             this.scrollAreaX = rightSectionX;
