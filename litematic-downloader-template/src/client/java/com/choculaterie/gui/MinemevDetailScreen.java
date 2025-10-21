@@ -449,7 +449,10 @@ public class MinemevDetailScreen extends Screen {
 
             context.enableScissor(this.scrollAreaX, this.scrollAreaY, this.scrollAreaX + this.scrollAreaWidth, this.scrollAreaY + this.scrollAreaHeight);
             int textY = this.scrollAreaY - descriptionScrollPos;
-            List<OrderedText> lines = this.textRenderer.wrapLines(Text.literal(description), this.scrollAreaWidth);
+            // Reserve padding for scrollbar (6px) + small gap
+            int reservedRightPx = 10;
+            int wrapWidth = Math.max(10, this.scrollAreaWidth - reservedRightPx);
+            List<OrderedText> lines = this.textRenderer.wrapLines(Text.literal(description), wrapWidth);
             this.totalContentHeight = lines.size() * 10;
             for (OrderedText line : lines) {
                 context.drawText(this.textRenderer, line, this.scrollAreaX, textY, 0xFFFFFFFF, false);
@@ -769,7 +772,31 @@ public class MinemevDetailScreen extends Screen {
         if (format.equals("avif") || format.equals("heif")) throw new Exception(format.toUpperCase() + " format is not supported by Java ImageIO");
         try {
             java.awt.image.BufferedImage bufferedImage = null;
-            try { bufferedImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(imageData)); } catch (Exception ignored) {}
+
+            // 1) Try ImageIO auto-detection with an ImageInputStream (good for plugin readers like WebP)
+            try (javax.imageio.stream.ImageInputStream iis = javax.imageio.ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(imageData))) {
+                java.util.Iterator<javax.imageio.ImageReader> autoReaders = javax.imageio.ImageIO.getImageReaders(iis);
+                if (autoReaders.hasNext()) {
+                    javax.imageio.ImageReader reader = autoReaders.next();
+                    try {
+                        reader.setInput(iis, true, true);
+                        bufferedImage = reader.read(0);
+                    } finally {
+                        reader.dispose();
+                    }
+                }
+            } catch (Exception e) {
+                // continue to other fallbacks
+            }
+
+            // 2) Fallback to ImageIO.read convenience method
+            if (bufferedImage == null) {
+                try {
+                    bufferedImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(imageData));
+                } catch (Exception ignored) {}
+            }
+
+            // 3) Try explicit readers by format name
             if (bufferedImage == null && !format.equals("unknown")) {
                 try {
                     java.util.Iterator<javax.imageio.ImageReader> readers = javax.imageio.ImageIO.getImageReadersByFormatName(format.toUpperCase());
@@ -783,7 +810,9 @@ public class MinemevDetailScreen extends Screen {
                     }
                 } catch (Exception ignored) {}
             }
+
             if (bufferedImage == null) throw new Exception("Could not decode " + format + " image");
+
             java.awt.image.BufferedImage convertedImage;
             if (bufferedImage.getType() != java.awt.image.BufferedImage.TYPE_INT_RGB && bufferedImage.getType() != java.awt.image.BufferedImage.TYPE_INT_ARGB) {
                 convertedImage = new java.awt.image.BufferedImage(bufferedImage.getWidth(), bufferedImage.getHeight(), java.awt.image.BufferedImage.TYPE_INT_ARGB);
@@ -793,6 +822,7 @@ public class MinemevDetailScreen extends Screen {
             } else {
                 convertedImage = bufferedImage;
             }
+
             java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
             boolean success = javax.imageio.ImageIO.write(convertedImage, "PNG", baos);
             if (!success) throw new Exception("Failed to write PNG output");

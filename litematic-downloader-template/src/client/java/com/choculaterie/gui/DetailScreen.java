@@ -478,23 +478,39 @@ public class DetailScreen extends Screen {
             // Try multiple readers for better format support
             java.awt.image.BufferedImage bufferedImage = null;
 
-            // First try standard ImageIO
-            try {
-                bufferedImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(imageData));
+            // 1) Let ImageIO auto-detect using an ImageInputStream (best chance to pick up plugins like WebP)
+            try (javax.imageio.stream.ImageInputStream iis = javax.imageio.ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(imageData))) {
+                java.util.Iterator<javax.imageio.ImageReader> autoReaders = javax.imageio.ImageIO.getImageReaders(iis);
+                if (autoReaders.hasNext()) {
+                    javax.imageio.ImageReader reader = autoReaders.next();
+                    try {
+                        reader.setInput(iis, true, true);
+                        bufferedImage = reader.read(0);
+                    } finally {
+                        reader.dispose();
+                    }
+                }
             } catch (Exception e) {
-                System.out.println("Standard ImageIO failed for " + format + ", trying alternative approach");
+                System.out.println("Auto-detect ImageIO read failed for " + format + ": " + e.getMessage());
             }
 
-            // If standard ImageIO failed, try with explicit format readers
+            // 2) Try the simple convenience method as a fallback
+            if (bufferedImage == null) {
+                try {
+                    bufferedImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(imageData));
+                } catch (Exception e) {
+                    System.out.println("Standard ImageIO.read failed for " + format + ": " + e.getMessage());
+                }
+            }
+
+            // 3) Try explicit readers by format name if we still don't have an image
             if (bufferedImage == null && !format.equals("unknown")) {
                 try {
-                    java.util.Iterator<javax.imageio.ImageReader> readers =
-                        javax.imageio.ImageIO.getImageReadersByFormatName(format.toUpperCase());
+                    java.util.Iterator<javax.imageio.ImageReader> readers = javax.imageio.ImageIO.getImageReadersByFormatName(format.toUpperCase());
 
                     if (readers.hasNext()) {
                         javax.imageio.ImageReader reader = readers.next();
-                        javax.imageio.stream.ImageInputStream iis =
-                            javax.imageio.ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(imageData));
+                        javax.imageio.stream.ImageInputStream iis = javax.imageio.ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(imageData));
                         reader.setInput(iis);
                         bufferedImage = reader.read(0);
                         reader.dispose();
@@ -755,8 +771,12 @@ public class DetailScreen extends Screen {
             // For simplicity, let's assume descriptionScrollPos is a class member that tracks scroll position
             int textY = this.scrollAreaY - descriptionScrollPos;
 
+            // Reserve some right-side padding so text never touches or goes under the scrollbar
+            int reservedRightPx = 10; // 6px bar + ~4px gap
+            int wrapWidth = Math.max(10, this.scrollAreaWidth - reservedRightPx);
+
             // Draw description text, potentially line-wrapped
-            List<OrderedText> lines = this.textRenderer.wrapLines(Text.literal(description), this.scrollAreaWidth);
+            List<OrderedText> lines = this.textRenderer.wrapLines(Text.literal(description), wrapWidth);
             this.totalContentHeight = lines.size() * 10;
 
             for (OrderedText line : lines) {

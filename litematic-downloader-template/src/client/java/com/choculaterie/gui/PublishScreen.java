@@ -1901,16 +1901,82 @@ public class PublishScreen extends Screen {
         }
 
         // For non-PNG formats, we'll try to use Java's built-in image processing
+        // Special handling for SVG - cannot be converted via standard Java ImageIO
+        if (format.equals("svg")) {
+            throw new Exception("SVG format is not supported for conversion");
+        }
+
+        // Special handling for AVIF and HEIF - not supported by standard Java ImageIO
+        if (format.equals("avif") || format.equals("heif")) {
+            throw new Exception(format.toUpperCase() + " format is not supported by Java ImageIO");
+        }
+
         try {
-            java.awt.image.BufferedImage bufferedImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(imageData));
+            java.awt.image.BufferedImage bufferedImage = null;
+
+            // 1) Try ImageIO auto-detection with an ImageInputStream (good for plugin readers like WebP)
+            try (javax.imageio.stream.ImageInputStream iis = javax.imageio.ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(imageData))) {
+                java.util.Iterator<javax.imageio.ImageReader> autoReaders = javax.imageio.ImageIO.getImageReaders(iis);
+                if (autoReaders.hasNext()) {
+                    javax.imageio.ImageReader reader = autoReaders.next();
+                    try {
+                        reader.setInput(iis, true, true);
+                        bufferedImage = reader.read(0);
+                    } finally {
+                        reader.dispose();
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("Auto-detect ImageIO read failed for " + format + ": " + e.getMessage());
+            }
+
+            // 2) Fallback to ImageIO.read convenience method
+            if (bufferedImage == null) {
+                try {
+                    bufferedImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(imageData));
+                } catch (Exception e) {
+                    System.out.println("Standard ImageIO.read failed for " + format + ": " + e.getMessage());
+                }
+            }
+
+            // 3) Try explicit readers by format name
+            if (bufferedImage == null && !format.equals("unknown")) {
+                try {
+                    java.util.Iterator<javax.imageio.ImageReader> readers = javax.imageio.ImageIO.getImageReadersByFormatName(format.toUpperCase());
+                    if (readers.hasNext()) {
+                        javax.imageio.ImageReader reader = readers.next();
+                        javax.imageio.stream.ImageInputStream iis = javax.imageio.ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(imageData));
+                        reader.setInput(iis);
+                        bufferedImage = reader.read(0);
+                        reader.dispose();
+                        iis.close();
+                    }
+                } catch (Exception e) {
+                    System.out.println("Alternative ImageIO approach failed for " + format + ": " + e.getMessage());
+                }
+            }
 
             if (bufferedImage == null) {
                 throw new Exception("Could not decode " + format + " image");
             }
 
             // Convert to PNG format
+            java.awt.image.BufferedImage convertedImage;
+            if (bufferedImage.getType() != java.awt.image.BufferedImage.TYPE_INT_RGB &&
+                bufferedImage.getType() != java.awt.image.BufferedImage.TYPE_INT_ARGB) {
+                convertedImage = new java.awt.image.BufferedImage(bufferedImage.getWidth(), bufferedImage.getHeight(), java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                java.awt.Graphics2D g2d = convertedImage.createGraphics();
+                g2d.drawImage(bufferedImage, 0, 0, null);
+                g2d.dispose();
+            } else {
+                convertedImage = bufferedImage;
+            }
+
             java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-            javax.imageio.ImageIO.write(bufferedImage, "PNG", baos);
+            boolean success = javax.imageio.ImageIO.write(convertedImage, "PNG", baos);
+            if (!success) {
+                throw new Exception("Failed to write PNG output");
+            }
 
             System.out.println("Successfully converted " + format + " to PNG format");
             return baos.toByteArray();
