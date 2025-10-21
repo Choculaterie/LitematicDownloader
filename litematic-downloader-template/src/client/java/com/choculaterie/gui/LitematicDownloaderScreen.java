@@ -97,7 +97,14 @@ public class LitematicDownloaderScreen extends Screen {
     private enum ServerMode { CHOCULATERIE, MINEMEV, BOTH }
     private ServerMode serverMode = ServerMode.CHOCULATERIE;
 
-    private ButtonWidget serverToggleButton;
+    // Replace carousel with persistent source selections
+    private boolean chocEnabled = true;
+    private boolean mineEnabled = true;
+    private boolean showSourcesDropdown = false;
+    private int sourcesDropdownX = 0;
+    private int sourcesDropdownY = 0;
+    private int sourcesDropdownWidth = 130;
+    private int sourcesDropdownHeight = 0;
 
     // Dropdown for Minemev file selection
     private boolean showFileDropdown = false;
@@ -144,6 +151,11 @@ public class LitematicDownloaderScreen extends Screen {
     protected void init() {
         super.init();
 
+        // Load persisted source selections (default both true)
+        this.chocEnabled = com.choculaterie.config.SettingsManager.isChoculaterieEnabled();
+        this.mineEnabled = com.choculaterie.config.SettingsManager.isMinemevEnabled();
+        recalcServerMode();
+
         // File Manager button
         this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("📁"),
@@ -164,10 +176,7 @@ public class LitematicDownloaderScreen extends Screen {
         this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("🔄"),
                 button -> {
-                    // Clear all cache when refresh is clicked
                     cacheManager.clearAllCache();
-                    System.out.println("Cleared all cache - forcing fresh data load");
-
                     if (isSearchMode) {
                         performSearch();
                     } else {
@@ -182,11 +191,8 @@ public class LitematicDownloaderScreen extends Screen {
                 button -> {
                     showUnverified = !showUnverified;
                     button.setMessage(Text.literal(showUnverified ? "✓" : "✗"));
-
-                    // Clear cache and reload with new unverified setting
                     cacheManager.clearAllCache();
                     currentPage = 1; // Reset to first page
-
                     if (isSearchMode) {
                         performSearch();
                     } else {
@@ -195,20 +201,15 @@ public class LitematicDownloaderScreen extends Screen {
                 }
         ).dimensions(this.width - 115, 10, 20, 20).build());
 
-        // Server selection toggle (cycles: C -> M -> Both)
-        serverToggleButton = this.addDrawableChild(ButtonWidget.builder(
-                        Text.literal(getServerToggleLabel()),
+        // New: Sites dropdown opener (replaces carousel)
+        this.addDrawableChild(ButtonWidget.builder(
+                        Text.literal("Sites"),
                         button -> {
-                            cycleServerMode();
-                            button.setMessage(Text.literal(getServerToggleLabel()));
-                            // Clear caches only for Choculaterie path to avoid mixing
-                            cacheManager.clearAllCache();
-                            currentPage = 1;
-                            if (isSearchMode) {
-                                performSearch();
-                            } else {
-                                loadSchematics();
-                            }
+                            showSourcesDropdown = !showSourcesDropdown;
+                            sourcesDropdownWidth = 150;
+                            sourcesDropdownX = this.width - 165; // near old toggle
+                            sourcesDropdownY = 35; // below top buttons
+                            sourcesDropdownHeight = 2 * 20 + 8; // two items + padding
                         })
                 .dimensions(this.width - 165, 10, 45, 20)
                 .build());
@@ -275,19 +276,15 @@ public class LitematicDownloaderScreen extends Screen {
         loadSchematics();
     }
 
-    private String getServerToggleLabel() {
-        return switch (serverMode) {
-            case CHOCULATERIE -> "Srv:C";
-            case MINEMEV -> "Srv:M";
-            case BOTH -> "Srv:B";
-        };
-    }
-
-    private void cycleServerMode() {
-        switch (serverMode) {
-            case CHOCULATERIE -> serverMode = ServerMode.MINEMEV;
-            case MINEMEV -> serverMode = ServerMode.BOTH;
-            case BOTH -> serverMode = ServerMode.CHOCULATERIE;
+    private void recalcServerMode() {
+        if (chocEnabled && mineEnabled) serverMode = ServerMode.BOTH;
+        else if (chocEnabled) serverMode = ServerMode.CHOCULATERIE;
+        else if (mineEnabled) serverMode = ServerMode.MINEMEV;
+        else {
+            // Enforce at least one
+            chocEnabled = true;
+            com.choculaterie.config.SettingsManager.setSourcesEnabled(chocEnabled, mineEnabled);
+            serverMode = ServerMode.CHOCULATERIE;
         }
     }
 
@@ -382,6 +379,8 @@ public class LitematicDownloaderScreen extends Screen {
     private void performSearch() {
         if (searchTerm.isEmpty()) return;
 
+        recalcServerMode();
+
         // If searching only on Choculaterie, keep old cache behavior
         if (serverMode == ServerMode.CHOCULATERIE) {
             if (cacheManager.hasValidSearchCache(searchTerm, CACHE_DURATION_MS)) {
@@ -429,7 +428,7 @@ public class LitematicDownloaderScreen extends Screen {
             int totalCount = 0;
 
             try {
-                if (serverMode == ServerMode.MINEMEV || serverMode == ServerMode.BOTH) {
+                if (mineEnabled) {
                     MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(term, 1);
                     for (var post : mres.getPosts()) {
                         merged.add(new SchematicInfo(
@@ -444,9 +443,9 @@ public class LitematicDownloaderScreen extends Screen {
                     }
                     totalCount += mres.getTotalResults();
                 }
-                if (serverMode == ServerMode.CHOCULATERIE || serverMode == ServerMode.BOTH) {
+                if (chocEnabled) {
                     List<SchematicInfo> cres = LitematicHttpClient.searchSchematics(term);
-                    merged.addAll(cres); // These are CHOCULATERIE by default
+                    merged.addAll(cres);
                     totalCount += cres.size();
                 }
             } catch (Exception e) {
@@ -457,7 +456,7 @@ public class LitematicDownloaderScreen extends Screen {
             int finalTotal = totalCount > 0 ? totalCount : merged.size();
             MinecraftClient.getInstance().execute(() -> {
                 schematics = finalList;
-                totalPages = 1; // unified search view is single page
+                totalPages = 1;
                 totalItems = finalTotal;
                 updateScrollbarDimensions();
                 isLoading = false;
@@ -466,6 +465,7 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     private void loadSchematics() {
+        recalcServerMode();
         System.out.println("=== loadSchematics() called for page " + currentPage + " ===");
 
         long currentTime = System.currentTimeMillis();
@@ -543,31 +543,33 @@ public class LitematicDownloaderScreen extends Screen {
                     pagesMine = Math.max(1, mres.getTotalPages());
                     totalCount = Math.max(mres.getTotalResults(), merged.size());
                 } else { // BOTH
-                    // Show 10 from Choculaterie and 10 from Minemev per page
                     int chocPageSize = 10;
-                    System.out.println("Fetching page " + requestedPage + " from Choculaterie (10 items)...");
-                    LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(requestedPage, chocPageSize, showUnverified);
-                    merged.addAll(result.getItems());
-                    pagesChoc = Math.max(1, result.getTotalPages());
-                    int chocTotal = result.getTotalItems();
-
-                    System.out.println("Fetching page " + requestedPage + " from Minemev (10 items)...");
-                    MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(null, null, null, "newest", requestedPage);
-                    for (var post : mres.getPosts()) {
-                        merged.add(new SchematicInfo(
-                                post.getUuid(),
-                                post.getTitle(),
-                                post.getDescription(),
-                                0,
-                                post.getDownloads(),
-                                post.getAuthor(),
-                                SchematicInfo.SourceServer.MINEMEV
-                        ));
+                    if (chocEnabled) {
+                        System.out.println("Fetching page " + requestedPage + " from Choculaterie (10 items)...");
+                        LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(requestedPage, chocPageSize, showUnverified);
+                        merged.addAll(result.getItems());
+                        pagesChoc = Math.max(1, result.getTotalPages());
+                        int chocTotal = result.getTotalItems();
+                        totalCount += chocTotal;
                     }
-                    pagesMine = Math.max(1, mres.getTotalPages());
-                    int mineTotal = Math.max(mres.getTotalResults(), mres.getPosts().size());
-
-                    totalCount = chocTotal + mineTotal;
+                    if (mineEnabled) {
+                        System.out.println("Fetching page " + requestedPage + " from Minemev (10 items)...");
+                        MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(null, null, null, "newest", requestedPage);
+                        for (var post : mres.getPosts()) {
+                            merged.add(new SchematicInfo(
+                                    post.getUuid(),
+                                    post.getTitle(),
+                                    post.getDescription(),
+                                    0,
+                                    post.getDownloads(),
+                                    post.getAuthor(),
+                                    SchematicInfo.SourceServer.MINEMEV
+                            ));
+                        }
+                        pagesMine = Math.max(1, mres.getTotalPages());
+                        int mineTotal = Math.max(mres.getTotalResults(), mres.getPosts().size());
+                        totalCount += mineTotal;
+                    }
                 }
 
                 ReferenceImmutableList<SchematicInfo> items = new ReferenceImmutableList<>(merged);
@@ -732,9 +734,13 @@ public class LitematicDownloaderScreen extends Screen {
             renderFileDropdown(context, mouseX, mouseY);
         }
 
+        // Render sources dropdown on top as well
+        if (showSourcesDropdown) {
+            renderSourcesDropdown(context, mouseX, mouseY);
+        }
     }
 
-
+    // Reintroduced: loading spinner
     private void drawLoadingAnimation(DrawContext context, int centerX, int centerY) {
         int radius = 12;
         int segments = 8;
@@ -759,6 +765,7 @@ public class LitematicDownloaderScreen extends Screen {
         }
     }
 
+    // Reintroduced: list item renderer
     private void renderSchematicItem(DrawContext context, SchematicInfo schematic, int x, int y,
                                      int width, int mouseX, int mouseY, int index) {
         int maxTextWidth = width - 110;
@@ -812,25 +819,36 @@ public class LitematicDownloaderScreen extends Screen {
         int rightX = x + width - 50;
         int statsY = originalY;
 
-        String viewCountStr = String.valueOf(schematic.getViewCount());
         String downloadCountStr = String.valueOf(schematic.getDownloadCount());
-        int maxNumberWidth = Math.max(
-                MinecraftClient.getInstance().textRenderer.getWidth(viewCountStr),
-                MinecraftClient.getInstance().textRenderer.getWidth(downloadCountStr)
-        );
+        // Only show view count for sources that actually have it (exclude Minemev)
+        if (schematic.getSource() != SchematicInfo.SourceServer.MINEMEV) {
+            String viewCountStr = String.valueOf(schematic.getViewCount());
+            int maxNumberWidth = Math.max(
+                    MinecraftClient.getInstance().textRenderer.getWidth(viewCountStr),
+                    MinecraftClient.getInstance().textRenderer.getWidth(downloadCountStr)
+            );
 
-        context.drawText(MinecraftClient.getInstance().textRenderer, viewCountStr,
-                rightX - maxNumberWidth, statsY, 0xFFFFFFFF, false);
-        context.drawText(MinecraftClient.getInstance().textRenderer, " 👁",
-                rightX - maxNumberWidth + MinecraftClient.getInstance().textRenderer.getWidth(viewCountStr),
-                statsY, 0xFFFFFFFF, false);
-        statsY += 10;
+            context.drawText(MinecraftClient.getInstance().textRenderer, viewCountStr,
+                    rightX - maxNumberWidth, statsY, 0xFFFFFFFF, false);
+            context.drawText(MinecraftClient.getInstance().textRenderer, " 👁",
+                    rightX - maxNumberWidth + MinecraftClient.getInstance().textRenderer.getWidth(viewCountStr),
+                    statsY, 0xFFFFFFFF, false);
+            statsY += 10;
 
-        context.drawText(MinecraftClient.getInstance().textRenderer, downloadCountStr,
-                rightX - maxNumberWidth, statsY, 0xFFFFFFFF, false);
-        context.drawText(MinecraftClient.getInstance().textRenderer, " ⬇",
-                rightX - maxNumberWidth + MinecraftClient.getInstance().textRenderer.getWidth(downloadCountStr),
-                statsY, 0xFFFFFFFF, false);
+            context.drawText(MinecraftClient.getInstance().textRenderer, downloadCountStr,
+                    rightX - maxNumberWidth, statsY, 0xFFFFFFFF, false);
+            context.drawText(MinecraftClient.getInstance().textRenderer, " ⬇",
+                    rightX - maxNumberWidth + MinecraftClient.getInstance().textRenderer.getWidth(downloadCountStr),
+                    statsY, 0xFFFFFFFF, false);
+        } else {
+            // Minemev: show downloads only
+            int numberWidth = MinecraftClient.getInstance().textRenderer.getWidth(downloadCountStr);
+            context.drawText(MinecraftClient.getInstance().textRenderer, downloadCountStr,
+                    rightX - numberWidth, statsY, 0xFFFFFFFF, false);
+            context.drawText(MinecraftClient.getInstance().textRenderer, " ⬇",
+                    rightX - numberWidth + numberWidth,
+                    statsY, 0xFFFFFFFF, false);
+        }
 
         // Download button
         int buttonX = x + width - 30;
@@ -843,13 +861,47 @@ public class LitematicDownloaderScreen extends Screen {
         context.drawCenteredTextWithShadow(textRenderer, Text.literal("⬇"), buttonX + 10, buttonY + 6, 0xFFFFFFFF);
     }
 
-    private String getPlainText(OrderedText text) {
-        StringBuilder sb = new StringBuilder();
-        text.accept((index, style, codePoint) -> {
-            sb.appendCodePoint(codePoint);
-            return true;
-        });
-        return sb.toString();
+    // Reintroduced: persist and react to sources change
+    private void onSourcesChanged() {
+        com.choculaterie.config.SettingsManager.setSourcesEnabled(chocEnabled, mineEnabled);
+        recalcServerMode();
+        cacheManager.clearAllCache();
+        currentPage = 1;
+        if (isSearchMode) {
+            performSearch();
+        } else {
+            loadSchematics();
+        }
+    }
+
+    private void renderSourcesDropdown(DrawContext context, int mouseX, int mouseY) {
+        int x1 = sourcesDropdownX;
+        int y1 = sourcesDropdownY;
+        int x2 = sourcesDropdownX + sourcesDropdownWidth;
+        int y2 = sourcesDropdownY + sourcesDropdownHeight;
+        context.fill(x1 - 1, y1 - 1, x2 + 1, y2 + 1, 0xAA000000);
+        context.fill(x1, y1, x2, y2, 0xEE101010);
+
+        int itemH = 20;
+        // Choculaterie row
+        int cy = y1 + 4;
+        boolean hoverChoc = mouseX >= x1 && mouseX <= x2 && mouseY >= cy && mouseY <= cy + itemH;
+        if (hoverChoc) context.fill(x1, cy, x2, cy + itemH, 0x22FFFFFF);
+        drawCheckboxRow(context, x1 + 6, cy + 5, chocEnabled, "Choculaterie");
+
+        // Minemev row
+        int my = cy + itemH;
+        boolean hoverMine = mouseX >= x1 && mouseX <= x2 && mouseY >= my && mouseY <= my + itemH;
+        if (hoverMine) context.fill(x1, my, x2, my + itemH, 0x22FFFFFF);
+        drawCheckboxRow(context, x1 + 6, my + 5, mineEnabled, "Minemev");
+    }
+
+    private void drawCheckboxRow(DrawContext ctx, int x, int y, boolean checked, String label) {
+        int box = 10;
+        int color = 0xFFFFFFFF;
+        ctx.fill(x, y, x + box, y + box, 0x33FFFFFF);
+        if (checked) ctx.fill(x + 2, y + 2, x + box - 2, y + box - 2, color);
+        ctx.drawText(this.textRenderer, label, x + box + 6, y + 1, 0xFFFFFFFF, false);
     }
 
     @Override
@@ -857,6 +909,46 @@ public class LitematicDownloaderScreen extends Screen {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+
+        // Handle sources dropdown first
+        if (showSourcesDropdown) {
+            int x1 = sourcesDropdownX;
+            int y1 = sourcesDropdownY;
+            int x2 = sourcesDropdownX + sourcesDropdownWidth;
+            int y2 = sourcesDropdownY + sourcesDropdownHeight;
+            if (mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2) {
+                // Inside dropdown: toggle items
+                if (button == 0) {
+                    int relY = (int)(mouseY - y1);
+                    if (relY >= 4 && relY < 24) {
+                        // Choculaterie
+                        boolean newChoc = !chocEnabled;
+                        if (!newChoc && !mineEnabled) {
+                            // prevent disabling last one
+                            ToastManager.addToast("At least one site must be selected", true);
+                        } else {
+                            chocEnabled = newChoc;
+                            onSourcesChanged();
+                        }
+                        return true;
+                    } else if (relY >= 24 && relY < 44) {
+                        // Minemev
+                        boolean newMine = !mineEnabled;
+                        if (!newMine && !chocEnabled) {
+                            ToastManager.addToast("At least one site must be selected", true);
+                        } else {
+                            mineEnabled = newMine;
+                            onSourcesChanged();
+                        }
+                        return true;
+                    }
+                }
+                return true; // consume inside clicks
+            } else {
+                // Click outside closes
+                showSourcesDropdown = false;
+            }
+        }
 
         // If dropdown is open, handle it first
         if (showFileDropdown) {
@@ -1125,6 +1217,31 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+    }
+
+    @Override
+    public boolean mouseDragged(net.minecraft.client.gui.Click click, double offsetX, double offsetY) {
+        if (isScrolling && totalContentHeight > scrollAreaHeight) {
+            int mouseY = (int) click.y();
+            int newBarTop = mouseY - scrollDragOffset;
+            int minBarTop = scrollAreaY;
+            int maxBarTop = scrollAreaY + scrollAreaHeight - scrollBarHeight;
+            newBarTop = Math.max(minBarTop, Math.min(maxBarTop, newBarTop));
+
+            float percent = (float) (newBarTop - scrollAreaY) / (float) (scrollAreaHeight - scrollBarHeight);
+            scrollOffset = (int) (percent * (totalContentHeight - scrollAreaHeight));
+            return true;
+        }
+        return super.mouseDragged(click, offsetX, offsetY);
+    }
+
+    @Override
+    public boolean mouseReleased(net.minecraft.client.gui.Click click) {
+        if (isScrolling) {
+            isScrolling = false;
+            return true;
+        }
+        return super.mouseReleased(click);
     }
 
     private void performMinemevFileDownload(com.choculaterie.models.MinemevFileInfo file, String chosenName) {
@@ -1551,5 +1668,15 @@ public class LitematicDownloaderScreen extends Screen {
     private boolean hasActiveStatusMessage() {
         return statusMessage != null &&
                 (System.currentTimeMillis() - statusMessageDisplayTime) < STATUS_MESSAGE_DURATION;
+    }
+
+    // Missing helper added back
+    private String getPlainText(OrderedText text) {
+        StringBuilder sb = new StringBuilder();
+        text.accept((index, style, codePoint) -> {
+            sb.appendCodePoint(codePoint);
+            return true;
+        });
+        return sb.toString();
     }
 }

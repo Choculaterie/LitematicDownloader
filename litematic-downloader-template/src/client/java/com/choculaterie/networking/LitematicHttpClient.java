@@ -334,14 +334,9 @@ public class LitematicHttpClient {
                 if (ref != null) rebuilt.append("#").append(ref);
 
                 encodedUrl = rebuilt.toString();
-
-                System.out.println("Original URL: " + downloadUrl);
-                System.out.println("Normalized URL: " + normalized);
-                System.out.println("Encoded URL: " + encodedUrl);
             } catch (Exception e) {
                 // Fallback: simple space replacement, keep original otherwise
                 encodedUrl = normalized.replace(" ", "%20");
-                System.out.println("Fallback encoding - Original: " + normalized + ", Encoded: " + encodedUrl);
             }
 
             URI uri = URI.create(encodedUrl);
@@ -705,3 +700,4 @@ public class LitematicHttpClient {
         return u;
     }
 }
+

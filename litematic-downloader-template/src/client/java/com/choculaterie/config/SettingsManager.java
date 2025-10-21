@@ -30,6 +30,9 @@ public class SettingsManager {
         public String encryptedApiToken = "";
         public String customImagesPath = "";
         public boolean useCustomImagesPath = false;
+        // New: source selection preferences
+        public boolean showChoculaterie = true;
+        public boolean showMinemev = true;
     }
 
     public static Settings getSettings() {
@@ -273,5 +276,21 @@ public class SettingsManager {
         cipher.init(Cipher.DECRYPT_MODE, getEncryptionKey());
         byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(encryptedToken));
         return new String(decryptedBytes);
+    }
+
+    // New helpers for source preferences
+    public static boolean isChoculaterieEnabled() {
+        return getSettings().showChoculaterie;
+    }
+
+    public static boolean isMinemevEnabled() {
+        return getSettings().showMinemev;
+    }
+
+    public static void setSourcesEnabled(boolean choculaterie, boolean minemev) {
+        Settings s = getSettings();
+        s.showChoculaterie = choculaterie;
+        s.showMinemev = minemev;
+        saveSettings();
     }
 }

@@ -54,6 +54,8 @@ public class MinemevDetailScreen extends Screen {
     private int totalContentHeight;
     private boolean isScrolling = false;
     private int lastMouseY;
+    // New: precise dragging offset for description scrollbar
+    private int scrollDragOffset = 0;
 
     // Files list for this post
     private boolean filesLoading = false;
@@ -73,6 +75,9 @@ public class MinemevDetailScreen extends Screen {
     private int fileDropdownHeight = 0;
     private int fileDropdownScroll = 0;
     private int fileDropdownContentHeight = 0;
+    // New: drag state for file dropdown scrollbar
+    private boolean isDraggingFileDropdown = false;
+    private int fileDropdownDragOffset = 0;
 
     // Loading anim
     private long loadingStartTime = 0;
@@ -112,7 +117,7 @@ public class MinemevDetailScreen extends Screen {
                     openMinemevFileDropdown(this.width - 40, 30);
                 }
             }
-        }).dimensions(this.width - 40, 10, 20, 20).build();
+        }).dimensions(this.width - 30, 10, 20, 20).build();
         this.downloadButton.active = false;
         this.addDrawableChild(this.downloadButton);
 
@@ -375,17 +380,25 @@ public class MinemevDetailScreen extends Screen {
             }
 
             int y = topMargin;
-            // Title
+            // Title (wrapped)
             String name = postDetail.getTitle();
             if (name != null) {
-                context.drawText(this.textRenderer, name, rightSectionX, y, 0xFFFFFFFF, true);
-                y += 15;
+                List<OrderedText> nameLines = this.textRenderer.wrapLines(Text.literal(name), contentWidth);
+                for (OrderedText line : nameLines) {
+                    context.drawText(this.textRenderer, line, rightSectionX, y, 0xFFFFFFFF, true);
+                    y += 10;
+                }
+                y += 5; // spacing after title
             }
-            // Author
+            // Author (wrapped if long)
             String username = postDetail.getAuthor();
             if (username != null) {
-                context.drawText(this.textRenderer, "By: " + username, rightSectionX, y, 0xFFD5D5D5, false);
-                y += 15;
+                List<OrderedText> authorLines = this.textRenderer.wrapLines(Text.literal("By: " + username), contentWidth);
+                for (OrderedText line : authorLines) {
+                    context.drawText(this.textRenderer, line, rightSectionX, y, 0xFFD5D5D5, false);
+                    y += 10;
+                }
+                y += 5;
             }
             // Published date
             String publishDate = postDetail.getCreatedAt();
@@ -417,33 +430,10 @@ public class MinemevDetailScreen extends Screen {
                     context.drawText(this.textRenderer, line, rightSectionX, y, 0xFFFFFFFF, false);
                     y += 10;
                 }
-                y += 10; // extra spacing before files/description header
+                y += 10; // extra spacing before description
             }
 
-            // Files section
-            if (filesLoading) {
-                context.drawText(this.textRenderer, "Files: loading...", rightSectionX, y, 0xFFFFFFFF, false);
-                y += 15;
-            } else if (!availableFiles.isEmpty()) {
-                context.drawText(this.textRenderer, "Files:", rightSectionX, y, 0xFFFFFFFF, false);
-                y += 12;
-                filesRenderStartY = y;
-                filesRenderCount = availableFiles.size();
-                for (int i = 0; i < availableFiles.size(); i++) {
-                    MinemevFileInfo f = availableFiles.get(i);
-                    String fname = (f.getFileName() != null && !f.getFileName().isEmpty()) ? f.getFileName() : "Unnamed";
-                    String trimmed = trimToWidth(fname, contentWidth - 10);
-                    String sizeStr = f.getFileSize() > 0 ? (" • " + formatSize(f.getFileSize())) : "";
-                    String ver = joinArrayShort(f.getVersions());
-                    String line = trimmed + sizeStr + (ver.isEmpty() ? "" : (" • " + ver));
-                    context.drawText(this.textRenderer, line, rightSectionX + 6, y, 0xFFDDDDDD, false);
-                    // small hint
-                    // context.drawText(this.textRenderer, "(click to download)", rightSectionX + 6, y + 8, 0xFF777777, false);
-                    y += fileItemHeight;
-                }
-                y += 8; // spacing after files section
-            }
-
+            // Files section removed per request; use the download button (top-right) which opens a dropdown when multiple files exist
             // Description header
             context.drawText(this.textRenderer, "Description:", rightSectionX, y, 0xFFFFFFFF, false);
             y += 15;
@@ -541,30 +531,106 @@ public class MinemevDetailScreen extends Screen {
 
         // Dropdown interaction first
         if (showFileDropdown) {
+            // Handle dragging on dropdown scrollbar
+            if (fileDropdownContentHeight > fileDropdownHeight && button == 0) {
+                int barWidth = 6;
+                int barX = fileDropdownX + fileDropdownWidth - barWidth - 2;
+                int barHeight = Math.max(20, fileDropdownHeight * fileDropdownHeight / Math.max(1, fileDropdownContentHeight));
+                int barY = fileDropdownY + (int)((float)fileDropdownScroll / Math.max(1, (fileDropdownContentHeight - fileDropdownHeight))
+                        * (fileDropdownHeight - barHeight));
+                if (mouseX >= barX && mouseX <= barX + barWidth && mouseY >= barY && mouseY <= barY + barHeight) {
+                    isDraggingFileDropdown = true;
+                    fileDropdownDragOffset = (int)(mouseY - barY);
+                    return true;
+                }
+                // Click on track jumps
+                if (mouseX >= barX && mouseX <= barX + barWidth && mouseY >= fileDropdownY && mouseY <= fileDropdownY + fileDropdownHeight) {
+                    float clickPercent = (float)(mouseY - fileDropdownY) / Math.max(1, fileDropdownHeight);
+                    fileDropdownScroll = (int)(clickPercent * (fileDropdownContentHeight - fileDropdownHeight));
+                    fileDropdownScroll = Math.max(0, Math.min(fileDropdownContentHeight - fileDropdownHeight, fileDropdownScroll));
+                    return true;
+                }
+            }
             if (handleDropdownClick(mouseX, mouseY, button)) {
                 return true;
             }
         }
 
-        // Handle click on files list inside detail to download specific file
-        if (postDetail != null && !availableFiles.isEmpty() && filesRenderStartY > 0) {
-            int rx = lastRightSectionX;
-            int rw = lastContentWidth;
-            int ry = filesRenderStartY;
-            int rh = filesRenderCount * fileItemHeight;
-            if (mouseX >= rx && mouseX <= rx + rw && mouseY >= ry && mouseY <= ry + rh) {
-                int index = (int)((mouseY - ry) / fileItemHeight);
-                if (index >= 0 && index < availableFiles.size()) {
-                    MinemevFileInfo f = availableFiles.get(index);
-                    startPerFileDownloadWithConfirm(f);
-                    return true;
-                }
+        // Description scrollbar interaction
+        if (button == 0 && this.totalContentHeight > this.scrollAreaHeight) { // Left click only when scrollable
+            int scrollBarWidth = 6;
+            // Click on handle starts dragging
+            if (mouseX >= this.scrollBarX && mouseX <= this.scrollBarX + scrollBarWidth &&
+                    mouseY >= this.scrollBarY && mouseY <= this.scrollBarY + this.scrollBarHeight) {
+                this.isScrolling = true;
+                this.lastMouseY = (int) mouseY;
+                this.scrollDragOffset = (int)(mouseY - this.scrollBarY);
+                return true;
+            }
+            // Click on track jumps to position
+            if (mouseX >= this.scrollBarX && mouseX <= this.scrollBarX + scrollBarWidth &&
+                    mouseY >= this.scrollAreaY && mouseY <= this.scrollAreaY + this.scrollAreaHeight) {
+                float clickPercent = (float)((mouseY - this.scrollAreaY)) / Math.max(1, this.scrollAreaHeight);
+                this.descriptionScrollPos = (int)(clickPercent * (this.totalContentHeight - this.scrollAreaHeight));
+                this.descriptionScrollPos = Math.max(0, Math.min(this.totalContentHeight - this.scrollAreaHeight, this.descriptionScrollPos));
+                return true;
             }
         }
+
+        // Removed in-page files list click handling; users should use the download button to open the files dropdown
 
         return super.mouseClicked(click, doubled);
     }
 
+    @Override
+    public boolean mouseDragged(net.minecraft.client.gui.Click click, double offsetX, double offsetY) {
+        double mouseY = click.y();
+
+        // Handle dragging for description scrollbar
+        if (this.isScrolling && this.totalContentHeight > this.scrollAreaHeight) {
+            int newBarTop = (int)mouseY - this.scrollDragOffset;
+            int minBarTop = this.scrollAreaY;
+            int maxBarTop = this.scrollAreaY + this.scrollAreaHeight - this.scrollBarHeight;
+            newBarTop = Math.max(minBarTop, Math.min(maxBarTop, newBarTop));
+
+            float percent = (float)(newBarTop - this.scrollAreaY) / Math.max(1, (this.scrollAreaHeight - this.scrollBarHeight));
+            this.descriptionScrollPos = (int)(percent * (this.totalContentHeight - this.scrollAreaHeight));
+            return true;
+        }
+
+        // Handle dragging for file dropdown scrollbar
+        if (isDraggingFileDropdown && fileDropdownContentHeight > fileDropdownHeight) {
+            int newBarTop = (int)mouseY - fileDropdownDragOffset;
+            int minBarTop = fileDropdownY;
+            int barHeight = Math.max(20, fileDropdownHeight * fileDropdownHeight / Math.max(1, fileDropdownContentHeight));
+            int maxBarTop = fileDropdownY + fileDropdownHeight - barHeight;
+            newBarTop = Math.max(minBarTop, Math.min(maxBarTop, newBarTop));
+
+            float percent = (float)(newBarTop - fileDropdownY) / Math.max(1, (fileDropdownHeight - barHeight));
+            fileDropdownScroll = (int)(percent * (fileDropdownContentHeight - fileDropdownHeight));
+            return true;
+        }
+
+        return super.mouseDragged(click, offsetX, offsetY);
+    }
+
+    @Override
+    public boolean mouseReleased(net.minecraft.client.gui.Click click) {
+        int button = click.button();
+        if (button == 0) {
+            if (this.isScrolling) {
+                this.isScrolling = false;
+                return true;
+            }
+            if (this.isDraggingFileDropdown) {
+                this.isDraggingFileDropdown = false;
+                return true;
+            }
+        }
+        return super.mouseReleased(click);
+    }
+
+    // Re-added: handle clicks inside the files dropdown list
     private boolean handleDropdownClick(double mouseX, double mouseY, int button) {
         if (mouseX < fileDropdownX || mouseX > fileDropdownX + fileDropdownWidth ||
                 mouseY < fileDropdownY || mouseY > fileDropdownY + fileDropdownHeight) {
@@ -824,3 +890,4 @@ public class MinemevDetailScreen extends Screen {
         return n;
     }
 }
+

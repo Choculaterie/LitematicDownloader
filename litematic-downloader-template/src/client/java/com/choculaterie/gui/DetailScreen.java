@@ -111,7 +111,7 @@ public class DetailScreen extends Screen {
                     this.setDownloadStatus("Failed to download schematic: " + e.getMessage(), false);
                 }
             }
-        }).dimensions(padding + leftSectionWidth - 30, topMargin, 20, 20).build();
+        }).dimensions(this.width - 30, 10, 20, 20).build();
 
         this.downloadButton.active = false; // Disable until data is loaded
         this.addDrawableChild(this.downloadButton);
