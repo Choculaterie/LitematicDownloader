@@ -27,6 +27,8 @@ import java.util.List;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class LitematicHttpClient {
     // Change this URL for development/production environments
@@ -35,6 +37,27 @@ public class LitematicHttpClient {
 
     private static final Gson gson = new Gson();
     private static final HttpClient client;
+
+    // --- CACHING CONFIGURATION ---
+    // Time-to-live values (milliseconds)
+    private static final long PAGINATED_CACHE_TTL_MS = 15 * 60 * 1000L; // 15 minutes
+    private static final long SEARCH_CACHE_TTL_MS = 60 * 1000L; // 1 minute
+    private static final long DETAIL_CACHE_TTL_MS = 10 * 60 * 1000L; // 10 minutes
+
+    // In-memory caches
+    private static final Map<String, CacheEntry<PaginatedResult>> paginatedCache = new ConcurrentHashMap<>();
+    private static final Map<String, CacheEntry<List<SchematicInfo>>> searchCache = new ConcurrentHashMap<>();
+    private static final Map<String, CacheEntry<SchematicDetailInfo>> detailCache = new ConcurrentHashMap<>();
+
+    private static class CacheEntry<T> {
+        final T value;
+        final long timestamp;
+
+        CacheEntry(T value, long timestamp) {
+            this.value = value;
+            this.timestamp = timestamp;
+        }
+    }
 
     static {
         try {
@@ -80,6 +103,15 @@ public class LitematicHttpClient {
         public int getTotalItems() { return totalItems; } // TODO: Verify if useful
     }
 
+    /**
+     * Clears all in-memory caches. Useful when user wants a forced refresh.
+     */
+    public static void clearCaches() {
+        paginatedCache.clear();
+        searchCache.clear();
+        detailCache.clear();
+    }
+
     public static PaginatedResult fetchSchematicsPaginated(int page, int pageSize) {
         return fetchSchematicsPaginated(page, pageSize, false);
     }
@@ -87,6 +119,14 @@ public class LitematicHttpClient {
     public static PaginatedResult fetchSchematicsPaginated(int page, int pageSize, boolean showUnverified) {
         final ArrayList<SchematicInfo> schematicItems = new ArrayList<>();
         PaginatedResult result = new PaginatedResult(schematicItems, 0, 0, 0);
+
+        // Check cache first
+        String cacheKey = "paginated:" + page + ":" + pageSize + ":" + showUnverified;
+        CacheEntry<PaginatedResult> cached = paginatedCache.get(cacheKey);
+        if (cached != null && (System.currentTimeMillis() - cached.timestamp) < PAGINATED_CACHE_TTL_MS) {
+            // Return cached value to avoid hitting the server repeatedly
+            return cached.value;
+        }
 
         try {
             String url = BASE_URL + "/GetPaginatedFtp?page=" + page + "&pageSize=" + pageSize + "&showUnverified=" + showUnverified;
@@ -160,6 +200,9 @@ public class LitematicHttpClient {
             int totalCount = jsonResponse.has("totalCount") ? jsonResponse.get("totalCount").getAsInt() : schematicItems.size();
             result = new PaginatedResult(schematicItems, totalPages, currentPage, totalCount);
 
+            // Cache successful response
+            paginatedCache.put(cacheKey, new CacheEntry<>(result, System.currentTimeMillis()));
+
             return result;
         } catch (Exception e) {
             System.err.println("Error in fetchSchematicsPaginated: " + e.getMessage());
@@ -170,8 +213,15 @@ public class LitematicHttpClient {
 
     public static List<SchematicInfo> searchSchematics(String query) {
         List<SchematicInfo> schematics = new ArrayList<>();
+        // Check search cache
+        String searchKey = "search:" + (query == null ? "" : query.trim().toLowerCase());
+        CacheEntry<List<SchematicInfo>> cachedSearch = searchCache.get(searchKey);
+        if (cachedSearch != null && (System.currentTimeMillis() - cachedSearch.timestamp) < SEARCH_CACHE_TTL_MS) {
+            return cachedSearch.value;
+        }
         try {
-            String encodedQuery = java.net.URLEncoder.encode(query, StandardCharsets.UTF_8);
+            String queryToEncode = query == null ? "" : query;
+            String encodedQuery = java.net.URLEncoder.encode(queryToEncode, StandardCharsets.UTF_8);
             String url = BASE_URL + "/Search?query=" + encodedQuery;
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -218,6 +268,8 @@ public class LitematicHttpClient {
                             System.err.println("Error parsing search result item " + i + ": " + e.getMessage());
                         }
                     }
+                    // Cache search results
+                    searchCache.put(searchKey, new CacheEntry<>(schematics, System.currentTimeMillis()));
                     return schematics;
                 }
             } catch (Exception e) {
@@ -250,6 +302,8 @@ public class LitematicHttpClient {
                         System.err.println("Error parsing search result item " + i + ": " + e.getMessage());
                     }
                 }
+                // Cache fallback search results
+                searchCache.put(searchKey, new CacheEntry<>(schematics, System.currentTimeMillis()));
                 return schematics;
             } catch (Exception e) {
                 System.err.println("Failed to parse search response as array: " + e.getMessage());
@@ -263,6 +317,12 @@ public class LitematicHttpClient {
     }
 
     public static SchematicDetailInfo fetchSchematicDetail(String id) {
+        // Check detail cache
+        String detailKey = "detail:" + (id == null ? "" : id);
+        CacheEntry<SchematicDetailInfo> cachedDetail = detailCache.get(detailKey);
+        if (cachedDetail != null && (System.currentTimeMillis() - cachedDetail.timestamp) < DETAIL_CACHE_TTL_MS) {
+            return cachedDetail.value;
+        }
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(BASE_URL + "/Getbyid/" + id))
@@ -276,7 +336,7 @@ public class LitematicHttpClient {
 
             JsonObject json = gson.fromJson(response.body(), JsonObject.class);
 
-            return new SchematicDetailInfo(
+            SchematicDetailInfo detail = new SchematicDetailInfo(
                     json.get("id").getAsString(),
                     json.get("name").getAsString(),
                     json.has("description") && !json.get("description").isJsonNull() ?
@@ -288,6 +348,11 @@ public class LitematicHttpClient {
                     json.get("username").getAsString(),
                     json.get("publishDate").getAsString()
             );
+
+            // Cache the detail
+            detailCache.put(detailKey, new CacheEntry<>(detail, System.currentTimeMillis()));
+
+            return detail;
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException("Failed to fetch schematic detail", e);
@@ -496,8 +561,8 @@ public class LitematicHttpClient {
                 }
                 System.out.println("  - LitematicFiles: " + schematicDto.getLitematicFiles().size() + " files");
                 for (int i = 0; i < schematicDto.getLitematicFiles().size(); i++) {
-                    File file = schematicDto.getLitematicFiles().get(i);
-                    System.out.println("    [" + i + "] " + file.getName() + " (" + file.length() + " bytes)");
+                    File litematicFile = schematicDto.getLitematicFiles().get(i);
+                    System.out.println("    [" + i + "] " + litematicFile.getName() + " (" + litematicFile.length() + " bytes)");
                 }
                 System.out.println("  - CoverImageIndex: " + schematicDto.getCoverImageIndex());
                 System.out.println("  - Tags: " + schematicDto.getTags());
@@ -699,5 +764,5 @@ public class LitematicHttpClient {
         // Otherwise return as-is
         return u;
     }
-}
 
+}

@@ -43,6 +43,12 @@ public class MinemevDetailScreen extends Screen {
     private int imageHeight = 0;
     private boolean isImageLoading = false;
 
+    // New: support multiple images
+    private String[] imageUrls = new String[0];
+    private int currentImageIndex = 0;
+    private ButtonWidget prevImageButton;
+    private ButtonWidget nextImageButton;
+
     // Scrolling description
     private int descriptionScrollPos = 0;
     private int scrollAreaX;
@@ -122,8 +128,40 @@ public class MinemevDetailScreen extends Screen {
         this.downloadButton.active = false;
         this.addDrawableChild(this.downloadButton);
 
+        // Prev/Next image buttons (created disabled; enabled when post details load)
+        int padding = 20;
+        int leftSectionWidth = 256;
+        int topMargin = 40;
+        int centerY = topMargin + leftSectionWidth / 2 - 10;
+
+        this.prevImageButton = ButtonWidget.builder(Text.literal("◀"), button -> {
+            if (imageUrls != null && imageUrls.length > 1) {
+                currentImageIndex = (currentImageIndex - 1 + imageUrls.length) % imageUrls.length;
+                loadCoverImage(imageUrls[currentImageIndex]);
+                updateImageButtonsState();
+            }
+        }).dimensions(padding + 6, centerY, 20, 20).build();
+        this.prevImageButton.active = false;
+        this.addDrawableChild(this.prevImageButton);
+
+        this.nextImageButton = ButtonWidget.builder(Text.literal("▶"), button -> {
+            if (imageUrls != null && imageUrls.length > 1) {
+                currentImageIndex = (currentImageIndex + 1) % imageUrls.length;
+                loadCoverImage(imageUrls[currentImageIndex]);
+                updateImageButtonsState();
+            }
+        }).dimensions(padding + leftSectionWidth - 26, centerY, 20, 20).build();
+        this.nextImageButton.active = false;
+        this.addDrawableChild(this.nextImageButton);
+
         errorMessage = null;
         loadPostDetails();
+    }
+
+    private void updateImageButtonsState() {
+        boolean multiple = imageUrls != null && imageUrls.length > 1;
+        if (this.prevImageButton != null) this.prevImageButton.active = multiple;
+        if (this.nextImageButton != null) this.nextImageButton.active = multiple;
     }
 
     private void loadPostDetails() {
@@ -133,14 +171,16 @@ public class MinemevDetailScreen extends Screen {
             postDetail = cached.getDetail();
             isLoading = false;
             this.downloadButton.active = true;
-            // Prefer thumbnail, fallback to first image
-            String imgUrl = postDetail.getThumbnailUrl();
-            if ((imgUrl == null || imgUrl.isEmpty()) && postDetail.getImages() != null && postDetail.getImages().length > 0) {
-                imgUrl = postDetail.getImages()[0];
+            // Prefer thumbnail, fallback to first image. For carousel prefer the images[] array if present
+            if (postDetail.getImages() != null && postDetail.getImages().length > 0) {
+                imageUrls = postDetail.getImages();
+                currentImageIndex = 0;
+                loadCoverImage(imageUrls[currentImageIndex]);
+            } else {
+                String imgUrl = postDetail.getThumbnailUrl();
+                if (imgUrl != null && !imgUrl.isEmpty()) loadCoverImage(imgUrl);
             }
-            if (imgUrl != null && !imgUrl.isEmpty()) {
-                loadCoverImage(imgUrl);
-            }
+            updateImageButtonsState();
             // Fetch files list in background
             loadFilesList();
             return;
@@ -158,13 +198,22 @@ public class MinemevDetailScreen extends Screen {
                     this.downloadButton.active = true;
                     cacheManager.putMinemevDetailCache(postUuid, detail, DETAIL_CACHE_DURATION_MS);
 
-                    String imgUrl = detail.getThumbnailUrl();
-                    if ((imgUrl == null || imgUrl.isEmpty()) && detail.getImages() != null && detail.getImages().length > 0) {
-                        imgUrl = detail.getImages()[0];
+                    // Prefer the images[] array for carousel if available
+                    if (detail.getImages() != null && detail.getImages().length > 0) {
+                        imageUrls = detail.getImages();
+                        currentImageIndex = 0;
+                        loadCoverImage(imageUrls[currentImageIndex]);
+                    } else {
+                        String imgUrl = detail.getThumbnailUrl();
+                        if ((imgUrl == null || imgUrl.isEmpty()) && detail.getImages() != null && detail.getImages().length > 0) {
+                            imgUrl = detail.getImages()[0];
+                        }
+                        if (imgUrl != null && !imgUrl.isEmpty()) {
+                            loadCoverImage(imgUrl);
+                        }
                     }
-                    if (imgUrl != null && !imgUrl.isEmpty()) {
-                        loadCoverImage(imgUrl);
-                    }
+
+                    updateImageButtonsState();
                     loadFilesList();
                 });
             } catch (Exception e) {
@@ -387,6 +436,16 @@ public class MinemevDetailScreen extends Screen {
                 context.drawText(this.textRenderer, noImageText, textX, textY, 0xFFAAAAAA, false);
             }
 
+            // Draw image index indicator if multiple images
+            if (imageUrls != null && imageUrls.length > 1) {
+                String idxStr = String.format("%d/%d", currentImageIndex + 1, imageUrls.length);
+                int idxW = this.textRenderer.getWidth(idxStr);
+                int idxX = padding + (leftSectionWidth - idxW) / 2;
+                int idxY = topMargin + leftSectionWidth - 18;
+                context.fill(idxX - 6, idxY - 3, idxX + idxW + 6, idxY + 12, 0xAA000000);
+                context.drawText(this.textRenderer, idxStr, idxX, idxY, 0xFFFFFFFF, false);
+            }
+
             int y = topMargin;
             // Title (wrapped)
             String name = postDetail.getTitle();
@@ -488,6 +547,8 @@ public class MinemevDetailScreen extends Screen {
 
         if (backButton != null) backButton.render(context, mouseX, mouseY, delta);
         if (downloadButton != null) downloadButton.render(context, mouseX, mouseY, delta);
+        if (prevImageButton != null) prevImageButton.render(context, mouseX, mouseY, delta);
+        if (nextImageButton != null) nextImageButton.render(context, mouseX, mouseY, delta);
 
         // Render dropdown overlay last
         if (showFileDropdown && !fileDropdownItems.isEmpty()) {
@@ -930,6 +991,26 @@ public class MinemevDetailScreen extends Screen {
         String n = (name == null || name.isEmpty()) ? "minemev_schematic" : name;
         n = n.replaceAll("[^a-zA-Z0-9.-]", "_");
         return n;
+    }
+
+    @Override
+    public boolean keyPressed(net.minecraft.client.input.KeyInput input) {
+        int key = input.key();
+        // Left / Right to navigate images when available
+        if (imageUrls != null && imageUrls.length > 1) {
+            if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT) {
+                currentImageIndex = (currentImageIndex - 1 + imageUrls.length) % imageUrls.length;
+                loadCoverImage(imageUrls[currentImageIndex]);
+                updateImageButtonsState();
+                return true;
+            } else if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT) {
+                currentImageIndex = (currentImageIndex + 1) % imageUrls.length;
+                loadCoverImage(imageUrls[currentImageIndex]);
+                updateImageButtonsState();
+                return true;
+            }
+        }
+        return super.keyPressed(input);
     }
 }
 

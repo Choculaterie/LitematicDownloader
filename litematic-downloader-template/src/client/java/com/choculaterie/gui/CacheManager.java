@@ -16,10 +16,10 @@ import java.util.concurrent.CompletableFuture;
 public class CacheManager {
     // Cache for paginated schematic lists
     private final Map<Integer, SchematicCacheEntry> schematicCache = new HashMap<>();
-    
+
     // Cache for search results
     private final Map<String, SearchCacheEntry> searchCache = new HashMap<>();
-    
+
     // Cache for detailed schematic information
     private final Map<String, DetailCacheEntry> detailCache = new HashMap<>();
 
@@ -189,7 +189,7 @@ public class CacheManager {
 
     // Get cache statistics
     public String getCacheStats() {
-        return String.format("Cache: %d pages, %d searches, %d details", 
+        return String.format("Cache: %d pages, %d searches, %d details",
                 schematicCache.size(), searchCache.size(), detailCache.size());
     }
 
