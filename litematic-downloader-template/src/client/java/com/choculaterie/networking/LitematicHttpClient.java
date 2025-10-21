@@ -54,6 +54,7 @@ public class LitematicHttpClient {
             // Create HttpClient with the custom SSL context
             client = HttpClient.newBuilder()
                     .sslContext(sslContext)
+                    .followRedirects(HttpClient.Redirect.ALWAYS)
                     .build();
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize HttpClient with custom SSL context", e);
@@ -298,6 +299,10 @@ public class LitematicHttpClient {
      */
     public static String downloadFileFromUrl(String downloadUrl, String fileName) {
         try {
+            if (downloadUrl == null || downloadUrl.trim().isEmpty()) {
+                throw new IllegalArgumentException("Empty download URL");
+            }
+
             // Use SettingsManager to get the configured schematics path
             String savePath = SettingsManager.getSchematicsPath() + File.separator;
 
@@ -308,31 +313,45 @@ public class LitematicHttpClient {
 
             String filePath = savePath + fileName + ".litematic";
 
-            // Properly encode the URL to handle spaces and special characters
-            String encodedUrl;
+            // Normalize and minimally encode the URL (preserve scheme/host, escape spaces only)
+            String normalized = normalizeExternalUrl(downloadUrl);
+            String encodedUrl = normalized;
             try {
-                // Parse the URL to extract components
-                java.net.URL url = new java.net.URL(downloadUrl);
+                java.net.URL urlObj = new java.net.URL(normalized);
+                String path = urlObj.getPath();
+                String query = urlObj.getQuery();
+                String ref = urlObj.getRef();
 
-                // Encode only the path part to preserve the scheme and host
-                String encodedPath = java.net.URLEncoder.encode(url.getPath(), StandardCharsets.UTF_8)
-                    .replace("%2F", "/"); // Keep forward slashes unencoded for path separators
+                if (path != null) path = path.replace(" ", "%20");
+                if (query != null) query = query.replace(" ", "%20");
 
-                // Reconstruct the URL with encoded path
-                encodedUrl = url.getProtocol() + "://" + url.getHost() +
-                    (url.getPort() != -1 ? ":" + url.getPort() : "") + encodedPath;
+                StringBuilder rebuilt = new StringBuilder();
+                rebuilt.append(urlObj.getProtocol()).append("://");
+                rebuilt.append(urlObj.getHost());
+                if (urlObj.getPort() != -1) rebuilt.append(":" ).append(urlObj.getPort());
+                if (path != null) rebuilt.append(path);
+                if (query != null) rebuilt.append("?").append(query);
+                if (ref != null) rebuilt.append("#").append(ref);
+
+                encodedUrl = rebuilt.toString();
 
                 System.out.println("Original URL: " + downloadUrl);
+                System.out.println("Normalized URL: " + normalized);
                 System.out.println("Encoded URL: " + encodedUrl);
             } catch (Exception e) {
-                // Fallback: if URL parsing fails, try simple encoding
-                encodedUrl = downloadUrl.replace(" ", "%20");
-                System.out.println("Fallback encoding - Original: " + downloadUrl + ", Encoded: " + encodedUrl);
+                // Fallback: simple space replacement, keep original otherwise
+                encodedUrl = normalized.replace(" ", "%20");
+                System.out.println("Fallback encoding - Original: " + normalized + ", Encoded: " + encodedUrl);
+            }
+
+            URI uri = URI.create(encodedUrl);
+            if (uri.getScheme() == null || uri.getScheme().isEmpty()) {
+                throw new IllegalArgumentException("URI with undefined scheme: " + encodedUrl);
             }
 
             // Create HTTP request to download the file
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(encodedUrl))
+                    .uri(uri)
                     .GET()
                     .build();
 
@@ -667,5 +686,22 @@ public class LitematicHttpClient {
     // Static method to access the HTTP client from other classes
     public static HttpClient getClient() {
         return client;
+    }
+
+    // Normalize external URLs to ensure they have a scheme and host when possible
+    private static String normalizeExternalUrl(String url) {
+        if (url == null) return "";
+        String u = url.trim();
+        if (u.isEmpty()) return u;
+        // Already has scheme
+        if (u.startsWith("http://") || u.startsWith("https://")) return u;
+        // Protocol-relative
+        if (u.startsWith("//")) return "https:" + u;
+        // Likely absolute path on Minemev host
+        if (u.startsWith("/")) return "https://www.minemev.com" + u;
+        // Looks like a bare domain/path
+        if (u.matches("[A-Za-z0-9.-]+\\.[A-Za-z]{2,}.*")) return "https://" + u;
+        // Otherwise return as-is
+        return u;
     }
 }

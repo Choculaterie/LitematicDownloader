@@ -2,6 +2,7 @@ package com.choculaterie.gui;
 
 import com.choculaterie.models.SchematicInfo;
 import com.choculaterie.networking.LitematicHttpClient;
+import com.choculaterie.networking.MinemevHttpClient;
 import it.unimi.dsi.fastutil.objects.ReferenceImmutableList;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -93,6 +94,24 @@ public class LitematicDownloaderScreen extends Screen {
     private boolean isPreloadingPagination = false;
     private int preloadingPageNumber = -1;
 
+    private enum ServerMode { CHOCULATERIE, MINEMEV, BOTH }
+    private ServerMode serverMode = ServerMode.CHOCULATERIE;
+
+    private ButtonWidget serverToggleButton;
+
+    // Dropdown for Minemev file selection
+    private boolean showFileDropdown = false;
+    private java.util.List<com.choculaterie.models.MinemevFileInfo> fileDropdownItems = new ArrayList<>();
+    private int fileDropdownX = 0;
+    private int fileDropdownY = 0;
+    private int fileDropdownWidth = 320;
+    private int fileDropdownHeight = 0;
+    private int fileDropdownScroll = 0;
+    private final int fileDropdownItemHeight = 18;
+    private int fileDropdownContentHeight = 0;
+    private @Nullable String fileDropdownPostId = null;
+    private String fileDropdownBaseName = "";
+
     public LitematicDownloaderScreen() {
         super(Text.literal(""));
     }
@@ -176,6 +195,24 @@ public class LitematicDownloaderScreen extends Screen {
                 }
         ).dimensions(this.width - 115, 10, 20, 20).build());
 
+        // Server selection toggle (cycles: C -> M -> Both)
+        serverToggleButton = this.addDrawableChild(ButtonWidget.builder(
+                        Text.literal(getServerToggleLabel()),
+                        button -> {
+                            cycleServerMode();
+                            button.setMessage(Text.literal(getServerToggleLabel()));
+                            // Clear caches only for Choculaterie path to avoid mixing
+                            cacheManager.clearAllCache();
+                            currentPage = 1;
+                            if (isSearchMode) {
+                                performSearch();
+                            } else {
+                                loadSchematics();
+                            }
+                        })
+                .dimensions(this.width - 165, 10, 45, 20)
+                .build());
+
         // Set up scroll area dimensions
         int contentWidth = Math.min(600, this.width - 80);
         scrollAreaX = (this.width - contentWidth) / 2;
@@ -236,6 +273,22 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         loadSchematics();
+    }
+
+    private String getServerToggleLabel() {
+        return switch (serverMode) {
+            case CHOCULATERIE -> "Srv:C";
+            case MINEMEV -> "Srv:M";
+            case BOTH -> "Srv:B";
+        };
+    }
+
+    private void cycleServerMode() {
+        switch (serverMode) {
+            case CHOCULATERIE -> serverMode = ServerMode.MINEMEV;
+            case MINEMEV -> serverMode = ServerMode.BOTH;
+            case BOTH -> serverMode = ServerMode.CHOCULATERIE;
+        }
     }
 
     @Override
@@ -329,55 +382,98 @@ public class LitematicDownloaderScreen extends Screen {
     private void performSearch() {
         if (searchTerm.isEmpty()) return;
 
-        // Check if we have valid cached search data
-        if (cacheManager.hasValidSearchCache(searchTerm, CACHE_DURATION_MS)) {
-            schematics = cacheManager.getSearchCache(searchTerm).getItems();
-            totalPages = 1;
-            totalItems = schematics.size();
+        // If searching only on Choculaterie, keep old cache behavior
+        if (serverMode == ServerMode.CHOCULATERIE) {
+            if (cacheManager.hasValidSearchCache(searchTerm, CACHE_DURATION_MS)) {
+                schematics = cacheManager.getSearchCache(searchTerm).getItems();
+                totalPages = 1;
+                totalItems = schematics.size();
+                updateScrollbarDimensions();
+                return;
+            }
+
+            schematics = new ReferenceImmutableList<>(new ArrayList<>());
             updateScrollbarDimensions();
+            scrollOffset = 0;
+
+            isLoading = true;
+            loadingStartTime = System.currentTimeMillis();
+
+            new Thread(() -> {
+                ReferenceImmutableList<SchematicInfo> searchResults = new ReferenceImmutableList<>(LitematicHttpClient.searchSchematics(searchTerm));
+                MinecraftClient.getInstance().execute(() -> {
+                    schematics = searchResults;
+                    totalPages = 1;
+                    totalItems = searchResults.size();
+
+                    // Cache the search response
+                    cacheManager.putSearchCache(searchTerm, searchResults);
+
+                    updateScrollbarDimensions();
+                    isLoading = false;
+                });
+            }).start();
             return;
         }
 
+        // For Minemev or Both, fetch results from respective APIs without caching for now
         schematics = new ReferenceImmutableList<>(new ArrayList<>());
         updateScrollbarDimensions();
         scrollOffset = 0;
-
         isLoading = true;
         loadingStartTime = System.currentTimeMillis();
 
+        final String term = searchTerm;
         new Thread(() -> {
-            ReferenceImmutableList<SchematicInfo> searchResults = new ReferenceImmutableList<>(LitematicHttpClient.searchSchematics(searchTerm));
+            List<SchematicInfo> merged = new ArrayList<>();
+            int totalCount = 0;
+
+            try {
+                if (serverMode == ServerMode.MINEMEV || serverMode == ServerMode.BOTH) {
+                    MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(term, 1);
+                    for (var post : mres.getPosts()) {
+                        merged.add(new SchematicInfo(
+                                post.getUuid(),
+                                post.getTitle(),
+                                post.getDescription(),
+                                0,
+                                post.getDownloads(),
+                                post.getAuthor(),
+                                SchematicInfo.SourceServer.MINEMEV
+                        ));
+                    }
+                    totalCount += mres.getTotalResults();
+                }
+                if (serverMode == ServerMode.CHOCULATERIE || serverMode == ServerMode.BOTH) {
+                    List<SchematicInfo> cres = LitematicHttpClient.searchSchematics(term);
+                    merged.addAll(cres); // These are CHOCULATERIE by default
+                    totalCount += cres.size();
+                }
+            } catch (Exception e) {
+                System.err.println("Search error: " + e.getMessage());
+            }
+
+            ReferenceImmutableList<SchematicInfo> finalList = new ReferenceImmutableList<>(merged);
+            int finalTotal = totalCount > 0 ? totalCount : merged.size();
             MinecraftClient.getInstance().execute(() -> {
-                schematics = searchResults;
-                totalPages = 1;
-                totalItems = searchResults.size();
-
-                // Cache the search response
-                cacheManager.putSearchCache(searchTerm, searchResults);
-
+                schematics = finalList;
+                totalPages = 1; // unified search view is single page
+                totalItems = finalTotal;
                 updateScrollbarDimensions();
                 isLoading = false;
             });
         }).start();
     }
 
-    private void performSearchForced() {
-        // Force search by clearing cache first
-        cacheManager.clearSearchCache(searchTerm);
-        performSearch();
-    }
-
     private void loadSchematics() {
         System.out.println("=== loadSchematics() called for page " + currentPage + " ===");
 
-        // Prevent race conditions from rapid clicking
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastRequestTime < MIN_REQUEST_INTERVAL_MS) {
             System.out.println("Request throttled - too soon after last request");
             return;
         }
 
-        // If there's already a request in progress for a different page, ignore this request
         if (activeRequestPage != -1 && activeRequestPage != currentPage) {
             System.out.println("Ignoring request for page " + currentPage + " - already loading page " + activeRequestPage);
             return;
@@ -385,8 +481,7 @@ public class LitematicDownloaderScreen extends Screen {
 
         cacheManager.debugPrintCachedPages();
 
-        // Check if we have valid cached data
-        if (cacheManager.hasValidSchematicCache(currentPage, CACHE_DURATION_MS)) {
+        if (serverMode == ServerMode.CHOCULATERIE && cacheManager.hasValidSchematicCache(currentPage, CACHE_DURATION_MS)) {
             System.out.println("Using cached data for page " + currentPage);
             CacheManager.SchematicCacheEntry cachedEntry = cacheManager.getSchematicCache(currentPage);
 
@@ -398,7 +493,6 @@ public class LitematicDownloaderScreen extends Screen {
             return;
         }
 
-        // If we're already loading this exact page, don't start another request
         if (activeRequestPage == currentPage && isLoading) {
             System.out.println("Already loading page " + currentPage + " - ignoring duplicate request");
             return;
@@ -406,7 +500,6 @@ public class LitematicDownloaderScreen extends Screen {
 
         System.out.println("No valid cache for page " + currentPage + ", fetching from server...");
 
-        // Mark this page as being actively loaded
         activeRequestPage = currentPage;
         lastRequestTime = currentTime;
 
@@ -417,79 +510,86 @@ public class LitematicDownloaderScreen extends Screen {
         isLoading = true;
         loadingStartTime = System.currentTimeMillis();
 
-        // Capture the page number to ensure we handle the correct response
         final int requestedPage = currentPage;
 
         new Thread(() -> {
             try {
-                System.out.println("Fetching page " + requestedPage + " from server...");
-                LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(requestedPage, pageSize, showUnverified);
+                List<SchematicInfo> merged = new ArrayList<>();
+                int pagesChoc = 1;
+                int pagesMine = 1;
+                int totalCount = 0;
+
+                if (serverMode == ServerMode.CHOCULATERIE) {
+                    // Use configured pageSize for Choculaterie-only
+                    LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(requestedPage, pageSize, showUnverified);
+                    merged.addAll(result.getItems());
+                    pagesChoc = Math.max(1, result.getTotalPages());
+                    totalCount = result.getTotalItems();
+                    cacheManager.putSchematicCache(result);
+                } else if (serverMode == ServerMode.MINEMEV) {
+                    // Minemev default page size is defined server-side (usually 10)
+                    MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(null, null, null, "newest", requestedPage);
+                    for (var post : mres.getPosts()) {
+                        merged.add(new SchematicInfo(
+                                post.getUuid(),
+                                post.getTitle(),
+                                post.getDescription(),
+                                0,
+                                post.getDownloads(),
+                                post.getAuthor(),
+                                SchematicInfo.SourceServer.MINEMEV
+                        ));
+                    }
+                    pagesMine = Math.max(1, mres.getTotalPages());
+                    totalCount = Math.max(mres.getTotalResults(), merged.size());
+                } else { // BOTH
+                    // Show 10 from Choculaterie and 10 from Minemev per page
+                    int chocPageSize = 10;
+                    System.out.println("Fetching page " + requestedPage + " from Choculaterie (10 items)...");
+                    LitematicHttpClient.PaginatedResult result = LitematicHttpClient.fetchSchematicsPaginated(requestedPage, chocPageSize, showUnverified);
+                    merged.addAll(result.getItems());
+                    pagesChoc = Math.max(1, result.getTotalPages());
+                    int chocTotal = result.getTotalItems();
+
+                    System.out.println("Fetching page " + requestedPage + " from Minemev (10 items)...");
+                    MinemevHttpClient.MinemevSearchResult mres = MinemevHttpClient.searchPosts(null, null, null, "newest", requestedPage);
+                    for (var post : mres.getPosts()) {
+                        merged.add(new SchematicInfo(
+                                post.getUuid(),
+                                post.getTitle(),
+                                post.getDescription(),
+                                0,
+                                post.getDownloads(),
+                                post.getAuthor(),
+                                SchematicInfo.SourceServer.MINEMEV
+                        ));
+                    }
+                    pagesMine = Math.max(1, mres.getTotalPages());
+                    int mineTotal = Math.max(mres.getTotalResults(), mres.getPosts().size());
+
+                    totalCount = chocTotal + mineTotal;
+                }
+
+                ReferenceImmutableList<SchematicInfo> items = new ReferenceImmutableList<>(merged);
+                int finalPages = (serverMode == ServerMode.BOTH) ? Math.max(pagesChoc, pagesMine)
+                        : (serverMode == ServerMode.CHOCULATERIE ? pagesChoc : pagesMine);
+
+                int finalTotal = totalCount > 0 ? totalCount : items.size();
 
                 MinecraftClient.getInstance().execute(() -> {
-                    // Verify this response is still relevant (user might have navigated away)
                     if (activeRequestPage != requestedPage) {
-                        System.out.println("Discarding response for page " + requestedPage + " - user navigated to page " + activeRequestPage);
-                        // Clear loading state if this was the active request
-                        if (isLoading && activeRequestPage == -1) {
-                            isLoading = false;
-                            System.out.println("Cleared loading state after discarding response");
-                        }
+                        isLoading = false;
                         return;
                     }
 
-                    // If the current page changed while we were loading, discard this response
-                    if (currentPage != requestedPage) {
-                        System.out.println("Discarding response for page " + requestedPage + " - current page is now " + currentPage);
-                        activeRequestPage = -1; // Clear the active request
-                        isLoading = false; // Clear loading state since we're discarding this response
-                        System.out.println("Cleared loading state after page change");
-
-                        // CRITICAL FIX: Check if current page has cached data and load it immediately
-                        if (cacheManager.hasValidSchematicCache(currentPage, CACHE_DURATION_MS)) {
-                            System.out.println("Loading cached data for current page " + currentPage + " after discarding response");
-                            CacheManager.SchematicCacheEntry cachedEntry = cacheManager.getSchematicCache(currentPage);
-                            schematics = cachedEntry.getItems();
-                            totalPages = cachedEntry.getTotalPages();
-                            totalItems = cachedEntry.getTotalItems();
-                            updateScrollbarDimensions();
-                            System.out.println("Restored " + schematics.size() + " items from cache for current page " + currentPage);
-                        } else if (!cacheManager.hasValidSchematicCache(currentPage, CACHE_DURATION_MS)) {
-                            // If the current page needs loading and no request is active, start loading it
-                            System.out.println("Current page " + currentPage + " needs loading - starting request");
-                            // Use a small delay to avoid immediate re-request
-                            new Thread(() -> {
-                                try {
-                                    Thread.sleep(50); // Small delay to avoid race conditions
-                                    MinecraftClient.getInstance().execute(this::loadSchematics);
-                                } catch (InterruptedException ignored) {
-                                }
-                            }).start();
-                        }
-                        return;
-                    }
-
-                    System.out.println("Server response received for page " + requestedPage + ": " + result.getItems().size() + " items");
-
-                    // Create a defensive copy before assigning to schematics
-                    schematics = result.getItems();
-                    totalPages = result.getTotalPages();
-                    totalItems = result.getTotalItems();
-
-                    // Cache the response with proper error handling
-                    try {
-                        // Pass the original result items to cache (cache will make its own copy)
-                        cacheManager.putSchematicCache(result);
-                        System.out.println("Successfully cached page " + requestedPage);
-                    } catch (Exception e) {
-                        System.err.println("Failed to cache page " + requestedPage + ": " + e.getMessage());
-                        e.printStackTrace();
-                    }
+                    schematics = items;
+                    totalPages = finalPages;
+                    totalItems = finalTotal;
 
                     updateScrollbarDimensions();
                     isLoading = false;
-                    activeRequestPage = -1; // Clear the active request marker
+                    activeRequestPage = -1;
 
-                    // Debug print after caching
                     cacheManager.debugPrintCachedPages();
                 });
             } catch (Exception e) {
@@ -497,11 +597,16 @@ public class LitematicDownloaderScreen extends Screen {
                 e.printStackTrace();
                 MinecraftClient.getInstance().execute(() -> {
                     isLoading = false;
-                    activeRequestPage = -1; // Clear the active request marker
-                    // Handle error case - could show error message to user
+                    activeRequestPage = -1;
                 });
             }
         }).start();
+    }
+
+    private void performSearchForced() {
+        // Force search by clearing cache first
+        cacheManager.clearSearchCache(searchTerm);
+        performSearch();
     }
 
     private void loadSchematicsForced() {
@@ -620,24 +725,12 @@ public class LitematicDownloaderScreen extends Screen {
                     scrollBarColor);
         }
 
-        // Render status message if active
-        if (hasActiveStatusMessage()) {
-            int messageWidth = this.textRenderer.getWidth(statusMessage) + 20;
-            int messageHeight = 20;
-            int messageX = (this.width - messageWidth) / 2;
-            int messageY = this.height / 2 - 10;
-
-            context.fill(messageX, messageY, messageX + messageWidth, messageY + messageHeight, 0x80000000);
-            context.drawCenteredTextWithShadow(
-                    this.textRenderer,
-                    Text.literal(statusMessage),
-                    this.width / 2,
-                    this.height / 2 - 4,
-                    statusColor
-            );
-        }
-
         ToastManager.render(context, this.width);
+
+        // Render file dropdown overlay on top
+        if (showFileDropdown && !fileDropdownItems.isEmpty()) {
+            renderFileDropdown(context, mouseX, mouseY);
+        }
 
     }
 
@@ -765,6 +858,13 @@ public class LitematicDownloaderScreen extends Screen {
         double mouseY = click.y();
         int button = click.button();
 
+        // If dropdown is open, handle it first
+        if (showFileDropdown) {
+            if (handleDropdownClick(mouseX, mouseY, button)) {
+                return true;
+            }
+        }
+
         // Unfocus search when clicking outside it
         if (searchField.isFocused() &&
                 (mouseX < searchField.getX() || mouseX > searchField.getX() + searchField.getWidth() ||
@@ -804,11 +904,19 @@ public class LitematicDownloaderScreen extends Screen {
                 int buttonY = scrollAreaY - scrollOffset + (index * itemHeight);
                 if (mouseX >= buttonX && mouseX <= buttonX + 20 &&
                         mouseY >= buttonY && mouseY <= buttonY + 20) {
-                    handleDownload(schematic);
-                    // Prevent accidental double‑open after download click
-                    lastClickedIndex = -1;
-                    lastClickTime = 0;
-                    return true;
+                    // For Minemev, open dropdown to select file
+                    if (schematic.getSource() == SchematicInfo.SourceServer.MINEMEV) {
+                        openMinemevFileDropdown(schematic, buttonX, buttonY + 20);
+                        // Prevent accidental double-open
+                        lastClickedIndex = -1;
+                        lastClickTime = 0;
+                        return true;
+                    } else {
+                        handleDownload(schematic, buttonX, buttonY);
+                        lastClickedIndex = -1;
+                        lastClickTime = 0;
+                        return true;
+                    }
                 }
 
                 // Robust double‑click detection
@@ -826,7 +934,11 @@ public class LitematicDownloaderScreen extends Screen {
                             isSearchMode, searchTerm, lastSearchedTerm,
                             scrollOffset
                     );
-                    MinecraftClient.getInstance().setScreen(new DetailScreen(schematic.getId()));
+                    if (schematic.getSource() == SchematicInfo.SourceServer.MINEMEV) {
+                        MinecraftClient.getInstance().setScreen(new MinemevDetailScreen(schematic.getId()));
+                    } else {
+                        MinecraftClient.getInstance().setScreen(new DetailScreen(schematic.getId()));
+                    }
                     return true;
                 }
             }
@@ -839,91 +951,168 @@ public class LitematicDownloaderScreen extends Screen {
         return super.mouseClicked(click, doubled);
     }
 
-    private void handleDownload(SchematicInfo schematic) {
-        try {
-            String fileName = schematic.getName().replaceAll("[^a-zA-Z0-9.-]", "_");
+    private void openMinemevFileDropdown(SchematicInfo schematic, int anchorX, int anchorY) {
+        showFileDropdown = false;
+        fileDropdownItems = new ArrayList<>();
+        fileDropdownPostId = schematic.getId();
+        fileDropdownBaseName = schematic.getName().replaceAll("[^a-zA-Z0-9.-]", "_");
+        fileDropdownX = Math.min(anchorX, this.width - fileDropdownWidth - 10);
+        fileDropdownY = anchorY;
+        fileDropdownScroll = 0;
 
-            // Get file path using SettingsManager
-            String savePath = SettingsManager.getSchematicsPath() + File.separator;
-            File potentialFile = new File(savePath + fileName + ".litematic");
+        new Thread(() -> {
+            try {
+                var files = MinemevHttpClient.fetchPostFiles(schematic.getId());
+                MinecraftClient.getInstance().execute(() -> {
+                    // If no files
+                    if (files == null || files.isEmpty()) {
+                        ToastManager.addToast("No files available for this post", true);
+                        showFileDropdown = false;
+                        return;
+                    }
+
+                    // If exactly one file, download directly (with confirmation if needed)
+                    if (files.size() == 1) {
+                        com.choculaterie.models.MinemevFileInfo only = files.get(0);
+                        String chosenName = sanitizeFileNameForSave(only.getFileName());
+                        String schematicsPath = SettingsManager.getSchematicsPath();
+                        File potentialFile = new File(schematicsPath + File.separator + chosenName + ".litematic");
+
+                        if (potentialFile.exists()) {
+                            ConfirmationScreen confirmationScreen = new ConfirmationScreen(
+                                    Text.literal("File already exists"),
+                                    Text.literal("The file \"" + chosenName + ".litematic\" already exists. Replace it?"),
+                                    (confirmed) -> {
+                                        if (confirmed) {
+                                            performMinemevFileDownload(only, chosenName);
+                                        }
+                                        MinecraftClient.getInstance().setScreen(this);
+                                    }
+                            );
+                            MinecraftClient.getInstance().setScreen(confirmationScreen);
+                        } else {
+                            performMinemevFileDownload(only, chosenName);
+                        }
+
+                        showFileDropdown = false;
+                        return;
+                    }
+
+                    // Otherwise, show dropdown with all files
+                    fileDropdownItems = files;
+                    fileDropdownContentHeight = fileDropdownItems.size() * fileDropdownItemHeight;
+                    int maxHeight = Math.min(200, this.height - fileDropdownY - 20);
+                    fileDropdownHeight = Math.min(fileDropdownContentHeight, maxHeight);
+                    showFileDropdown = !fileDropdownItems.isEmpty();
+                    if (!showFileDropdown) {
+                        ToastManager.addToast("No files available for this post", true);
+                    }
+                });
+            } catch (Exception e) {
+                MinecraftClient.getInstance().execute(() -> {
+                    ToastManager.addToast("Failed to load files: " + e.getMessage(), true);
+                    showFileDropdown = false;
+                });
+            }
+        }).start();
+    }
+
+    private boolean handleDropdownClick(double mouseX, double mouseY, int button) {
+        // Click outside closes
+        if (mouseX < fileDropdownX || mouseX > fileDropdownX + fileDropdownWidth ||
+                mouseY < fileDropdownY || mouseY > fileDropdownY + fileDropdownHeight) {
+            showFileDropdown = false;
+            return false; // let others handle outside click
+        }
+        if (button != 0) return true; // consume non-left clicks inside
+
+        int relativeY = (int) (mouseY - fileDropdownY + fileDropdownScroll);
+        int index = relativeY / fileDropdownItemHeight;
+        if (index >= 0 && index < fileDropdownItems.size()) {
+            com.choculaterie.models.MinemevFileInfo file = fileDropdownItems.get(index);
+            // Confirm overwrite using selected filename
+            String chosenName = sanitizeFileNameForSave(file.getFileName());
+            String schematicsPath = SettingsManager.getSchematicsPath();
+            File potentialFile = new File(schematicsPath + File.separator + chosenName + ".litematic");
 
             if (potentialFile.exists()) {
                 ConfirmationScreen confirmationScreen = new ConfirmationScreen(
                         Text.literal("File already exists"),
-                        Text.literal("The file \"" + fileName + ".litematic\" already exists. Do you want to replace it?"),
+                        Text.literal("The file \"" + chosenName + ".litematic\" already exists. Replace it?"),
                         (confirmed) -> {
                             if (confirmed) {
-                                downloadSchematic(schematic, fileName);
+                                performMinemevFileDownload(file, chosenName);
                             }
                             MinecraftClient.getInstance().setScreen(this);
                         }
                 );
                 MinecraftClient.getInstance().setScreen(confirmationScreen);
             } else {
-                downloadSchematic(schematic, fileName);
+                performMinemevFileDownload(file, chosenName);
             }
-        } catch (Exception e) {
-            setStatusMessage("Failed to download schematic: " + e.getMessage(), false);
-        }
-    }
-
-    private void downloadSchematic(SchematicInfo schematic, String fileName) {
-        try {
-            String filePath = LitematicHttpClient.fetchAndDownloadSchematic(schematic.getId(), fileName);
-            // Show relative path from schematics base folder with forward slashes
-            String schematicsPath = SettingsManager.getSchematicsPath();
-            String relativePath;
-            if (filePath.startsWith(schematicsPath)) {
-                String pathAfterBase = filePath.substring(schematicsPath.length());
-                // Remove leading separator if present
-                if (pathAfterBase.startsWith(File.separator)) {
-                    pathAfterBase = pathAfterBase.substring(File.separator.length());
-                }
-                // Use the folder name from the settings instead of hardcoding "schematics"
-                String folderName = new File(schematicsPath).getName();
-                relativePath = folderName + "/" + pathAfterBase.replace(File.separator, "/");
-            } else {
-                // Fallback - just show filename
-                String folderName = new File(schematicsPath).getName();
-                relativePath = folderName + "/" + fileName + ".litematic";
-            }
-            setStatusMessage("Schematic downloaded to: " + relativePath, true);
-        } catch (Exception e) {
-            setStatusMessage("Failed to download schematic: " + e.getMessage(), false);
-        }
-    }
-
-    public void setStatusMessage(String message, boolean isSuccess) {
-        ToastManager.addToast(message, !isSuccess);
-    }
-
-    public boolean hasActiveStatusMessage() {
-        return statusMessage != null &&
-                (System.currentTimeMillis() - statusMessageDisplayTime) < STATUS_MESSAGE_DURATION;
-    }
-
-    @Override
-    public boolean mouseDragged(net.minecraft.client.gui.Click click, double offsetX, double offsetY) {
-        if (isScrolling) {
-            float dragPosition = (float) (click.y() - scrollDragOffset - scrollAreaY) / (scrollAreaHeight - scrollBarHeight);
-            scrollOffset = (int) (dragPosition * (totalContentHeight - scrollAreaHeight));
-            scrollOffset = Math.max(0, Math.min(totalContentHeight - scrollAreaHeight, scrollOffset));
+            showFileDropdown = false; // close after selection
             return true;
         }
-        return super.mouseDragged(click, offsetX, offsetY);
+        return true; // clicks inside consumed
     }
 
-    @Override
-    public boolean mouseReleased(net.minecraft.client.gui.Click click) {
-        if (click.button() == 0 && isScrolling) {
-            isScrolling = false;
-            return true;
+    private void renderFileDropdown(DrawContext context, int mouseX, int mouseY) {
+        // Background and border
+        int x1 = fileDropdownX;
+        int y1 = fileDropdownY;
+        int x2 = fileDropdownX + fileDropdownWidth;
+        int y2 = fileDropdownY + fileDropdownHeight;
+        context.fill(x1 - 1, y1 - 1, x2 + 1, y2 + 1, 0xAA000000);
+        context.fill(x1, y1, x2, y2, 0xEE101010);
+
+        // Clip area
+        context.enableScissor(x1, y1, x2, y2);
+
+        int startIndex = Math.max(0, fileDropdownScroll / fileDropdownItemHeight);
+        int endIndex = Math.min(fileDropdownItems.size(), startIndex + (fileDropdownHeight / fileDropdownItemHeight) + 1);
+        int drawY = y1 - (fileDropdownScroll % fileDropdownItemHeight);
+
+        for (int i = startIndex; i < endIndex; i++) {
+            com.choculaterie.models.MinemevFileInfo f = fileDropdownItems.get(i);
+            int itemTop = drawY + (i - startIndex) * fileDropdownItemHeight;
+            boolean hovered = mouseX >= x1 && mouseX <= x2 && mouseY >= itemTop && mouseY <= itemTop + fileDropdownItemHeight;
+            if (hovered) {
+                context.fill(x1, itemTop, x2, itemTop + fileDropdownItemHeight, 0x33FFFFFF);
+            }
+            String name = (f.getFileName() != null && !f.getFileName().isEmpty()) ? f.getFileName() : "Unnamed";
+            String sizeStr = f.getFileSize() > 0 ? (" • " + formatSize(f.getFileSize())) : "";
+            String ver = joinArrayShort(f.getVersions());
+            String line = name + sizeStr + (ver.isEmpty() ? "" : (" • " + ver));
+            context.drawText(this.textRenderer, line, x1 + 6, itemTop + 4, 0xFFFFFFFF, false);
         }
-        return super.mouseReleased(click);
+
+        context.disableScissor();
+
+        // Scrollbar
+        if (fileDropdownContentHeight > fileDropdownHeight) {
+            int scrollBarWidth = 6;
+            int barHeight = Math.max(20, fileDropdownHeight * fileDropdownHeight / fileDropdownContentHeight);
+            int barX = x2 - scrollBarWidth - 2;
+            int barY = y1 + (int)((float)fileDropdownScroll / (fileDropdownContentHeight - fileDropdownHeight)
+                    * (fileDropdownHeight - barHeight));
+            context.fill(barX, y1, barX + scrollBarWidth, y2, 0x33FFFFFF);
+            boolean isHovering = mouseX >= barX && mouseX <= barX + scrollBarWidth && mouseY >= barY && mouseY <= barY + barHeight;
+            int color = isHovering ? 0xFFFFFFFF : 0xAAFFFFFF;
+            context.fill(barX, barY, barX + scrollBarWidth, barY + barHeight, color);
+        }
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        // Dropdown scroll handling takes precedence
+        if (showFileDropdown && mouseX >= fileDropdownX && mouseX <= fileDropdownX + fileDropdownWidth &&
+                mouseY >= fileDropdownY && mouseY <= fileDropdownY + fileDropdownHeight &&
+                fileDropdownContentHeight > fileDropdownHeight) {
+            int delta = (int) (-verticalAmount * 20);
+            fileDropdownScroll = Math.max(0, Math.min(fileDropdownContentHeight - fileDropdownHeight, fileDropdownScroll + delta));
+            return true;
+        }
+
         if (mouseX >= scrollAreaX && mouseX <= scrollAreaX + scrollAreaWidth &&
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight) {
 
@@ -938,6 +1127,61 @@ public class LitematicDownloaderScreen extends Screen {
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 
+    private void performMinemevFileDownload(com.choculaterie.models.MinemevFileInfo file, String chosenName) {
+        try {
+            String filenameForResolver = (file.getFileName() != null && !file.getFileName().isEmpty())
+                    ? file.getFileName() : (chosenName + ".litematic");
+            String postId = this.fileDropdownPostId != null ? this.fileDropdownPostId : "";
+            String resolvedUrl = com.choculaterie.networking.MinemevHttpClient.getDownloadUrl(postId, filenameForResolver, file.getDownloadUrl());
+            String filePath = LitematicHttpClient.downloadFileFromUrl(resolvedUrl, chosenName);
+            String schematicsPath = SettingsManager.getSchematicsPath();
+            String relativePath;
+            if (filePath.startsWith(schematicsPath)) {
+                String pathAfterBase = filePath.substring(schematicsPath.length());
+                if (pathAfterBase.startsWith(File.separator)) {
+                    pathAfterBase = pathAfterBase.substring(File.separator.length());
+                }
+                String folderName = new File(schematicsPath).getName();
+                relativePath = folderName + "/" + pathAfterBase.replace(File.separator, "/");
+            } else {
+                String folderName = new File(schematicsPath).getName();
+                relativePath = folderName + "/" + chosenName + ".litematic";
+            }
+            setStatusMessage("Schematic downloaded to: " + relativePath, true);
+        } catch (Exception e) {
+            setStatusMessage("Failed to download: " + e.getMessage(), false);
+        }
+    }
+
+    private String sanitizeFileNameForSave(String name) {
+        String n = (name == null || name.isEmpty()) ? fileDropdownBaseName : name;
+        n = n.replaceAll("[^a-zA-Z0-9.-]", "_");
+        if (n.toLowerCase().endsWith(".litematic")) {
+            n = n.substring(0, n.length() - ".litematic".length());
+        }
+        return n;
+    }
+
+    private String joinArrayShort(String[] arr) {
+        if (arr == null || arr.length == 0) return "";
+        java.util.List<String> items = new java.util.ArrayList<>();
+        for (String s : arr) {
+            if (s == null) continue;
+            String t = s.trim();
+            if (!t.isEmpty()) items.add(t);
+        }
+        return String.join(", ", items);
+    }
+
+    private String formatSize(long bytes) {
+        if (bytes <= 0) return "";
+        String[] units = {"B", "KB", "MB", "GB"};
+        double b = (double) bytes;
+        int idx = 0;
+        while (b >= 1024 && idx < units.length - 1) { b /= 1024.0; idx++; }
+        return String.format(java.util.Locale.ROOT, "%.1f %s", b, units[idx]);
+    }
+
     /**
      * Handle hover tracking for preloading schematic details after 2 seconds
      */
@@ -947,52 +1191,89 @@ public class LitematicDownloaderScreen extends Screen {
                 mouseY >= scrollAreaY && mouseY <= scrollAreaY + scrollAreaHeight &&
                 !schematics.isEmpty()) {
 
-            // Calculate which item the mouse is over
             int itemIndex = (int) ((mouseY - scrollAreaY + scrollOffset) / itemHeight);
-
-            // Check if the index is valid
             if (itemIndex >= 0 && itemIndex < schematics.size()) {
                 SchematicInfo hoveredSchematic = schematics.get(itemIndex);
 
-                // If this is a new item being hovered
                 if (itemIndex != hoveredItemIndex) {
                     hoveredItemIndex = itemIndex;
                     hoverStartTime = System.currentTimeMillis();
 
-                    // Cancel any ongoing preload if we're hovering a different item
                     if (isPreloadingHoveredItem && !hoveredSchematic.getId().equals(currentlyPreloadingId)) {
                         System.out.println("Cancelled preload for " + currentlyPreloadingId + " - now hovering " + hoveredSchematic.getId());
                         currentlyPreloadingId = null;
                         isPreloadingHoveredItem = false;
                     }
                 }
-                // If we've been hovering the same item for 0.5+ seconds and haven't started preloading yet
-                else if (System.currentTimeMillis() - hoverStartTime >= HOVER_DELAY_MS && !isPreloadingHoveredItem && !cacheManager.hasValidDetailCache(hoveredSchematic.getId(), DETAIL_CACHE_DURATION_MS)) {
-
-                    // Start preloading this schematic's details
-                    startHoverPreload(hoveredSchematic);
+                else if (System.currentTimeMillis() - hoverStartTime >= HOVER_DELAY_MS && !isPreloadingHoveredItem) {
+                    // Dispatch to appropriate preload per source and cache status
+                    if (hoveredSchematic.getSource() == SchematicInfo.SourceServer.CHOCULATERIE) {
+                        if (!cacheManager.hasValidDetailCache(hoveredSchematic.getId(), DETAIL_CACHE_DURATION_MS)) {
+                            startHoverPreload(hoveredSchematic);
+                        }
+                    } else {
+                        if (!cacheManager.hasValidMinemevDetailCache(hoveredSchematic.getId(), DETAIL_CACHE_DURATION_MS)) {
+                            startHoverPreloadMinemev(hoveredSchematic);
+                        }
+                    }
                 }
             } else {
-                // Mouse is not over a valid item, reset hover state
                 resetHoverState();
             }
         } else {
-            // Mouse is not in the scroll area, reset hover state
             resetHoverState();
         }
     }
 
-    /**
-     * Start preloading schematic details for the hovered item
-     */
-    private void startHoverPreload(SchematicInfo schematic) {
-        if (isPreloadingHoveredItem || schematic == null) {
+    private void startHoverPreloadMinemev(SchematicInfo schematic) {
+        if (isPreloadingHoveredItem || schematic == null) return;
+        if (schematic.getSource() != SchematicInfo.SourceServer.MINEMEV) return;
+
+        String uuid = schematic.getId();
+        if (cacheManager.hasValidMinemevDetailCache(uuid, DETAIL_CACHE_DURATION_MS)) {
+            System.out.println("Skipping Minemev preload for " + uuid + " - already cached");
             return;
         }
 
-        String schematicId = schematic.getId();
+        isPreloadingHoveredItem = true;
+        currentlyPreloadingId = uuid;
+        System.out.println("Starting hover preload for Minemev post: " + schematic.getName() + " (UUID: " + uuid + ")");
 
-        // Don't preload if already cached
+        new Thread(() -> {
+            try {
+                if (!isPreloadingHoveredItem || !uuid.equals(currentlyPreloadingId)) {
+                    System.out.println("Preload cancelled during fetch for Minemev " + uuid);
+                    return;
+                }
+
+                var detail = MinemevHttpClient.fetchPostDetails(uuid);
+                MinecraftClient.getInstance().execute(() -> {
+                    if (isPreloadingHoveredItem && uuid.equals(currentlyPreloadingId)) {
+                        cacheManager.putMinemevDetailCache(uuid, detail, DETAIL_CACHE_DURATION_MS);
+                        System.out.println("Successfully preloaded Minemev details for: " + detail.getTitle());
+                    }
+                    if (uuid.equals(currentlyPreloadingId)) {
+                        isPreloadingHoveredItem = false;
+                        currentlyPreloadingId = null;
+                    }
+                });
+            } catch (Exception e) {
+                System.err.println("Error during Minemev hover preload for " + uuid + ": " + e.getMessage());
+                MinecraftClient.getInstance().execute(() -> {
+                    if (uuid.equals(currentlyPreloadingId)) {
+                        isPreloadingHoveredItem = false;
+                        currentlyPreloadingId = null;
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void startHoverPreload(SchematicInfo schematic) {
+        if (isPreloadingHoveredItem || schematic == null) return;
+        if (schematic.getSource() != SchematicInfo.SourceServer.CHOCULATERIE) return;
+
+        String schematicId = schematic.getId();
         if (cacheManager.hasValidDetailCache(schematicId, DETAIL_CACHE_DURATION_MS)) {
             System.out.println("Skipping preload for " + schematicId + " - already cached");
             return;
@@ -1000,13 +1281,10 @@ public class LitematicDownloaderScreen extends Screen {
 
         isPreloadingHoveredItem = true;
         currentlyPreloadingId = schematicId;
-
         System.out.println("Starting hover preload for schematic: " + schematic.getName() + " (ID: " + schematicId + ")");
 
-        // Fetch schematic details in background thread
         new Thread(() -> {
             try {
-                // Check if we should still preload (user might have moved mouse away)
                 if (!isPreloadingHoveredItem || !schematicId.equals(currentlyPreloadingId)) {
                     System.out.println("Preload cancelled during fetch for " + schematicId);
                     return;
@@ -1015,18 +1293,12 @@ public class LitematicDownloaderScreen extends Screen {
                 com.choculaterie.models.SchematicDetailInfo detailInfo =
                         LitematicHttpClient.fetchSchematicDetail(schematicId);
 
-                // Update on main thread
                 MinecraftClient.getInstance().execute(() -> {
-                    // Double-check we should still cache this (user might have moved away)
                     if (isPreloadingHoveredItem && schematicId.equals(currentlyPreloadingId)) {
-                        // Cache the preloaded detail
                         cacheManager.putDetailCache(schematicId, detailInfo, DETAIL_CACHE_DURATION_MS);
                         System.out.println("Successfully preloaded and cached details for: " + detailInfo.getName());
-                    } else {
-                        System.out.println("Discarded preload result for " + schematicId + " - user moved away");
                     }
 
-                    // Reset preload state only if this was the current preload
                     if (schematicId.equals(currentlyPreloadingId)) {
                         isPreloadingHoveredItem = false;
                         currentlyPreloadingId = null;
@@ -1036,7 +1308,6 @@ public class LitematicDownloaderScreen extends Screen {
             } catch (Exception e) {
                 System.err.println("Error during hover preload for " + schematicId + ": " + e.getMessage());
                 MinecraftClient.getInstance().execute(() -> {
-                    // Reset preload state only if this was the current preload
                     if (schematicId.equals(currentlyPreloadingId)) {
                         isPreloadingHoveredItem = false;
                         currentlyPreloadingId = null;
@@ -1183,5 +1454,102 @@ public class LitematicDownloaderScreen extends Screen {
                 });
             }
         }).start();
+    }
+
+    private void handleDownload(SchematicInfo schematic, int anchorX, int anchorY) {
+        try {
+            String fileName = schematic.getName().replaceAll("[^a-zA-Z0-9.-]", "_");
+            String savePath = SettingsManager.getSchematicsPath() + File.separator;
+            File potentialFile = new File(savePath + fileName + ".litematic");
+
+            if (potentialFile.exists()) {
+                ConfirmationScreen confirmationScreen = new ConfirmationScreen(
+                        Text.literal("File already exists"),
+                        Text.literal("The file \"" + fileName + ".litematic\" already exists. Do you want to replace it?"),
+                        (confirmed) -> {
+                            if (confirmed) {
+                                downloadSchematic(schematic, fileName);
+                            }
+                            MinecraftClient.getInstance().setScreen(this);
+                        }
+                );
+                MinecraftClient.getInstance().setScreen(confirmationScreen);
+            } else {
+                downloadSchematic(schematic, fileName);
+            }
+        } catch (Exception e) {
+            setStatusMessage("Failed to download schematic: " + e.getMessage(), false);
+        }
+    }
+
+    // Download helper used by non-Minemev flow (and as fallback)
+    private void downloadSchematic(SchematicInfo schematic, String fileName) {
+        try {
+            String filePath;
+            if (schematic.getSource() == SchematicInfo.SourceServer.MINEMEV) {
+                var files = MinemevHttpClient.fetchPostFiles(schematic.getId());
+                String chosenUrl = null;
+                String chosenName = fileName;
+                String resolverFileName = null;
+                for (var f : files) {
+                    String lower = (f.getFileName() != null ? f.getFileName().toLowerCase() : "");
+                    boolean isLite = ("litematic".equalsIgnoreCase(f.getFileType())) || lower.endsWith(".litematic");
+                    if (isLite) {
+                        chosenUrl = f.getDownloadUrl();
+                        resolverFileName = (f.getFileName() != null && !f.getFileName().isEmpty()) ? f.getFileName() : (chosenName + ".litematic");
+                        if (f.getFileName() != null && !f.getFileName().isEmpty()) {
+                            chosenName = f.getFileName().replaceAll("[^a-zA-Z0-9.-]", "_");
+                            if (chosenName.toLowerCase().endsWith(".litematic")) {
+                                chosenName = chosenName.substring(0, chosenName.length() - ".litematic".length());
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (chosenUrl == null && !files.isEmpty()) {
+                    var f = files.get(0);
+                    chosenUrl = f.getDownloadUrl();
+                    resolverFileName = (f.getFileName() != null && !f.getFileName().isEmpty()) ? f.getFileName() : (chosenName + ".litematic");
+                }
+                // Resolve the actual URL using Minemev API helper (handles empty/relative URLs)
+                String resolvedUrl = MinemevHttpClient.getDownloadUrl(schematic.getId(), resolverFileName != null ? resolverFileName : (chosenName + ".litematic"), chosenUrl);
+                if (resolvedUrl == null || resolvedUrl.isEmpty()) {
+                    throw new RuntimeException("No downloadable file found for this Minemev post");
+                }
+                filePath = LitematicHttpClient.downloadFileFromUrl(resolvedUrl, chosenName);
+            } else {
+                filePath = LitematicHttpClient.fetchAndDownloadSchematic(schematic.getId(), fileName);
+            }
+
+            // Show relative path from schematics base folder with forward slashes
+            String schematicsPath = SettingsManager.getSchematicsPath();
+            String relativePath;
+            if (filePath.startsWith(schematicsPath)) {
+                String pathAfterBase = filePath.substring(schematicsPath.length());
+                if (pathAfterBase.startsWith(File.separator)) {
+                    pathAfterBase = pathAfterBase.substring(File.separator.length());
+                }
+                String folderName = new File(schematicsPath).getName();
+                relativePath = folderName + "/" + pathAfterBase.replace(File.separator, "/");
+            } else {
+                String folderName = new File(schematicsPath).getName();
+                relativePath = folderName + "/" + fileName + ".litematic";
+            }
+            setStatusMessage("Schematic downloaded to: " + relativePath, true);
+        } catch (Exception e) {
+            setStatusMessage("Failed to download schematic: " + e.getMessage(), false);
+        }
+    }
+
+    private void setStatusMessage(String message, boolean isSuccess) {
+        this.statusMessage = message;
+        this.statusColor = isSuccess ? 0xFF55FF55 : 0xFFFF5555;
+        this.statusMessageDisplayTime = System.currentTimeMillis();
+        ToastManager.addToast(message, !isSuccess);
+    }
+
+    private boolean hasActiveStatusMessage() {
+        return statusMessage != null &&
+                (System.currentTimeMillis() - statusMessageDisplayTime) < STATUS_MESSAGE_DURATION;
     }
 }

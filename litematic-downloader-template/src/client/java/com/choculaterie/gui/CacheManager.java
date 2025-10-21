@@ -2,6 +2,7 @@ package com.choculaterie.gui;
 
 import com.choculaterie.models.SchematicInfo;
 import com.choculaterie.models.SchematicDetailInfo;
+import com.choculaterie.models.MinemevPostDetailInfo;
 import com.choculaterie.networking.LitematicHttpClient;
 import it.unimi.dsi.fastutil.objects.ReferenceImmutableList;
 import net.minecraft.client.MinecraftClient;
@@ -21,6 +22,9 @@ public class CacheManager {
     
     // Cache for detailed schematic information
     private final Map<String, DetailCacheEntry> detailCache = new HashMap<>();
+
+    // New: Cache for Minemev detailed information
+    private final Map<String, MinemevDetailCacheEntry> minemevDetailCache = new HashMap<>();
 
     // Static initialization flag to prevent multiple pre-loading
     private static boolean hasPreloaded = false;
@@ -148,11 +152,32 @@ public class CacheManager {
         System.out.println("Cleared detail cache for " + schematicId);
     }
 
+    // New: Minemev detail cache methods
+    public boolean hasValidMinemevDetailCache(String uuid, long maxAge) {
+        MinemevDetailCacheEntry entry = minemevDetailCache.get(uuid);
+        return entry != null && !entry.isExpired(maxAge);
+    }
+
+    public MinemevDetailCacheEntry getMinemevDetailCache(String uuid) {
+        return minemevDetailCache.get(uuid);
+    }
+
+    public void putMinemevDetailCache(String uuid, MinemevPostDetailInfo detail, long maxAge) {
+        minemevDetailCache.put(uuid, new MinemevDetailCacheEntry(detail));
+        System.out.println("Cached Minemev detail for post " + uuid);
+    }
+
+    public void clearMinemevDetailCache(String uuid) {
+        minemevDetailCache.remove(uuid);
+        System.out.println("Cleared Minemev detail cache for " + uuid);
+    }
+
     // Clear all cache
     public void clearAllCache() {
         schematicCache.clear();
         searchCache.clear();
         detailCache.clear();
+        minemevDetailCache.clear();
         System.out.println("Cleared ALL cache entries");
     }
 
@@ -264,6 +289,22 @@ public class CacheManager {
         }
 
         public SchematicDetailInfo getDetail() { return detail; }
+
+        public boolean isExpired(long maxAge) {
+            return System.currentTimeMillis() - timestamp > maxAge;
+        }
+    }
+
+    public static class MinemevDetailCacheEntry {
+        private final MinemevPostDetailInfo detail;
+        private final long timestamp;
+
+        public MinemevDetailCacheEntry(MinemevPostDetailInfo detail) {
+            this.detail = detail;
+            this.timestamp = System.currentTimeMillis();
+        }
+
+        public MinemevPostDetailInfo getDetail() { return detail; }
 
         public boolean isExpired(long maxAge) {
             return System.currentTimeMillis() - timestamp > maxAge;
