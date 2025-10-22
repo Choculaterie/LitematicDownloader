@@ -14,6 +14,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -23,6 +24,7 @@ public class MinemevHttpClient {
     private static final Gson gson = new Gson();
     private static final HttpClient client = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(Duration.ofSeconds(15))  // 15 second connection timeout
             .build();
 
     public static class MinemevSearchResult {
@@ -72,6 +74,7 @@ public class MinemevHttpClient {
             String url = urlBuilder.toString();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(30))  // 30 second timeout for search requests
                     .GET()
                     .build();
 
@@ -149,6 +152,9 @@ public class MinemevHttpClient {
             result = new MinemevSearchResult(posts, page, hasNextPage, totalResults, totalPages);
             return result;
 
+        } catch (java.net.http.HttpTimeoutException e) {
+            System.err.println("Timeout in Minemev searchPosts: Request took longer than 30 seconds");
+            return result;
         } catch (Exception e) {
             System.err.println("Error in Minemev searchPosts: " + e.getMessage());
             if (e.getCause() != null) System.err.println("cause: " + e.getCause());
@@ -165,6 +171,7 @@ public class MinemevHttpClient {
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(20))  // 20 second timeout for detail requests
                     .GET()
                     .build();
 
@@ -227,6 +234,9 @@ public class MinemevHttpClient {
                     json.has("thumbnail_url") && !json.get("thumbnail_url").isJsonNull() ? json.get("thumbnail_url").getAsString() : ""
             );
 
+        } catch (java.net.http.HttpTimeoutException e) {
+            System.err.println("Timeout in Minemev fetchPostDetails: Request took longer than 20 seconds");
+            throw new RuntimeException("Request timeout: Could not fetch Minemev post details", e);
         } catch (Exception e) {
             System.err.println("Failed to fetch Minemev post details: " + e.getMessage());
             if (e.getCause() != null) System.err.println("cause: " + e.getCause());
@@ -245,6 +255,7 @@ public class MinemevHttpClient {
             }
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(30))  // 30 second timeout for file fetch requests
                     .GET()
                     .build();
 
@@ -339,6 +350,9 @@ public class MinemevHttpClient {
 
             return files;
 
+        } catch (java.net.http.HttpTimeoutException e) {
+            System.err.println("Timeout in Minemev fetchPostFiles: Request took longer than 30 seconds");
+            return files;
         } catch (Exception e) {
             System.err.println("Failed to fetch Minemev post files: " + e.getMessage());
             if (e.getCause() != null) System.err.println("cause: " + e.getCause());

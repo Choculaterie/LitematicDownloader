@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.time.Duration;
 
 public class LitematicHttpClient {
     // Change this URL for development/production environments
@@ -74,10 +75,11 @@ public class LitematicHttpClient {
             SSLContext sslContext = SSLContext.getInstance("TLS");
             sslContext.init(null, trustAllCerts, new SecureRandom());
 
-            // Create HttpClient with the custom SSL context
+            // Create HttpClient with the custom SSL context and timeout configuration
             client = HttpClient.newBuilder()
                     .sslContext(sslContext)
                     .followRedirects(HttpClient.Redirect.ALWAYS)
+                    .connectTimeout(Duration.ofSeconds(15))  // 15 second connection timeout
                     .build();
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize HttpClient with custom SSL context", e);
@@ -132,6 +134,7 @@ public class LitematicHttpClient {
             String url = BASE_URL + "/GetPaginatedFtp?page=" + page + "&pageSize=" + pageSize + "&showUnverified=" + showUnverified;
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(30))  // 30 second timeout for pagination requests
                     .GET()
                     .build();
 
@@ -205,6 +208,9 @@ public class LitematicHttpClient {
             paginatedCache.put(cacheKey, new CacheEntry<>(result, System.currentTimeMillis()));
 
             return result;
+        } catch (java.net.http.HttpTimeoutException e) {
+            System.err.println("Timeout in fetchSchematicsPaginated: Request took longer than 30 seconds");
+            return result;
         } catch (Exception e) {
             System.err.println("Error in fetchSchematicsPaginated: " + e.getMessage());
             e.printStackTrace();
@@ -227,6 +233,7 @@ public class LitematicHttpClient {
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(20))  // 20 second timeout for search requests
                     .GET()
                     .build();
 
@@ -312,6 +319,9 @@ public class LitematicHttpClient {
                 System.err.println("Failed to parse search response as array: " + e.getMessage());
                 return schematics;
             }
+        } catch (java.net.http.HttpTimeoutException e) {
+            System.err.println("Timeout in searchSchematics: Request took longer than 20 seconds");
+            return schematics;
         } catch (Exception e) {
             System.err.println("Error in searchSchematics: " + e.getMessage());
             e.printStackTrace();
@@ -329,6 +339,7 @@ public class LitematicHttpClient {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(BASE_URL + "/Getbyid/" + id))
+                    .timeout(Duration.ofSeconds(20))  // 20 second timeout for detail requests
                     .GET()
                     .build();
 
@@ -356,6 +367,9 @@ public class LitematicHttpClient {
             detailCache.put(detailKey, new CacheEntry<>(detail, System.currentTimeMillis()));
 
             return detail;
+        } catch (java.net.http.HttpTimeoutException e) {
+            System.err.println("Timeout in fetchSchematicDetail: Request took longer than 20 seconds");
+            throw new RuntimeException("Request timeout: Could not fetch schematic details", e);
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException("Failed to fetch schematic detail", e);
@@ -415,6 +429,7 @@ public class LitematicHttpClient {
             // Create HTTP request to download the file
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(uri)
+                    .timeout(Duration.ofSeconds(30))  // 30 second timeout for download requests
                     .GET()
                     .build();
 
@@ -466,6 +481,7 @@ public class LitematicHttpClient {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(BASE_URL + "/GetLitematicFiles/" + id))
+                    .timeout(Duration.ofSeconds(20))  // 20 second timeout for file metadata requests
                     .GET()
                     .build();
 
@@ -488,6 +504,9 @@ public class LitematicHttpClient {
             } else {
                 throw new RuntimeException("No schematic file found");
             }
+        } catch (java.net.http.HttpTimeoutException e) {
+            System.err.println("Timeout in fetchAndDownloadSchematic: Request took longer than 20 seconds");
+            throw new RuntimeException("Request timeout: Could not fetch schematic file metadata", e);
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException("Failed to download schematic: " + e.getMessage(), e);
