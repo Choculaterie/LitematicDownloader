@@ -66,12 +66,9 @@ dependencies {
 
 	implementation 'com.google.code.gson:gson:2.10.1'
 
-	// ImageIO plugins to support additional formats such as WebP. This lets
-	// the application use javax.imageio.ImageIO with plugin readers (e.g. WebP)
-	// Assumption: using TwelveMonkeys ImageIO WebP provider (version 3.8.0).
-	// If you prefer another provider (e.g. luciad/imageio-webp) we can change this.
-	implementation 'com.twelvemonkeys.imageio:imageio-core:3.8.0'
-	implementation 'com.twelvemonkeys.imageio:imageio-webp:3.8.0'
+	// ImageIO plugin to support WebP: bundle Sejda's WebP provider into the mod jar
+	// Replaces previous TwelveMonkeys WebP dependency
+	include(implementation("org.sejda.imageio:webp-imageio:0.1.6"))
 }
 
 processResources {

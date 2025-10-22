@@ -369,7 +369,10 @@ public class MinemevDetailScreen extends Screen {
     }
 
     private void loadCoverImage(String imageUrl) {
+        System.out.println("[DEBUG] loadCoverImage called with URL: " + imageUrl);
+
         if (imageUrl == null || imageUrl.trim().isEmpty()) {
+            System.out.println("[DEBUG] loadCoverImage: URL is null or empty, setting coverImageTexture to null");
             coverImageTexture = null;
             return;
         }
@@ -382,24 +385,36 @@ public class MinemevDetailScreen extends Screen {
                 if (cached != null && cached.getTextureId() != null) {
                     coverImageTexture = cached.getTextureId();
                     isImageLoading = false;
-                    System.out.println("Using cached Minemev image texture for URL: " + imageUrl);
+                    System.out.println("[DEBUG] Using cached Minemev image texture for URL: " + imageUrl);
                     return;
+                } else {
+                    System.out.println("[DEBUG] Cache entry found but invalid for URL: " + imageUrl);
                 }
+            } else {
+                System.out.println("[DEBUG] No valid cache entry found for URL: " + imageUrl);
             }
         } catch (Exception e) {
-            System.err.println("Minemev image cache check failed: " + e.getMessage());
+            System.err.println("[DEBUG] Minemev image cache check failed: " + e.getMessage());
+            e.printStackTrace();
         }
 
+        System.out.println("[DEBUG] Starting image download for URL: " + imageUrl);
         isImageLoading = true;
         new Thread(() -> {
             try {
                 String encodedUrl = encodeImageUrl(imageUrl);
+                System.out.println("[DEBUG] Encoded URL: " + encodedUrl);
+
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(encodedUrl))
                         .GET()
                         .build();
                 HttpResponse<byte[]> response = LitematicHttpClient.getClient().send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+                System.out.println("[DEBUG] HTTP response status: " + response.statusCode() + " for URL: " + imageUrl);
+
                 if (response.statusCode() != 200) {
+                    System.err.println("[DEBUG] HTTP error " + response.statusCode() + " for URL: " + imageUrl);
                     MinecraftClient.getInstance().execute(() -> {
                         ToastManager.addToast("Failed to load image: HTTP " + response.statusCode(), true);
                         createAndRegisterPlaceholder("HTTP " + response.statusCode());
@@ -407,7 +422,10 @@ public class MinemevDetailScreen extends Screen {
                     return;
                 }
                 byte[] imageData = response.body();
+                System.out.println("[DEBUG] Downloaded " + imageData.length + " bytes for URL: " + imageUrl);
+
                 if (imageData.length < 100) {
+                    System.err.println("[DEBUG] Image file too small (" + imageData.length + " bytes) for URL: " + imageUrl);
                     MinecraftClient.getInstance().execute(() -> {
                         ToastManager.addToast("Image file too small (corrupted)", true);
                         createAndRegisterPlaceholder("Image too small");
@@ -415,53 +433,94 @@ public class MinemevDetailScreen extends Screen {
                     return;
                 }
                 String detectedFormat = detectImageFormat(imageData);
+                System.out.println("[DEBUG] Detected image format: " + detectedFormat + " for URL: " + imageUrl);
+
                 MinecraftClient.getInstance().execute(() -> {
                     try {
                         String uniqueId = UUID.randomUUID().toString().replace("-", "");
                         coverImageTexture = Identifier.of("minecraft", "textures/dynamic/" + uniqueId);
+                        System.out.println("[DEBUG] Generated texture ID: " + coverImageTexture + " for URL: " + imageUrl);
+
                         NativeImage nativeImage;
 
                         try {
+                            System.out.println("[DEBUG] Converting " + detectedFormat + " image to PNG for URL: " + imageUrl);
                             byte[] processed = convertImageToPng(imageData, detectedFormat);
+                            System.out.println("[DEBUG] Converted image size: " + processed.length + " bytes (was " + imageData.length + ") for URL: " + imageUrl);
+
+                            // Check if conversion actually worked by verifying PNG signature
+                            if (detectedFormat.equals("webp") && processed.length == imageData.length) {
+                                // Conversion likely failed and returned original data - check PNG signature
+                                if (processed.length < 8 || processed[0] != (byte)0x89 || processed[1] != 0x50 ||
+                                    processed[2] != 0x4E || processed[3] != 0x47) {
+                                    System.err.println("[DEBUG] WebP conversion failed, original WebP data returned instead of PNG for URL: " + imageUrl);
+                                    throw new Exception("WebP conversion failed - no valid PNG data produced");
+                                }
+                            }
+
                             nativeImage = NativeImage.read(new ByteArrayInputStream(processed));
+                            System.out.println("[DEBUG] Created NativeImage with dimensions: " + nativeImage.getWidth() + "x" + nativeImage.getHeight() + " for URL: " + imageUrl);
+
                             if (nativeImage.getWidth() <= 0 || nativeImage.getHeight() <= 0) {
+                                System.err.println("[DEBUG] Image has invalid dimensions: " + nativeImage.getWidth() + "x" + nativeImage.getHeight() + " for URL: " + imageUrl);
                                 ToastManager.addToast("Image has invalid dimensions", true);
                                 nativeImage.close();
                                 nativeImage = createPlaceholderImage(256, 256, "Invalid dims");
                             } else if (nativeImage.getWidth() > 4096 || nativeImage.getHeight() > 4096) {
+                                System.err.println("[DEBUG] Image too large: " + nativeImage.getWidth() + "x" + nativeImage.getHeight() + " for URL: " + imageUrl);
                                 ToastManager.addToast("Image too large", true);
                                 nativeImage.close();
                                 nativeImage = createPlaceholderImage(256, 256, "Too large");
                             }
                         } catch (Exception e) {
-                            ToastManager.addToast("Could not load " + detectedFormat + " image", true);
-                            nativeImage = createPlaceholderImage(256, 256, "Unsupported");
+                            System.err.println("[DEBUG] Failed to process " + detectedFormat + " image for URL: " + imageUrl);
+                            System.err.println("[DEBUG] Exception: " + e.getMessage());
+                            e.printStackTrace();
+                            String errorReason = detectedFormat.equals("webp") ? "WebP decode failed" : ("Unsupported " + detectedFormat);
+                            ToastManager.addToast("Could not load " + detectedFormat + " image: " + e.getMessage(), true);
+                            nativeImage = createPlaceholderImage(256, 256, errorReason);
                         }
 
                         if (nativeImage != null) {
                             imageWidth = nativeImage.getWidth();
                             imageHeight = nativeImage.getHeight();
+                            System.out.println("[DEBUG] Registering texture with Minecraft for URL: " + imageUrl);
                             MinecraftClient.getInstance().getTextureManager().registerTexture(
                                     coverImageTexture,
                                     new NativeImageBackedTexture(() -> "minemev_cover_image", nativeImage)
                             );
+                            System.out.println("[DEBUG] Successfully registered texture for URL: " + imageUrl);
 
                             // Store into image cache for later reuse (no preloading)
                             try {
-                                if (cacheManager != null) cacheManager.putImageCache(imageUrl, coverImageTexture);
-                            } catch (Exception ignore) {}
+                                if (cacheManager != null) {
+                                    cacheManager.putImageCache(imageUrl, coverImageTexture);
+                                    System.out.println("[DEBUG] Cached texture for URL: " + imageUrl);
+                                }
+                            } catch (Exception e) {
+                                System.err.println("[DEBUG] Failed to cache texture for URL: " + imageUrl + " - " + e.getMessage());
+                            }
+                        } else {
+                            System.err.println("[DEBUG] NativeImage is null after processing for URL: " + imageUrl);
                         }
                     } catch (Exception e) {
+                        System.err.println("[DEBUG] Failed to process image on main thread for URL: " + imageUrl);
+                        System.err.println("[DEBUG] Exception: " + e.getMessage());
+                        e.printStackTrace();
                         ToastManager.addToast("Failed to process image", true);
                         coverImageTexture = null;
                     }
                 });
             } catch (Exception e) {
+                System.err.println("[DEBUG] Failed to download image for URL: " + imageUrl);
+                System.err.println("[DEBUG] Exception: " + e.getMessage());
+                e.printStackTrace();
                 MinecraftClient.getInstance().execute(() -> {
                     ToastManager.addToast("Failed to load image", true);
                     createAndRegisterPlaceholder("Download failed");
                 });
             } finally {
+                System.out.println("[DEBUG] Image loading finished for URL: " + imageUrl);
                 isImageLoading = false;
             }
         }).start();
@@ -678,7 +737,7 @@ public class MinemevDetailScreen extends Screen {
 
         if (fileDropdownContentHeight > fileDropdownHeight) {
             int scrollBarWidth = 6;
-            int barHeight = Math.max(20, fileDropdownHeight * fileDropdownHeight / fileDropdownContentHeight);
+            int barHeight = Math.max(20, fileDropdownHeight * fileDropdownHeight / Math.max(1, fileDropdownContentHeight));
             int barX = x2 - scrollBarWidth - 2;
             int barY = y1 + (int)((float)fileDropdownScroll / (fileDropdownContentHeight - fileDropdownHeight)
                     * (fileDropdownHeight - barHeight));
@@ -930,68 +989,122 @@ public class MinemevDetailScreen extends Screen {
     }
 
     private byte[] convertImageToPng(byte[] imageData, String format) throws Exception {
-        if (format.equals("png") || format.equals("unknown")) return imageData;
-        if (format.equals("svg")) throw new Exception("SVG format is not supported for conversion");
-        if (format.equals("avif") || format.equals("heif")) throw new Exception(format.toUpperCase() + " format is not supported by Java ImageIO");
+        System.out.println("[DEBUG] convertImageToPng called with format: " + format + ", data size: " + imageData.length + " bytes");
+
+        if (format.equals("png") || format.equals("unknown")) {
+            System.out.println("[DEBUG] Format is PNG or unknown, returning original data");
+            return imageData;
+        }
+        if (format.equals("svg")) {
+            System.err.println("[DEBUG] SVG format detected, throwing exception");
+            throw new Exception("SVG format is not supported for conversion");
+        }
+        if (format.equals("avif") || format.equals("heif")) {
+            System.err.println("[DEBUG] " + format.toUpperCase() + " format detected, throwing exception");
+            throw new Exception(format.toUpperCase() + " format is not supported by Java ImageIO");
+        }
+
         try {
             java.awt.image.BufferedImage bufferedImage = null;
 
             // 1) Try ImageIO auto-detection with an ImageInputStream (good for plugin readers like WebP)
+            System.out.println("[DEBUG] Attempting auto-detection with ImageInputStream for format: " + format);
             try (javax.imageio.stream.ImageInputStream iis = javax.imageio.ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(imageData))) {
                 java.util.Iterator<javax.imageio.ImageReader> autoReaders = javax.imageio.ImageIO.getImageReaders(iis);
                 if (autoReaders.hasNext()) {
                     javax.imageio.ImageReader reader = autoReaders.next();
+                    System.out.println("[DEBUG] Found auto-reader: " + reader.getClass().getSimpleName() + " for format: " + format);
                     try {
                         reader.setInput(iis, true, true);
                         bufferedImage = reader.read(0);
+                        System.out.println("[DEBUG] Successfully read image using auto-reader for format: " + format +
+                                         ", dimensions: " + bufferedImage.getWidth() + "x" + bufferedImage.getHeight());
                     } finally {
                         reader.dispose();
                     }
+                } else {
+                    System.out.println("[DEBUG] No auto-readers found for format: " + format);
                 }
             } catch (Exception e) {
+                System.err.println("[DEBUG] Auto-detection failed for format: " + format + " - " + e.getMessage());
                 // continue to other fallbacks
             }
 
             // 2) Fallback to ImageIO.read convenience method
             if (bufferedImage == null) {
+                System.out.println("[DEBUG] Attempting ImageIO.read convenience method for format: " + format);
                 try {
                     bufferedImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(imageData));
-                } catch (Exception ignored) {}
+                    if (bufferedImage != null) {
+                        System.out.println("[DEBUG] Successfully read image using convenience method for format: " + format +
+                                         ", dimensions: " + bufferedImage.getWidth() + "x" + bufferedImage.getHeight());
+                    } else {
+                        System.out.println("[DEBUG] Convenience method returned null for format: " + format);
+                    }
+                } catch (Exception e) {
+                    System.err.println("[DEBUG] Convenience method failed for format: " + format + " - " + e.getMessage());
+                }
             }
 
             // 3) Try explicit readers by format name
             if (bufferedImage == null && !format.equals("unknown")) {
+                System.out.println("[DEBUG] Attempting explicit readers by format name: " + format.toUpperCase());
                 try {
                     java.util.Iterator<javax.imageio.ImageReader> readers = javax.imageio.ImageIO.getImageReadersByFormatName(format.toUpperCase());
                     if (readers.hasNext()) {
                         javax.imageio.ImageReader reader = readers.next();
+                        System.out.println("[DEBUG] Found explicit reader: " + reader.getClass().getSimpleName() + " for format: " + format);
                         javax.imageio.stream.ImageInputStream iis = javax.imageio.ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(imageData));
                         reader.setInput(iis);
                         bufferedImage = reader.read(0);
+                        System.out.println("[DEBUG] Successfully read image using explicit reader for format: " + format +
+                                         ", dimensions: " + bufferedImage.getWidth() + "x" + bufferedImage.getHeight());
                         reader.dispose();
                         iis.close();
+                    } else {
+                        System.out.println("[DEBUG] No explicit readers found for format: " + format.toUpperCase());
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    System.err.println("[DEBUG] Explicit reader failed for format: " + format + " - " + e.getMessage());
+                }
             }
 
-            if (bufferedImage == null) throw new Exception("Could not decode " + format + " image");
+            if (bufferedImage == null) {
+                System.err.println("[DEBUG] All image reading methods failed for format: " + format);
+                throw new Exception("Could not decode " + format + " image");
+            }
+
+            System.out.println("[DEBUG] Image successfully decoded, converting to appropriate format for format: " + format);
+            System.out.println("[DEBUG] Original BufferedImage type: " + bufferedImage.getType() + " for format: " + format);
 
             java.awt.image.BufferedImage convertedImage;
             if (bufferedImage.getType() != java.awt.image.BufferedImage.TYPE_INT_RGB && bufferedImage.getType() != java.awt.image.BufferedImage.TYPE_INT_ARGB) {
+                System.out.println("[DEBUG] Converting BufferedImage type from " + bufferedImage.getType() + " to TYPE_INT_ARGB for format: " + format);
                 convertedImage = new java.awt.image.BufferedImage(bufferedImage.getWidth(), bufferedImage.getHeight(), java.awt.image.BufferedImage.TYPE_INT_ARGB);
                 java.awt.Graphics2D g2d = convertedImage.createGraphics();
                 g2d.drawImage(bufferedImage, 0, 0, null);
                 g2d.dispose();
+                System.out.println("[DEBUG] BufferedImage type conversion completed for format: " + format);
             } else {
+                System.out.println("[DEBUG] BufferedImage type is already compatible, no conversion needed for format: " + format);
                 convertedImage = bufferedImage;
             }
 
+            System.out.println("[DEBUG] Writing BufferedImage to PNG format for format: " + format);
             java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
             boolean success = javax.imageio.ImageIO.write(convertedImage, "PNG", baos);
-            if (!success) throw new Exception("Failed to write PNG output");
-            return baos.toByteArray();
+            if (!success) {
+                System.err.println("[DEBUG] Failed to write PNG output for format: " + format);
+                throw new Exception("Failed to write PNG output");
+            }
+            byte[] result = baos.toByteArray();
+            System.out.println("[DEBUG] Successfully converted " + format + " to PNG, output size: " + result.length + " bytes");
+            return result;
         } catch (Exception e) {
+            System.err.println("[DEBUG] Exception during image conversion for format: " + format + " - " + e.getMessage());
+            e.printStackTrace();
             if (format.equals("svg") || format.equals("avif") || format.equals("heif")) throw e;
+            System.out.println("[DEBUG] Falling back to original image data for format: " + format);
             return imageData;
         }
     }
@@ -1016,8 +1129,59 @@ public class MinemevDetailScreen extends Screen {
 
     private NativeImage createPlaceholderImage(int width, int height, String reason) {
         try {
-            return new NativeImage(NativeImage.Format.RGBA, width, height, false);
+            System.out.println("[DEBUG] Creating placeholder image: " + width + "x" + height + " with reason: " + reason);
+            NativeImage image = new NativeImage(NativeImage.Format.RGBA, width, height, false);
+
+            // Fill with a dark gray background
+            int bgColor = 0xFF333333; // Dark gray with full alpha
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    image.setColor(x, y, bgColor);
+                }
+            }
+
+            // Add a border
+            int borderColor = 0xFF666666; // Lighter gray border
+            for (int x = 0; x < width; x++) {
+                image.setColor(x, 0, borderColor); // Top border
+                image.setColor(x, height - 1, borderColor); // Bottom border
+            }
+            for (int y = 0; y < height; y++) {
+                image.setColor(0, y, borderColor); // Left border
+                image.setColor(width - 1, y, borderColor); // Right border
+            }
+
+            // Add a simple "X" pattern to indicate broken image
+            int xColor = 0xFF999999; // Light gray for X
+            for (int i = 0; i < Math.min(width, height); i++) {
+                // Diagonal from top-left to bottom-right
+                if (i < width && i < height) {
+                    image.setColor(i, i, xColor);
+                    if (i > 0 && i < width - 1 && i < height - 1) {
+                        image.setColor(i - 1, i, xColor);
+                        image.setColor(i + 1, i, xColor);
+                        image.setColor(i, i - 1, xColor);
+                        image.setColor(i, i + 1, xColor);
+                    }
+                }
+                // Diagonal from top-right to bottom-left
+                int x = width - 1 - i;
+                if (x >= 0 && x < width && i < height) {
+                    image.setColor(x, i, xColor);
+                    if (x > 0 && x < width - 1 && i > 0 && i < height - 1) {
+                        image.setColor(x - 1, i, xColor);
+                        image.setColor(x + 1, i, xColor);
+                        image.setColor(x, i - 1, xColor);
+                        image.setColor(x, i + 1, xColor);
+                    }
+                }
+            }
+
+            System.out.println("[DEBUG] Successfully created placeholder image for reason: " + reason);
+            return image;
         } catch (Exception e) {
+            System.err.println("[DEBUG] Failed to create placeholder image: " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }
