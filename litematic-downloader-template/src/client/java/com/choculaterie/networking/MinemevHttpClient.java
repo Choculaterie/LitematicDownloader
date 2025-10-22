@@ -16,6 +16,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class MinemevHttpClient {
     private static final String BASE_URL = "https://www.minemev.com/api";
@@ -53,7 +54,7 @@ public class MinemevHttpClient {
         MinemevSearchResult result = new MinemevSearchResult(posts, page, false, 0, 1);
 
         try {
-            StringBuilder urlBuilder = new StringBuilder(BASE_URL + "/minemev/search?clean_uuid=1&page=" + page);
+            StringBuilder urlBuilder = new StringBuilder(BASE_URL + "/search?clean_uuid=1&page=" + page);
 
             if (tag != null && !tag.trim().isEmpty()) {
                 urlBuilder.append("&tag=").append(URLEncoder.encode(tag, StandardCharsets.UTF_8));
@@ -126,9 +127,11 @@ public class MinemevHttpClient {
                         int downloads = postJson.has("downloads") ? postJson.get("downloads").getAsInt() : 0;
                         String createdAt = postJson.has("published_at") ? postJson.get("published_at").getAsString() :
                                 (postJson.has("created_at") ? postJson.get("created_at").getAsString() : "");
+                        String vendor = postJson.has("vendor") && !postJson.get("vendor").isJsonNull()
+                                ? postJson.get("vendor").getAsString() : "";
 
                         MinemevPostInfo post = new MinemevPostInfo(
-                                uuid, title, desc, author, downloads, createdAt, tags, versions_arr
+                                uuid, title, desc, author, downloads, createdAt, tags, versions_arr, vendor
                         );
                         posts.add(post);
                     } catch (Exception e) {
@@ -148,14 +151,18 @@ public class MinemevHttpClient {
 
         } catch (Exception e) {
             System.err.println("Error in Minemev searchPosts: " + e.getMessage());
-            e.printStackTrace();
+            if (e.getCause() != null) System.err.println("cause: " + e.getCause());
             return result;
         }
     }
 
-    public static MinemevPostDetailInfo fetchPostDetails(String uuid) {
+    public static MinemevPostDetailInfo fetchPostDetails(String uuid, String vendor) {
         try {
-            String url = BASE_URL + "/minemev/details/" + uuid;
+            String url = BASE_URL + "/details/" + uuid;
+            if(Objects.equals(vendor, "minemev")){
+                 url = BASE_URL + "/minemev/details/" + uuid;
+            }
+
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .GET()
@@ -221,16 +228,21 @@ public class MinemevHttpClient {
             );
 
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Failed to fetch Minemev post details: " + e.getMessage());
+            if (e.getCause() != null) System.err.println("cause: " + e.getCause());
             throw new RuntimeException("Failed to fetch Minemev post details", e);
         }
     }
 
-    public static List<MinemevFileInfo> fetchPostFiles(String uuid) {
+    public static List<MinemevFileInfo> fetchPostFiles(String uuid, String vendor) {
         List<MinemevFileInfo> files = new ArrayList<>();
 
         try {
-            String url = BASE_URL + "/minemev/files/" + uuid;
+            String url = BASE_URL + "/files/" + uuid;
+
+            if(Objects.equals(vendor, "minemev")){
+                url = BASE_URL + "/minemev/files/" + uuid;
+            }
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .GET()
@@ -254,9 +266,26 @@ public class MinemevHttpClient {
                         filesArray = obj.getAsJsonArray("files");
                     } else if (obj.has("data") && obj.get("data").isJsonArray()) {
                         filesArray = obj.getAsJsonArray("data");
-                    }
-                }
-            }
+                    } else {
+                        // Some API variants return an object with numeric keys like { "0": {...}, "1": {...} }
+                        // or return mixed properties where values are objects/arrays. Collect those into an array.
+                        JsonArray collected = new JsonArray();
+                        for (java.util.Map.Entry<String, com.google.gson.JsonElement> entry : obj.entrySet()) {
+                            com.google.gson.JsonElement val = entry.getValue();
+                            if (val == null || val.isJsonNull()) continue;
+                            if (val.isJsonObject()) {
+                                collected.add(val);
+                            } else if (val.isJsonArray()) {
+                                // if a nested array is present under a key, flatten it
+                                for (com.google.gson.JsonElement el : val.getAsJsonArray()) {
+                                    if (el != null && el.isJsonObject()) collected.add(el);
+                                }
+                            }
+                        }
+                        if (!collected.isEmpty()) filesArray = collected;
+                     }
+                 }
+             }
 
             if (filesArray != null) {
                 for (int i = 0; i < filesArray.size(); i++) {
@@ -311,7 +340,8 @@ public class MinemevHttpClient {
             return files;
 
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Failed to fetch Minemev post files: " + e.getMessage());
+            if (e.getCause() != null) System.err.println("cause: " + e.getCause());
             throw new RuntimeException("Failed to fetch Minemev post files", e);
         }
     }
@@ -328,6 +358,7 @@ public class MinemevHttpClient {
             String encodedUuid = URLEncoder.encode(postUuid, StandardCharsets.UTF_8);
             String encodedName = URLEncoder.encode(fileName, StandardCharsets.UTF_8);
             String resolverUrl = BASE_URL + "/minemev/getDownloadUrl?uuid=" + encodedUuid + "&filename=" + encodedName;
+
             System.out.println("Minemev getDownloadUrl: " + resolverUrl);
 
             try {

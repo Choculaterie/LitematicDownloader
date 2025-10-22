@@ -449,7 +449,8 @@ public class LitematicDownloaderScreen extends Screen {
                                 0,
                                 post.getDownloads(),
                                 post.getAuthor(),
-                                SchematicInfo.SourceServer.MINEMEV
+                                SchematicInfo.SourceServer.MINEMEV,
+                                post.getVendor()
                         ));
                     }
                     totalCount += mres.getTotalResults();
@@ -519,7 +520,8 @@ public class LitematicDownloaderScreen extends Screen {
                                 0,
                                 post.getDownloads(),
                                 post.getAuthor(),
-                                SchematicInfo.SourceServer.MINEMEV
+                                SchematicInfo.SourceServer.MINEMEV,
+                                post.getVendor()
                         ));
                     }
 
@@ -585,7 +587,8 @@ public class LitematicDownloaderScreen extends Screen {
                                             0,
                                             post.getDownloads(),
                                             post.getAuthor(),
-                                            SchematicInfo.SourceServer.MINEMEV
+                                            SchematicInfo.SourceServer.MINEMEV,
+                                            post.getVendor()
                                     ));
                                 }
 
@@ -642,7 +645,8 @@ public class LitematicDownloaderScreen extends Screen {
                                 0,
                                 post.getDownloads(),
                                 post.getAuthor(),
-                                SchematicInfo.SourceServer.MINEMEV
+                                SchematicInfo.SourceServer.MINEMEV,
+                                post.getVendor()
                         ));
                     }
 
@@ -732,7 +736,8 @@ public class LitematicDownloaderScreen extends Screen {
                                 0,
                                 post.getDownloads(),
                                 post.getAuthor(),
-                                SchematicInfo.SourceServer.MINEMEV
+                                SchematicInfo.SourceServer.MINEMEV,
+                                post.getVendor()
                         ));
                     }
                     pagesMine = Math.max(1, mres.getTotalPages());
@@ -779,7 +784,8 @@ public class LitematicDownloaderScreen extends Screen {
                                     0,
                                     post.getDownloads(),
                                     post.getAuthor(),
-                                    SchematicInfo.SourceServer.MINEMEV
+                                    SchematicInfo.SourceServer.MINEMEV,
+                                    post.getVendor()
                             ));
                         }
                         pagesMine = Math.max(1, mres.getTotalPages());
@@ -1308,7 +1314,7 @@ public class LitematicDownloaderScreen extends Screen {
                             scrollOffset
                     );
                     if (schematic.getSource() == SchematicInfo.SourceServer.MINEMEV) {
-                        MinecraftClient.getInstance().setScreen(new MinemevDetailScreen(schematic.getId()));
+                        MinecraftClient.getInstance().setScreen(new MinemevDetailScreen(schematic.getId(), schematic.getVendor()));
                     } else {
                         MinecraftClient.getInstance().setScreen(new DetailScreen(schematic.getId()));
                     }
@@ -1335,7 +1341,7 @@ public class LitematicDownloaderScreen extends Screen {
 
         new Thread(() -> {
             try {
-                var files = MinemevHttpClient.fetchPostFiles(schematic.getId());
+                var files = MinemevHttpClient.fetchPostFiles(schematic.getId(), schematic.getVendor());
                 MinecraftClient.getInstance().execute(() -> {
                     // If no files
                     if (files == null || files.isEmpty()) {
@@ -1628,6 +1634,7 @@ public class LitematicDownloaderScreen extends Screen {
         if (schematic.getSource() != SchematicInfo.SourceServer.MINEMEV) return;
 
         String uuid = schematic.getId();
+        String vendor = schematic.getVendor();
         if (cacheManager.hasValidMinemevDetailCache(uuid, DETAIL_CACHE_DURATION_MS)) {
             //System.out.println("Skipping Minemev preload for " + uuid + " - already cached");
             return;
@@ -1644,7 +1651,7 @@ public class LitematicDownloaderScreen extends Screen {
                     return;
                 }
 
-                var detail = MinemevHttpClient.fetchPostDetails(uuid);
+                var detail = MinemevHttpClient.fetchPostDetails(uuid, vendor);
                 MinecraftClient.getInstance().execute(() -> {
                     if (isPreloadingHoveredItem && uuid.equals(currentlyPreloadingId)) {
                         cacheManager.putMinemevDetailCache(uuid, detail, DETAIL_CACHE_DURATION_MS);
@@ -1924,7 +1931,7 @@ public class LitematicDownloaderScreen extends Screen {
         try {
             String filePath;
             if (schematic.getSource() == SchematicInfo.SourceServer.MINEMEV) {
-                var files = MinemevHttpClient.fetchPostFiles(schematic.getId());
+                var files = MinemevHttpClient.fetchPostFiles(schematic.getId(), schematic.getVendor());
                 String chosenUrl = null;
                 String chosenName = fileName;
                 String resolverFileName = null;

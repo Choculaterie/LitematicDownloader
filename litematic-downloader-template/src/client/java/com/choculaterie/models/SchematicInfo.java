@@ -10,9 +10,10 @@ public class SchematicInfo {
     private int downloadCount;
     private String username;
     private SourceServer source = SourceServer.CHOCULATERIE; // default for legacy callers
+    private  String vendor;
 
     // Constructor (legacy) defaults to CHOCULATERIE
-    public SchematicInfo(String id, String name, String description, int viewCount, int downloadCount, String username) {
+    public SchematicInfo(String id, String name, String description, int viewCount, int downloadCount, String username, String vendor) {
         this.id = id;
         this.name = name;
         this.description = description;
@@ -20,10 +21,11 @@ public class SchematicInfo {
         this.downloadCount = downloadCount;
         this.username = username;
         this.source = SourceServer.CHOCULATERIE;
+        this.vendor = vendor;
     }
 
     // New constructor allowing explicit source
-    public SchematicInfo(String id, String name, String description, int viewCount, int downloadCount, String username, SourceServer source) {
+    public SchematicInfo(String id, String name, String description, int viewCount, int downloadCount, String username, SourceServer source, String vendor) {
         this.id = id;
         this.name = name;
         this.description = description;
@@ -31,6 +33,7 @@ public class SchematicInfo {
         this.downloadCount = downloadCount;
         this.username = username;
         this.source = source == null ? SourceServer.CHOCULATERIE : source;
+        this.vendor = vendor;
     }
 
     // Getters
@@ -41,4 +44,5 @@ public class SchematicInfo {
     public int getDownloadCount() { return downloadCount; }
     public String getUsername() { return username; }
     public SourceServer getSource() { return source; }
+    public String getVendor() { return vendor; }
 }

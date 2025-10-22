@@ -29,6 +29,7 @@ import java.util.UUID;
 
 public class MinemevDetailScreen extends Screen {
     private final String postUuid;
+    private final String vendor;
     private MinemevPostDetailInfo postDetail;
     private boolean isLoading = true;
     private String errorMessage = null;
@@ -93,9 +94,10 @@ public class MinemevDetailScreen extends Screen {
     private static final CacheManager cacheManager = LitematicDownloaderScreen.getCacheManager();
     private static final long DETAIL_CACHE_DURATION_MS = 5 * 60 * 1000;
 
-    public MinemevDetailScreen(String postUuid) {
+    public MinemevDetailScreen(String postUuid, String vendor) {
         super(Text.literal(""));
         this.postUuid = postUuid;
+        this.vendor =  vendor;
     }
 
     @Override
@@ -193,7 +195,7 @@ public class MinemevDetailScreen extends Screen {
 
         new Thread(() -> {
             try {
-                MinemevPostDetailInfo detail = MinemevHttpClient.fetchPostDetails(postUuid);
+                MinemevPostDetailInfo detail = MinemevHttpClient.fetchPostDetails(postUuid, vendor);
                 MinecraftClient.getInstance().execute(() -> {
                     postDetail = detail;
                     isLoading = false;
@@ -302,7 +304,7 @@ public class MinemevDetailScreen extends Screen {
         availableFiles = new ArrayList<>();
         new Thread(() -> {
             try {
-                List<MinemevFileInfo> files = MinemevHttpClient.fetchPostFiles(postUuid);
+                List<MinemevFileInfo> files = MinemevHttpClient.fetchPostFiles(postUuid, vendor);
                 MinecraftClient.getInstance().execute(() -> {
                     availableFiles = files;
                     filesLoading = false;
@@ -337,7 +339,7 @@ public class MinemevDetailScreen extends Screen {
         } else {
             new Thread(() -> {
                 try {
-                    List<MinemevFileInfo> files = MinemevHttpClient.fetchPostFiles(postUuid);
+                    List<MinemevFileInfo> files = MinemevHttpClient.fetchPostFiles(postUuid, vendor);
                     MinecraftClient.getInstance().execute(() -> {
                         if (files == null || files.isEmpty()) {
                             ToastManager.addToast("No files available for this post", true);

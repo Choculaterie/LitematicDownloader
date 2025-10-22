@@ -186,7 +186,8 @@ public class LitematicHttpClient {
                                     json.get("description").getAsString() : "",
                             json.has("viewCount") ? json.get("viewCount").getAsInt() : 0,
                             json.has("downloadCount") ? json.get("downloadCount").getAsInt() : 0,
-                            json.has("username") ? json.get("username").getAsString() : "Unknown"
+                            json.has("username") ? json.get("username").getAsString() : "Unknown",
+                            json.has("vendor") ? json.get("vendor").getAsString() : "Unknown"
                     );
                     schematicItems.add(schematic);
                 } catch (Exception e) {
@@ -261,7 +262,8 @@ public class LitematicHttpClient {
                                             json.get("description").getAsString() : "",
                                     json.has("viewCount") ? json.get("viewCount").getAsInt() : 0,
                                     json.has("downloadCount") ? json.get("downloadCount").getAsInt() : 0,
-                                    json.has("username") ? json.get("username").getAsString() : "Unknown"
+                                    json.has("username") ? json.get("username").getAsString() : "Unknown",
+                                    json.has("vendor") ? json.get("vendor").getAsString() : "Unknown"
                             );
                             schematics.add(schematic);
                         } catch (Exception e) {
@@ -295,7 +297,8 @@ public class LitematicHttpClient {
                                         json.get("description").getAsString() : "",
                                 json.has("viewCount") ? json.get("viewCount").getAsInt() : 0,
                                 json.has("downloadCount") ? json.get("downloadCount").getAsInt() : 0,
-                                json.has("username") ? json.get("username").getAsString() : "Unknown"
+                                json.has("username") ? json.get("username").getAsString() : "Unknown",
+                                json.has("vendor") ? json.get("vendor").getAsString() : "Unknown"
                         );
                         schematics.add(schematic);
                     } catch (Exception e) {

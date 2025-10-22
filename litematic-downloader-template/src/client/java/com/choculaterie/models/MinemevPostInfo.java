@@ -9,9 +9,10 @@ public class MinemevPostInfo {
     private final String createdAt;
     private final String[] tags;
     private final String[] versions;
+    private final String vendor;
 
     public MinemevPostInfo(String uuid, String title, String description, String author,
-                           int downloads, String createdAt, String[] tags, String[] versions) {
+                           int downloads, String createdAt, String[] tags, String[] versions, String vendor) {
         this.uuid = uuid;
         this.title = title;
         this.description = description;
@@ -20,6 +21,7 @@ public class MinemevPostInfo {
         this.createdAt = createdAt;
         this.tags = tags != null ? tags : new String[0];
         this.versions = versions != null ? versions : new String[0];
+        this.vendor = vendor;
     }
 
     public String getUuid() { return uuid; }
@@ -30,4 +32,5 @@ public class MinemevPostInfo {
     public String getCreatedAt() { return createdAt; }
     public String[] getTags() { return tags; }
     public String[] getVersions() { return versions; }
+    public String getVendor() { return vendor; }
 }
