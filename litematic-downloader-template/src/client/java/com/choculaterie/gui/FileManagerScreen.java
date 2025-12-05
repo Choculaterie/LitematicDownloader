@@ -76,6 +76,9 @@ public class FileManagerScreen extends Screen {
     private final Deque<MoveOperation> undoStack = new ArrayDeque<>();
     private static final int MAX_UNDO_OPERATIONS = 50; // Limit undo history
 
+    // Scroll position preservation for folder navigation
+    private final Deque<Integer> scrollPositionStack = new ArrayDeque<>();
+
     public FileManagerScreen(Screen parentScreen) {
         super(Text.literal("")); //Title (removed because of search bar)
         this.parentScreen = parentScreen;
@@ -195,6 +198,9 @@ public class FileManagerScreen extends Screen {
 
     private void navigateToFolder(File folder) {
         if (folder.isDirectory() && folder.exists()) {
+            // Save current scroll position before navigating into a subfolder
+            scrollPositionStack.push(scrollOffset);
+
             currentDirectory = folder;
             updateBreadcrumbs();
             loadFilesFromCurrentDirectory();
@@ -207,10 +213,27 @@ public class FileManagerScreen extends Screen {
         // Don't go above the schematics root
         if (parent != null && currentDirectory.getAbsolutePath().startsWith(schematicsRootPath)) {
             if (parent.getAbsolutePath().startsWith(schematicsRootPath)) {
-                navigateToFolder(parent);
+                // Restore scroll position when going back up
+                currentDirectory = parent;
+                updateBreadcrumbs();
+                loadFilesFromCurrentDirectory();
+
+                // Restore the saved scroll position
+                if (!scrollPositionStack.isEmpty()) {
+                    scrollOffset = scrollPositionStack.pop();
+                }
+
+                updateScrollbarDimensions();
             } else {
                 // If trying to go above root, just go to root
-                navigateToFolder(new File(schematicsRootPath));
+                currentDirectory = new File(schematicsRootPath);
+                updateBreadcrumbs();
+                loadFilesFromCurrentDirectory();
+
+                // Clear the stack when going to root
+                scrollPositionStack.clear();
+
+                updateScrollbarDimensions();
             }
         }
     }
@@ -220,13 +243,26 @@ public class FileManagerScreen extends Screen {
             return;
         }
 
+        // Calculate how many levels we're going back
+        int currentLevel = breadcrumbParts.size() - 1;
+        int levelsToGoBack = currentLevel - index;
+
         // Build the path up to the selected breadcrumb
         StringBuilder path = new StringBuilder(schematicsRootPath);
         for (int i = 1; i <= index; i++) { // Start at 1 to skip "schematics"
             path.append(File.separator).append(breadcrumbParts.get(i));
         }
 
-        navigateToFolder(new File(path.toString()));
+        currentDirectory = new File(path.toString());
+        updateBreadcrumbs();
+        loadFilesFromCurrentDirectory();
+
+        // Pop scroll positions for each level we're going back
+        for (int i = 0; i < levelsToGoBack && !scrollPositionStack.isEmpty(); i++) {
+            scrollOffset = scrollPositionStack.pop();
+        }
+
+        updateScrollbarDimensions();
     }
 
     @Override
