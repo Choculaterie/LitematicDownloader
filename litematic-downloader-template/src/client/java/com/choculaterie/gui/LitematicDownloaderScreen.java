@@ -100,6 +100,11 @@ public class LitematicDownloaderScreen extends Screen {
     // Replace carousel with persistent source selections
     private boolean chocEnabled = true;
     private boolean mineEnabled = true;
+
+    // Vendor filtering for Minemev API search results
+    private enum VendorFilter { ALL, MINEMEV_ONLY, REDENMC_ONLY }
+    private VendorFilter vendorFilter = VendorFilter.ALL;
+
     private boolean showSourcesDropdown = false;
     private int sourcesDropdownX = 0;
     private int sourcesDropdownY = 0;
@@ -220,7 +225,7 @@ public class LitematicDownloaderScreen extends Screen {
                             sourcesDropdownWidth = 150;
                             sourcesDropdownX = this.width - 165; // near old toggle
                             sourcesDropdownY = 35; // below top buttons
-                            sourcesDropdownHeight = 2 * 20 + 8; // two items + padding
+                            sourcesDropdownHeight = 3 * 20 + 8; // three items + padding
                         })
                 .dimensions(this.width - 165, 10, 45, 20)
                 .build());
@@ -1181,6 +1186,12 @@ public class LitematicDownloaderScreen extends Screen {
         boolean hoverMine = mouseX >= x1 && mouseX <= x2 && mouseY >= my && mouseY <= my + itemH;
         if (hoverMine) context.fill(x1, my, x2, my + itemH, 0x22FFFFFF);
         drawCheckboxRow(context, x1 + 6, my + 5, mineEnabled, "Minemev");
+
+        // Redenmc row
+        int ry = my + itemH;
+        boolean hoverReden = mouseX >= x1 && mouseX <= x2 && mouseY >= ry && mouseY <= ry + itemH;
+        if (hoverReden) context.fill(x1, ry, x2, ry + itemH, 0x22FFFFFF);
+        drawCheckboxRow(context, x1 + 6, ry + 5, vendorFilter == VendorFilter.REDENMC_ONLY, "Redenmc");
     }
 
     private void drawCheckboxRow(DrawContext ctx, int x, int y, boolean checked, String label) {
@@ -1226,6 +1237,19 @@ public class LitematicDownloaderScreen extends Screen {
                         } else {
                             mineEnabled = newMine;
                             onSourcesChanged();
+                        }
+                        return true;
+                    } else if (relY >= 44 && relY < 64) {
+                        // Redenmc
+                        boolean newReden = vendorFilter != VendorFilter.REDENMC_ONLY;
+                        vendorFilter = newReden ? VendorFilter.REDENMC_ONLY : VendorFilter.ALL;
+                        cacheManager.clearAllCache();
+                        com.choculaterie.networking.LitematicHttpClient.clearCaches();
+                        currentPage = 1; // Reset to first page
+                        if (isSearchMode) {
+                            performSearch();
+                        } else {
+                            loadSchematics();
                         }
                         return true;
                     }

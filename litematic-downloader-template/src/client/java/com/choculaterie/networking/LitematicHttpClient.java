@@ -219,9 +219,16 @@ public class LitematicHttpClient {
     }
 
     public static List<SchematicInfo> searchSchematics(String query) {
+        return searchSchematics(query, null);
+    }
+
+    public static List<SchematicInfo> searchSchematics(String query, List<String> excludeVendors) {
         List<SchematicInfo> schematics = new ArrayList<>();
-        // Check search cache
-        String searchKey = "search:" + (query == null ? "" : query.trim().toLowerCase());
+        // Check search cache - include excluded vendors in cache key
+        String excludeVendorsKey = (excludeVendors != null && !excludeVendors.isEmpty())
+            ? String.join(",", excludeVendors)
+            : "";
+        String searchKey = "search:" + (query == null ? "" : query.trim().toLowerCase()) + ":exclude:" + excludeVendorsKey;
         CacheEntry<List<SchematicInfo>> cachedSearch = searchCache.get(searchKey);
         if (cachedSearch != null && (System.currentTimeMillis() - cachedSearch.timestamp) < SEARCH_CACHE_TTL_MS) {
             return cachedSearch.value;
@@ -230,6 +237,13 @@ public class LitematicHttpClient {
             String queryToEncode = query == null ? "" : query;
             String encodedQuery = java.net.URLEncoder.encode(queryToEncode, StandardCharsets.UTF_8);
             String url = BASE_URL + "/Search?query=" + encodedQuery;
+
+            // Add exclude_vendor parameter if provided
+            if (excludeVendors != null && !excludeVendors.isEmpty()) {
+                String excludeVendorsParam = String.join(",", excludeVendors);
+                String encodedExcludeVendors = java.net.URLEncoder.encode(excludeVendorsParam, StandardCharsets.UTF_8);
+                url += "&exclude_vendor=" + encodedExcludeVendors;
+            }
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
