@@ -66,8 +66,6 @@ dependencies {
 
 	implementation 'com.google.code.gson:gson:2.10.1'
 
-	// ImageIO plugin to support WebP: bundle Sejda's WebP provider into the mod jar
-	// Replaces previous TwelveMonkeys WebP dependency
 	include(implementation("org.sejda.imageio:webp-imageio:0.1.6"))
 }
 

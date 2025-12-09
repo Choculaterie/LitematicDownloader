@@ -23,13 +23,6 @@
 			"com.choculaterie.LitematicDownloaderClient"
 		]
 	},
-	"mixins": [
-		"litematic-downloader.mixins.json",
-		{
-			"config": "litematic-downloader.client.mixins.json",
-			"environment": "client"
-		}
-	],
 	"depends": {
 		"fabricloader": ">=0.17.3",
         "minecraft": ">=1.21.9 <=1.21.10",
