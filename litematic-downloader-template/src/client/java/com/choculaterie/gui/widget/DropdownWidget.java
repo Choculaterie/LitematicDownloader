@@ -87,7 +87,7 @@ public class DropdownWidget implements Drawable, Element {
     private int getDropdownHeight() {
         if (!isOpen || items.isEmpty()) return 0;
         int itemCount = Math.min(items.size(), MAX_VISIBLE_ITEMS);
-        int baseHeight = itemCount * ITEM_HEIGHT + PADDING * 2;
+        int baseHeight = itemCount * ITEM_HEIGHT + 2; // +2 for top and bottom borders
         // Add space for status message if present
         if (!statusMessage.isEmpty()) {
             baseHeight += ITEM_HEIGHT;
@@ -137,9 +137,10 @@ public class DropdownWidget implements Drawable, Element {
 
             context.fill(itemX, itemY, itemX + itemWidth, itemY + ITEM_HEIGHT, itemBgColor);
 
-            // Draw only horizontal borders (left/right borders are shared with outer border)
-            context.fill(itemX, itemY, itemX + itemWidth, itemY + 1, BORDER_COLOR); // Top
-            context.fill(itemX, itemY + ITEM_HEIGHT - 1, itemX + itemWidth, itemY + ITEM_HEIGHT, BORDER_COLOR); // Bottom
+            // Draw bottom border only if not the last item (to separate items)
+            if (i < items.size() - 1) {
+                context.fill(itemX, itemY + ITEM_HEIGHT - 1, itemX + itemWidth, itemY + ITEM_HEIGHT, BORDER_COLOR);
+            }
 
             if (isHovered) {
                 hoveredIndex = i;
@@ -163,14 +164,29 @@ public class DropdownWidget implements Drawable, Element {
 
         // Draw status message if present (at the bottom, outside scroll area)
         if (!statusMessage.isEmpty()) {
-            int statusY = y + height - ITEM_HEIGHT - PADDING;
-            // Draw separator line
-            context.fill(x + PADDING, statusY - 2, x + width - PADDING, statusY - 1, BORDER_COLOR);
-            // Draw status message centered
+            int statusY = y + height - ITEM_HEIGHT - 1; // -1 for bottom border
+            int statusX = x + 1; // Align with left border
+            int statusWidth = width - 2; // Full width minus borders
+
+            // Draw separator line (top border of status area)
+            context.fill(statusX, statusY, statusX + statusWidth, statusY + 1, BORDER_COLOR);
+
+            // Draw status message with wrapping support
+            int maxStatusWidth = statusWidth - PADDING * 2;
+            String displayStatus = statusMessage;
+
+            // Check if message needs truncation/wrapping
             int statusTextWidth = client.textRenderer.getWidth(statusMessage);
-            int statusTextX = x + (width - statusTextWidth) / 2;
-            int statusTextY = statusY + (ITEM_HEIGHT - client.textRenderer.fontHeight) / 2;
-            context.drawText(client.textRenderer, statusMessage, statusTextX, statusTextY, 0xFF88FF88, false);
+            if (statusTextWidth > maxStatusWidth) {
+                // Truncate with ellipsis if too long
+                displayStatus = client.textRenderer.trimToWidth(statusMessage, maxStatusWidth - client.textRenderer.getWidth("...")) + "...";
+            }
+
+            // Draw centered
+            int finalStatusWidth = client.textRenderer.getWidth(displayStatus);
+            int statusTextX = x + (width - finalStatusWidth) / 2;
+            int statusTextY = statusY + 1 + (ITEM_HEIGHT - client.textRenderer.fontHeight) / 2;
+            context.drawText(client.textRenderer, displayStatus, statusTextX, statusTextY, 0xFF88FF88, false);
         }
 
         // Draw scrollbar if needed
@@ -181,7 +197,7 @@ public class DropdownWidget implements Drawable, Element {
 
     private void drawScrollbar(DrawContext context, int visibleHeight) {
         int scrollbarX = x + width - 6;
-        int scrollbarY = y + PADDING;
+        int scrollbarY = y + 1; // Start after top border
         int scrollbarHeight = visibleHeight;
 
         // Calculate thumb size and position
