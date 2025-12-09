@@ -15,8 +15,19 @@ public class CustomButton extends ButtonWidget {
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int TEXT_DISABLED_COLOR = 0xFF888888;
 
+    private boolean renderAsXIcon = false;
+    private boolean renderAsDownloadIcon = false;
+
     public CustomButton(int x, int y, int width, int height, Text message, PressAction onPress) {
         super(x, y, width, height, message, onPress, DEFAULT_NARRATION_SUPPLIER);
+    }
+
+    public void setRenderAsXIcon(boolean renderAsXIcon) {
+        this.renderAsXIcon = renderAsXIcon;
+    }
+
+    public void setRenderAsDownloadIcon(boolean renderAsDownloadIcon) {
+        this.renderAsDownloadIcon = renderAsDownloadIcon;
     }
 
     @Override
@@ -52,13 +63,33 @@ public class CustomButton extends ButtonWidget {
         context.fill(this.getX() + this.getWidth() - 1, this.getY(),
                     this.getX() + this.getWidth(), this.getY() + this.getHeight(), 0xFF555555); // Right
 
-        // Draw centered text
-        context.drawCenteredTextWithShadow(
-            MinecraftClient.getInstance().textRenderer,
-            this.getMessage(),
-            this.getX() + this.getWidth() / 2,
-            this.getY() + (this.getHeight() - 8) / 2,
-            textColor
-        );
+        if (renderAsXIcon) {
+            // Draw ❌ emoji
+            context.drawCenteredTextWithShadow(
+                MinecraftClient.getInstance().textRenderer,
+                Text.literal("❌"),
+                this.getX() + this.getWidth() / 2,
+                this.getY() + (this.getHeight() - 8) / 2 + 1, // Move down by 2 pixels
+                textColor
+            );
+        } else if (renderAsDownloadIcon) {
+            // Draw 💾 emoji
+            context.drawCenteredTextWithShadow(
+                MinecraftClient.getInstance().textRenderer,
+                Text.literal("💾"),
+                this.getX() + this.getWidth() / 2,
+                this.getY() + (this.getHeight() - 8) / 2 + 1,
+                textColor
+            );
+        } else {
+            // Draw centered text
+            context.drawCenteredTextWithShadow(
+                MinecraftClient.getInstance().textRenderer,
+                this.getMessage(),
+                this.getX() + this.getWidth() / 2,
+                this.getY() + (this.getHeight() - 8) / 2,
+                textColor
+            );
+        }
     }
 }

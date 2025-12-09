@@ -12,11 +12,19 @@ public class LoadingSpinner implements Drawable {
     private static final int NUM_BLOCKS = 8;
     private static final float FADE_SPEED = 0.03f; // Much slower - reduced from 0.15f
 
-    private final int x;
-    private final int y;
+    private int x;
+    private int y;
     private float animationTime = 0.0f;
 
     public LoadingSpinner(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+    
+    /**
+     * Update the spinner's position for the next render
+     */
+    public void setPosition(int x, int y) {
         this.x = x;
         this.y = y;
     }

@@ -24,6 +24,7 @@ public class LitematicDownloaderScreen extends Screen {
     private CustomButton searchButton;
     private CustomButton prevPageButton;
     private CustomButton nextPageButton;
+    private CustomButton closeButton;
     private LoadingSpinner loadingSpinner;
 
     private int currentPage = 1; // API uses 1-based pagination
@@ -97,6 +98,20 @@ public class LitematicDownloaderScreen extends Screen {
             rightPanelWidth - PADDING,
             this.height - PADDING * 2
         );
+
+        // Close button (top right corner of detail panel, square)
+        // Position it at the top right of the detail panel area
+        int closeButtonSize = 20;
+        closeButton = new CustomButton(
+            this.width - PADDING - closeButtonSize,
+            PADDING,
+            closeButtonSize,
+            closeButtonSize,
+            Text.literal("X"),
+            button -> this.close()
+        );
+        closeButton.setRenderAsXIcon(true); // Use X icon instead of text
+        // Don't add to children - we'll render it manually on top
 
         // Pagination buttons at bottom (left side only)
         int bottomY = this.height - BUTTON_HEIGHT - PADDING;
@@ -256,7 +271,7 @@ public class LitematicDownloaderScreen extends Screen {
 
         // Draw no results found message (left side)
         if (noResultsFound) {
-            String noResultsText = "No results found.";
+            String noResultsText = "No results found :(";
             int textWidth = this.textRenderer.getWidth(noResultsText);
             context.drawTextWithShadow(
                 this.textRenderer,
@@ -266,8 +281,67 @@ public class LitematicDownloaderScreen extends Screen {
                 0xFFFFFFFF
             );
         }
+
+        // Render close button on top of everything
+        if (closeButton != null) {
+            closeButton.render(context, mouseX, mouseY, delta);
+        }
     }
 
+
+    @Override
+    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
+        // Check close button first (highest priority, on top)
+        if (button == 0 && closeButton != null) {
+            boolean isOverClose = mouseX >= closeButton.getX() &&
+                                 mouseX < closeButton.getX() + closeButton.getWidth() &&
+                                 mouseY >= closeButton.getY() &&
+                                 mouseY < closeButton.getY() + closeButton.getHeight();
+            if (isOverClose) {
+                this.close();
+                return true;
+            }
+        }
+
+        // Forward to detail panel
+        if (detailPanel != null && detailPanel.mouseClicked(mouseX, mouseY, button)) {
+            return true;
+        }
+        // Then let parent handle it (for other widgets)
+        return super.mouseClicked(click, doubled);
+    }
+
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+        // Forward to detail panel first for scrollbar dragging
+        if (detailPanel != null && detailPanel.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
+            return true;
+        }
+        // Then let parent handle it (if Screen has this method)
+        return false;
+    }
+
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        // Forward to detail panel first for scrollbar release
+        if (detailPanel != null && detailPanel.mouseReleased(mouseX, mouseY, button)) {
+            return true;
+        }
+        // Then let parent handle it (if Screen has this method)
+        return false;
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        // Forward to detail panel first
+        if (detailPanel != null && detailPanel.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
+            return true;
+        }
+        // Then let parent handle it
+        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+    }
 
     @Override
     public boolean shouldPause() {

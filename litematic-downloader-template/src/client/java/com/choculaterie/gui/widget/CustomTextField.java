@@ -153,24 +153,23 @@ public class CustomTextField extends TextFieldWidget {
             }
         }
 
-        // Draw clear button (X) if there's text
+        // Draw clear button (❌ emoji) if there's text
         if (!this.getText().isEmpty()) {
             int clearX = this.getX() + this.getWidth() - CLEAR_BUTTON_SIZE - 4;
             int clearY = this.getY() + (this.getHeight() - CLEAR_BUTTON_SIZE) / 2;
             boolean isHovered = isOverClearButton(mouseX, mouseY);
             int clearColor = isHovered ? CLEAR_BUTTON_HOVER_COLOR : CLEAR_BUTTON_COLOR;
 
-            // Draw X
-            int padding = 3;
-            int x1 = clearX + padding;
-            int y1 = clearY + padding;
-            int x2 = clearX + CLEAR_BUTTON_SIZE - padding;
-
-            // Better X drawing with diagonal lines
-            for (int j = 0; j <= (x2 - x1); j++) {
-                context.fill(x1 + j, y1 + j, x1 + j + 1, y1 + j + 2, clearColor);
-                context.fill(x2 - j, y1 + j, x2 - j + 1, y1 + j + 2, clearColor);
-            }
+            // Draw ❌ emoji centered in the clear button area
+            int emojiX = clearX + CLEAR_BUTTON_SIZE / 2;
+            int emojiY = clearY + (CLEAR_BUTTON_SIZE - 8) / 2 + 1; // Move down by 2 pixels
+            context.drawCenteredTextWithShadow(
+                client.textRenderer,
+                Text.literal("❌"),
+                emojiX,
+                emojiY,
+                clearColor
+            );
         }
     }
 }
