@@ -1,8 +1,10 @@
 package com.choculaterie.gui;
 
 import com.choculaterie.config.DownloadSettings;
+import com.choculaterie.gui.widget.ConfirmPopup;
 import com.choculaterie.gui.widget.CustomButton;
 import com.choculaterie.gui.widget.ScrollBar;
+import com.choculaterie.gui.widget.TextInputPopup;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
@@ -23,13 +25,33 @@ public class LocalFolderPage extends Screen {
     private CustomButton backButton;
     private CustomButton settingsButton;
     private CustomButton upButton;
+    private CustomButton newFolderButton;
+    private CustomButton renameButton;
+    private CustomButton deleteButton;
     private ScrollBar scrollBar;
+    private TextInputPopup activePopup;
+    private ConfirmPopup confirmPopup;
 
     private File currentDirectory;
     private File baseDirectory; // The schematic folder - don't allow going above this
     private List<FileEntry> entries = new ArrayList<>();
     private int scrollOffset = 0;
     private int selectedIndex = -1;
+
+    // Breadcrumb segments for click detection
+    private List<BreadcrumbSegment> breadcrumbSegments = new ArrayList<>();
+
+    private static class BreadcrumbSegment {
+        final int x;
+        final int width;
+        final File directory;
+
+        BreadcrumbSegment(int x, int width, File directory) {
+            this.x = x;
+            this.width = width;
+            this.directory = directory;
+        }
+    }
 
     private static class FileEntry {
         final File file;
@@ -86,6 +108,44 @@ public class LocalFolderPage extends Screen {
         );
         this.addDrawableChild(upButton);
 
+        // Update up button state (disabled at root)
+        updateUpButtonState();
+
+        // New Folder button (next to Up button)
+        newFolderButton = new CustomButton(
+                PADDING * 3 + BUTTON_HEIGHT + 60,
+                PADDING,
+                100,
+                BUTTON_HEIGHT,
+                Text.literal("+ New Folder"),
+                button -> openNewFolderPopup()
+        );
+        this.addDrawableChild(newFolderButton);
+
+        // Rename button (next to New Folder button)
+        renameButton = new CustomButton(
+                PADDING * 4 + BUTTON_HEIGHT + 60 + 100,
+                PADDING,
+                70,
+                BUTTON_HEIGHT,
+                Text.literal("Rename"),
+                button -> openRenamePopup()
+        );
+        renameButton.active = false; // Disabled until something is selected
+        this.addDrawableChild(renameButton);
+
+        // Delete button (next to Rename button)
+        deleteButton = new CustomButton(
+                PADDING * 5 + BUTTON_HEIGHT + 60 + 100 + 70,
+                PADDING,
+                60,
+                BUTTON_HEIGHT,
+                Text.literal("Delete"),
+                button -> handleDeleteClick()
+        );
+        deleteButton.active = false; // Disabled until something is selected
+        this.addDrawableChild(deleteButton);
+
         // Settings button (top right)
         settingsButton = new CustomButton(
                 this.width - PADDING - BUTTON_HEIGHT,
@@ -116,6 +176,181 @@ public class LocalFolderPage extends Screen {
         }
     }
 
+    private void openNewFolderPopup() {
+        activePopup = new TextInputPopup(
+                this,
+                "Create New Folder",
+                this::createNewFolder,
+                this::closePopup
+        );
+    }
+
+    private void createNewFolder(String folderName) {
+        if (currentDirectory == null) {
+            closePopup();
+            return;
+        }
+
+        // Check if folder already exists
+        File newFolder = new File(currentDirectory, folderName);
+        if (newFolder.exists()) {
+            if (activePopup != null) {
+                activePopup.setErrorMessage("A folder with this name already exists");
+            }
+            return;
+        }
+
+        // Try to create the folder
+        boolean success = newFolder.mkdir();
+        if (success) {
+            System.out.println("Created folder: " + newFolder.getAbsolutePath());
+            closePopup();
+            loadEntries(); // Refresh the list
+        } else {
+            if (activePopup != null) {
+                activePopup.setErrorMessage("Failed to create folder");
+            }
+        }
+    }
+
+    private void closePopup() {
+        activePopup = null;
+        confirmPopup = null;
+    }
+
+    private void openRenamePopup() {
+        if (selectedIndex < 0 || selectedIndex >= entries.size()) {
+            return;
+        }
+
+        FileEntry entry = entries.get(selectedIndex);
+        String currentName = entry.file.getName();
+
+        activePopup = new TextInputPopup(
+                this,
+                "Rename",
+                "Rename",
+                newName -> renameFile(entry.file, newName),
+                this::closePopup
+        );
+        activePopup.setText(currentName);
+    }
+
+    private void renameFile(File file, String newName) {
+        if (file == null || newName == null || newName.trim().isEmpty()) {
+            closePopup();
+            return;
+        }
+
+        newName = newName.trim();
+
+        // Check if name is the same
+        if (newName.equals(file.getName())) {
+            closePopup();
+            return;
+        }
+
+        // Check if target already exists
+        File newFile = new File(file.getParentFile(), newName);
+        if (newFile.exists()) {
+            if (activePopup != null) {
+                activePopup.setErrorMessage("A file/folder with this name already exists");
+            }
+            return;
+        }
+
+        // Try to rename
+        boolean success = file.renameTo(newFile);
+        if (success) {
+            System.out.println("Renamed: " + file.getName() + " -> " + newName);
+            closePopup();
+            loadEntries();
+        } else {
+            if (activePopup != null) {
+                activePopup.setErrorMessage("Failed to rename");
+            }
+        }
+    }
+
+    private void handleDeleteClick() {
+        if (selectedIndex < 0 || selectedIndex >= entries.size()) {
+            return;
+        }
+
+        FileEntry entry = entries.get(selectedIndex);
+
+        // Check if shift is held - skip confirmation
+        long windowHandle = this.client != null ? this.client.getWindow().getHandle() : 0;
+        boolean shiftHeld = false;
+        if (windowHandle != 0) {
+            shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                       org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+        }
+
+        if (shiftHeld) {
+            // Delete immediately without confirmation
+            deleteFile(entry.file);
+        } else {
+            // Show confirmation popup
+            String itemType = entry.isDirectory ? "folder" : "file";
+            confirmPopup = new ConfirmPopup(
+                    this,
+                    "Delete " + itemType + "?",
+                    "Are you sure you want to delete \"" + entry.file.getName() + "\"?",
+                    () -> {
+                        deleteFile(entry.file);
+                        closePopup();
+                    },
+                    this::closePopup
+            );
+        }
+    }
+
+    private void deleteFile(File file) {
+        if (file == null) {
+            return;
+        }
+
+        boolean success;
+        if (file.isDirectory()) {
+            // Delete directory recursively
+            success = deleteDirectoryRecursively(file);
+        } else {
+            success = file.delete();
+        }
+
+        if (success) {
+            System.out.println("Deleted: " + file.getAbsolutePath());
+            loadEntries();
+        } else {
+            System.err.println("Failed to delete: " + file.getAbsolutePath());
+        }
+    }
+
+    private boolean deleteDirectoryRecursively(File directory) {
+        File[] files = directory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    deleteDirectoryRecursively(file);
+                } else {
+                    file.delete();
+                }
+            }
+        }
+        return directory.delete();
+    }
+
+    private void updateSelectionButtons() {
+        boolean hasSelection = selectedIndex >= 0 && selectedIndex < entries.size();
+        if (renameButton != null) {
+            renameButton.active = hasSelection;
+        }
+        if (deleteButton != null) {
+            deleteButton.active = hasSelection;
+        }
+    }
+
     private void loadEntries() {
         entries.clear();
         selectedIndex = -1;
@@ -138,6 +373,7 @@ public class LocalFolderPage extends Screen {
 
         updateUpButtonState();
         updateScrollBar();
+        updateSelectionButtons();
     }
 
     private void updateScrollBar() {
@@ -217,23 +453,111 @@ public class LocalFolderPage extends Screen {
         }
     }
 
+    private void renderBreadcrumb(DrawContext context, int mouseX, int mouseY) {
+        breadcrumbSegments.clear();
+
+        int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT;
+        int currentX = PADDING;
+
+        // Draw "Current: " label
+        String label = "Current: ";
+        context.drawTextWithShadow(this.textRenderer, label, currentX, breadcrumbY, 0xFFAAAAAA);
+        currentX += this.textRenderer.getWidth(label);
+
+        // Build path segments from base to current
+        List<File> pathSegments = new ArrayList<>();
+        File dir = currentDirectory;
+
+        try {
+            String basePath = baseDirectory.getCanonicalPath();
+
+            // Collect all directories from current to base
+            while (dir != null) {
+                pathSegments.add(0, dir); // Add at beginning
+                String dirPath = dir.getCanonicalPath();
+                if (dirPath.equals(basePath)) {
+                    break; // Stop at base directory
+                }
+                dir = dir.getParentFile();
+            }
+        } catch (Exception e) {
+            pathSegments.clear();
+            pathSegments.add(currentDirectory);
+        }
+
+        // Render each segment as clickable
+        for (int i = 0; i < pathSegments.size(); i++) {
+            File segment = pathSegments.get(i);
+            String segmentName;
+
+            if (i == 0) {
+                // Root segment - show as "/"
+                segmentName = "/";
+            } else {
+                // Show separator before folder name (but not for the first subfolder after root)
+                if (i > 1) {
+                    String separator = " / ";
+                    context.drawTextWithShadow(this.textRenderer, separator, currentX, breadcrumbY, 0xFF888888);
+                    currentX += this.textRenderer.getWidth(separator);
+                } else {
+                    // Just add a space after root "/"
+                    String space = " ";
+                    context.drawTextWithShadow(this.textRenderer, space, currentX, breadcrumbY, 0xFF888888);
+                    currentX += this.textRenderer.getWidth(space);
+                }
+                segmentName = segment.getName();
+            }
+
+            int segmentWidth = this.textRenderer.getWidth(segmentName);
+
+            // Check if mouse is hovering over this segment (and no popup active)
+            boolean isHovered = activePopup == null &&
+                              mouseX >= currentX && mouseX < currentX + segmentWidth &&
+                              mouseY >= breadcrumbY - 2 && mouseY < breadcrumbY + 12;
+
+            // Check if this is the current directory (last segment)
+            boolean isCurrent = (i == pathSegments.size() - 1);
+
+            // Draw segment with appropriate color
+            int color;
+            if (isCurrent) {
+                color = 0xFFFFFFFF; // White for current
+            } else if (isHovered) {
+                color = 0xFF55AAFF; // Light blue when hovered
+            } else {
+                color = 0xFF88CCFF; // Blue for clickable
+            }
+
+            // Draw underline if hovered and not current
+            if (isHovered && !isCurrent) {
+                context.fill(currentX, breadcrumbY + 10, currentX + segmentWidth, breadcrumbY + 11, color);
+            }
+
+            context.drawTextWithShadow(this.textRenderer, segmentName, currentX, breadcrumbY, color);
+
+            // Store segment for click detection (only if not current)
+            if (!isCurrent) {
+                breadcrumbSegments.add(new BreadcrumbSegment(currentX, segmentWidth, segment));
+            }
+
+            currentX += segmentWidth;
+        }
+    }
+
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         // Fill the entire screen with dark grey background
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
-        super.render(context, mouseX, mouseY, delta);
+        // If popup is active, render buttons without hover effects
+        boolean popupActive = activePopup != null || confirmPopup != null;
+        int renderMouseX = popupActive ? -1 : mouseX;
+        int renderMouseY = popupActive ? -1 : mouseY;
 
-        // Draw current path (relative to base schematic folder)
-        String relativePath = getRelativePathFromBase();
-        String displayPath = relativePath.isEmpty() || relativePath.equals(".") ? "/" : "/" + relativePath;
-        context.drawTextWithShadow(
-                this.textRenderer,
-                "Current: " + displayPath,
-                PADDING,
-                PADDING * 3 + BUTTON_HEIGHT,
-                0xFFFFFFFF
-        );
+        super.render(context, renderMouseX, renderMouseY, delta);
+
+        // Draw current path as clickable breadcrumb
+        renderBreadcrumb(context, mouseX, mouseY);
 
         // Draw file/folder list
         int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
@@ -251,8 +575,9 @@ public class LocalFolderPage extends Screen {
             FileEntry entry = entries.get(i);
             int itemY = listY + (i - scrollOffset) * ITEM_HEIGHT;
 
-            // Check if mouse is over this item (only in list area, not scrollbar)
-            boolean isHovered = mouseX >= PADDING && mouseX < listRightEdge &&
+            // Check if mouse is over this item (only in list area, not scrollbar, and no popup active)
+            boolean isHovered = !popupActive &&
+                              mouseX >= PADDING && mouseX < listRightEdge &&
                               mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
             boolean isSelected = i == selectedIndex;
 
@@ -289,6 +614,16 @@ public class LocalFolderPage extends Screen {
                 scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
             }
         }
+
+        // Render popup on top of everything
+        if (activePopup != null) {
+            activePopup.render(context, mouseX, mouseY, delta);
+        }
+
+        // Render confirm popup on top of everything
+        if (confirmPopup != null) {
+            confirmPopup.render(context, mouseX, mouseY, delta);
+        }
     }
 
     @Override
@@ -297,8 +632,34 @@ public class LocalFolderPage extends Screen {
         double mouseY = click.y();
         int button = click.button();
 
+        // Handle confirm popup first if active
+        if (confirmPopup != null) {
+            confirmPopup.mouseClicked(mouseX, mouseY, button);
+            return true;
+        }
+
+        // Handle popup first if active - block all clicks to content behind
+        if (activePopup != null) {
+            activePopup.mouseClicked(mouseX, mouseY, button);
+            return true; // Always consume click when popup is active
+        }
+
         if (super.mouseClicked(click, doubled)) {
             return true;
+        }
+
+        // Handle breadcrumb clicks
+        int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT;
+        if (mouseY >= breadcrumbY - 2 && mouseY < breadcrumbY + 12) {
+            for (BreadcrumbSegment segment : breadcrumbSegments) {
+                if (mouseX >= segment.x && mouseX < segment.x + segment.width) {
+                    // Navigate to this directory
+                    currentDirectory = segment.directory;
+                    loadEntries();
+                    scrollOffset = 0;
+                    return true;
+                }
+            }
         }
 
         // Handle file/folder list clicks (only in list area, not scrollbar)
@@ -324,10 +685,12 @@ public class LocalFolderPage extends Screen {
                         } else {
                             // Single click - select
                             selectedIndex = clickedIndex;
+                            updateSelectionButtons();
                         }
                     } else {
                         // File selected
                         selectedIndex = clickedIndex;
+                        updateSelectionButtons();
                         // Could add file preview or actions here in the future
                     }
                     return true;
@@ -340,6 +703,11 @@ public class LocalFolderPage extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        // Block scrolling when popup is active
+        if (activePopup != null) {
+            return true;
+        }
+
         int listHeight = this.height - (PADDING * 4 + BUTTON_HEIGHT + 10) - PADDING * 2;
         int maxVisibleItems = listHeight / ITEM_HEIGHT;
         int maxScroll = Math.max(0, entries.size() - maxVisibleItems);
@@ -353,6 +721,8 @@ public class LocalFolderPage extends Screen {
 
         return true;
     }
+
+
 
     @Override
     public boolean shouldPause() {
