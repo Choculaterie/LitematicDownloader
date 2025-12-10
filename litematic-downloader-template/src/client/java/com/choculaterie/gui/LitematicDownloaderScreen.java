@@ -24,6 +24,7 @@ public class LitematicDownloaderScreen extends Screen {
     private CustomButton searchButton;
     private CustomButton prevPageButton;
     private CustomButton nextPageButton;
+    private CustomButton folderButton;
     private CustomButton closeButton;
     private LoadingSpinner loadingSpinner;
 
@@ -37,7 +38,7 @@ public class LitematicDownloaderScreen extends Screen {
     public LitematicDownloaderScreen() {
         super(Text.literal("Litematic Downloader"));
     }
-    
+
     @Override
     protected void init() {
         super.init();
@@ -54,12 +55,12 @@ public class LitematicDownloaderScreen extends Screen {
         // Search field (left side)
         if (this.client != null) {
             searchField = new CustomTextField(
-                this.client,
-                PADDING,
-                PADDING,
-                searchBarWidth,
-                SEARCH_BAR_HEIGHT,
-                Text.literal("Search")
+                    this.client,
+                    PADDING,
+                    PADDING,
+                    searchBarWidth,
+                    SEARCH_BAR_HEIGHT,
+                    Text.literal("Search")
             );
             searchField.setPlaceholder(Text.literal("Search schematics..."));
             searchField.setOnEnterPressed(this::performSearch);
@@ -69,12 +70,12 @@ public class LitematicDownloaderScreen extends Screen {
 
         // Search button (left side)
         searchButton = new CustomButton(
-            PADDING + searchBarWidth + PADDING,
-            PADDING,
-            70,
-            SEARCH_BAR_HEIGHT,
-            Text.literal("Search"),
-            button -> performSearch()
+                PADDING + searchBarWidth + PADDING,
+                PADDING,
+                70,
+                SEARCH_BAR_HEIGHT,
+                Text.literal("Search"),
+                button -> performSearch()
         );
         this.addDrawableChild(searchButton);
 
@@ -83,32 +84,43 @@ public class LitematicDownloaderScreen extends Screen {
         int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 2;
 
         postList = new PostListWidget(
-            PADDING,
-            listY,
-            leftPanelWidth - PADDING * 2,
-            listHeight,
-            this::onPostClick
+                PADDING,
+                listY,
+                leftPanelWidth - PADDING * 2,
+                listHeight,
+                this::onPostClick
         );
         this.addDrawableChild(postList);
 
         // Detail panel (right side)
         detailPanel = new PostDetailPanel(
-            leftPanelWidth,
-            PADDING,
-            rightPanelWidth - PADDING,
-            this.height - PADDING * 2
+                leftPanelWidth,
+                PADDING,
+                rightPanelWidth - PADDING,
+                this.height - PADDING * 2
         );
+
+        // Folder button (to the left of close button, no space between)
+        int closeButtonSize = 20;
+        folderButton = new CustomButton(
+                this.width - PADDING - closeButtonSize * 2,
+                PADDING,
+                closeButtonSize,
+                closeButtonSize,
+                Text.literal("📁"),
+                button -> openFolderPage()
+        );
+        // Don't add to children - we'll render it manually on top
 
         // Close button (top right corner of detail panel, square)
         // Position it at the top right of the detail panel area
-        int closeButtonSize = 20;
         closeButton = new CustomButton(
-            this.width - PADDING - closeButtonSize,
-            PADDING,
-            closeButtonSize,
-            closeButtonSize,
-            Text.literal("X"),
-            button -> this.close()
+                this.width - PADDING - closeButtonSize,
+                PADDING,
+                closeButtonSize,
+                closeButtonSize,
+                Text.literal("X"),
+                button -> this.close()
         );
         closeButton.setRenderAsXIcon(true); // Use X icon instead of text
         // Don't add to children - we'll render it manually on top
@@ -117,23 +129,23 @@ public class LitematicDownloaderScreen extends Screen {
         int bottomY = this.height - BUTTON_HEIGHT - PADDING;
 
         prevPageButton = new CustomButton(
-            PADDING,
-            bottomY,
-            80,
-            BUTTON_HEIGHT,
-            Text.literal("< Previous"),
-            button -> previousPage()
+                PADDING,
+                bottomY,
+                80,
+                BUTTON_HEIGHT,
+                Text.literal("< Previous"),
+                button -> previousPage()
         );
         prevPageButton.active = false;
         this.addDrawableChild(prevPageButton);
 
         nextPageButton = new CustomButton(
-            leftPanelWidth - PADDING - 80,
-            bottomY,
-            80,
-            BUTTON_HEIGHT,
-            Text.literal("Next >"),
-            button -> nextPage()
+                leftPanelWidth - PADDING - 80,
+                bottomY,
+                80,
+                BUTTON_HEIGHT,
+                Text.literal("Next >"),
+                button -> nextPage()
         );
         nextPageButton.active = false;
         this.addDrawableChild(nextPageButton);
@@ -169,18 +181,18 @@ public class LitematicDownloaderScreen extends Screen {
         postList.clear();
 
         MinemevNetworkManager.searchPosts(currentSearchQuery, "popular", 0, currentPage)
-            .thenAccept(this::handleSearchResponse)
-            .exceptionally(throwable -> {
-                if (this.client != null) {
-                    this.client.execute(() -> {
-                        isLoading = false;
-                        searchButton.active = true;
-                        updatePaginationButtons();
-                        System.err.println("Error loading posts: " + throwable.getMessage());
-                    });
-                }
-                return null;
-            });
+                .thenAccept(this::handleSearchResponse)
+                .exceptionally(throwable -> {
+                    if (this.client != null) {
+                        this.client.execute(() -> {
+                            isLoading = false;
+                            searchButton.active = true;
+                            updatePaginationButtons();
+                            System.err.println("Error loading posts: " + throwable.getMessage());
+                        });
+                    }
+                    return null;
+                });
     }
 
     private void handleSearchResponse(MinemevSearchResponse response) {
@@ -236,6 +248,12 @@ public class LitematicDownloaderScreen extends Screen {
         }
     }
 
+    private void openFolderPage() {
+        if (this.client != null) {
+            this.client.setScreen(new LocalFolderPage(this));
+        }
+    }
+
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         int leftPanelWidth = this.width / 2;
@@ -251,16 +269,16 @@ public class LitematicDownloaderScreen extends Screen {
         // Draw page indicator (left side)
         if (totalPages > 1 || totalItems > ITEMS_PER_PAGE) {
             String pageText = String.format("Page %d / %d (%d items)",
-                currentPage,
-                Math.max(totalPages, (int) Math.ceil(totalItems / (double) ITEMS_PER_PAGE)),
-                totalItems);
+                    currentPage,
+                    Math.max(totalPages, (int) Math.ceil(totalItems / (double) ITEMS_PER_PAGE)),
+                    totalItems);
             int textWidth = this.textRenderer.getWidth(pageText);
             context.drawTextWithShadow(
-                this.textRenderer,
-                pageText,
-                (leftPanelWidth - textWidth) / 2,
-                this.height - BUTTON_HEIGHT / 2 - 4 - PADDING,
-                0xFFFFFFFF
+                    this.textRenderer,
+                    pageText,
+                    (leftPanelWidth - textWidth) / 2,
+                    this.height - BUTTON_HEIGHT / 2 - 4 - PADDING,
+                    0xFFFFFFFF
             );
         }
 
@@ -274,12 +292,17 @@ public class LitematicDownloaderScreen extends Screen {
             String noResultsText = "No results found :(";
             int textWidth = this.textRenderer.getWidth(noResultsText);
             context.drawTextWithShadow(
-                this.textRenderer,
-                noResultsText,
-                (leftPanelWidth - textWidth) / 2,
-                this.height / 2 + 10,
-                0xFFFFFFFF
+                    this.textRenderer,
+                    noResultsText,
+                    (leftPanelWidth - textWidth) / 2,
+                    this.height / 2 + 10,
+                    0xFFFFFFFF
             );
+        }
+
+        // Render folder button on top of everything
+        if (folderButton != null) {
+            folderButton.render(context, mouseX, mouseY, delta);
         }
 
         // Render close button on top of everything
@@ -298,11 +321,23 @@ public class LitematicDownloaderScreen extends Screen {
         // Check close button first (highest priority, on top)
         if (button == 0 && closeButton != null) {
             boolean isOverClose = mouseX >= closeButton.getX() &&
-                                 mouseX < closeButton.getX() + closeButton.getWidth() &&
-                                 mouseY >= closeButton.getY() &&
-                                 mouseY < closeButton.getY() + closeButton.getHeight();
+                    mouseX < closeButton.getX() + closeButton.getWidth() &&
+                    mouseY >= closeButton.getY() &&
+                    mouseY < closeButton.getY() + closeButton.getHeight();
             if (isOverClose) {
                 this.close();
+                return true;
+            }
+        }
+
+        // Check folder button
+        if (button == 0 && folderButton != null) {
+            boolean isOverFolder = mouseX >= folderButton.getX() &&
+                    mouseX < folderButton.getX() + folderButton.getWidth() &&
+                    mouseY >= folderButton.getY() &&
+                    mouseY < folderButton.getY() + folderButton.getHeight();
+            if (isOverFolder) {
+                openFolderPage();
                 return true;
             }
         }

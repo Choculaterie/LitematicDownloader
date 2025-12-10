@@ -33,7 +33,7 @@ public class CustomButton extends ButtonWidget {
     @Override
     public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
         boolean isHovered = mouseX >= this.getX() && mouseY >= this.getY() &&
-                         mouseX < this.getX() + this.getWidth() && mouseY < this.getY() + this.getHeight();
+                mouseX < this.getX() + this.getWidth() && mouseY < this.getY() + this.getHeight();
 
         int color;
         int textColor;
@@ -51,44 +51,49 @@ public class CustomButton extends ButtonWidget {
 
         // Draw button background
         context.fill(this.getX(), this.getY(), this.getX() + this.getWidth(),
-                    this.getY() + this.getHeight(), color);
+                this.getY() + this.getHeight(), color);
 
         // Draw border
         context.fill(this.getX(), this.getY(), this.getX() + this.getWidth(),
-                    this.getY() + 1, 0xFF555555); // Top
+                this.getY() + 1, 0xFF555555); // Top
         context.fill(this.getX(), this.getY() + this.getHeight() - 1,
-                    this.getX() + this.getWidth(), this.getY() + this.getHeight(), 0xFF555555); // Bottom
+                this.getX() + this.getWidth(), this.getY() + this.getHeight(), 0xFF555555); // Bottom
         context.fill(this.getX(), this.getY(), this.getX() + 1,
-                    this.getY() + this.getHeight(), 0xFF555555); // Left
+                this.getY() + this.getHeight(), 0xFF555555); // Left
         context.fill(this.getX() + this.getWidth() - 1, this.getY(),
-                    this.getX() + this.getWidth(), this.getY() + this.getHeight(), 0xFF555555); // Right
+                this.getX() + this.getWidth(), this.getY() + this.getHeight(), 0xFF555555); // Right
+
+        // Check if this is the settings icon (⚙) - keep it at original position
+        String messageText = this.getMessage().getString();
+        boolean isSettingsIcon = messageText.equals("⚙");
+        int yOffset = isSettingsIcon ? 0 : 1;
 
         if (renderAsXIcon) {
             // Draw ❌ emoji
             context.drawCenteredTextWithShadow(
-                MinecraftClient.getInstance().textRenderer,
-                Text.literal("❌"),
-                this.getX() + this.getWidth() / 2,
-                this.getY() + (this.getHeight() - 8) / 2 + 1, // Move down by 2 pixels
-                textColor
+                    MinecraftClient.getInstance().textRenderer,
+                    Text.literal("❌"),
+                    this.getX() + this.getWidth() / 2,
+                    this.getY() + (this.getHeight() - 8) / 2 + yOffset,
+                    textColor
             );
         } else if (renderAsDownloadIcon) {
             // Draw 💾 emoji
             context.drawCenteredTextWithShadow(
-                MinecraftClient.getInstance().textRenderer,
-                Text.literal("💾"),
-                this.getX() + this.getWidth() / 2,
-                this.getY() + (this.getHeight() - 8) / 2 + 1,
-                textColor
+                    MinecraftClient.getInstance().textRenderer,
+                    Text.literal("💾"),
+                    this.getX() + this.getWidth() / 2,
+                    this.getY() + (this.getHeight() - 8) / 2 + yOffset,
+                    textColor
             );
         } else {
             // Draw centered text
             context.drawCenteredTextWithShadow(
-                MinecraftClient.getInstance().textRenderer,
-                this.getMessage(),
-                this.getX() + this.getWidth() / 2,
-                this.getY() + (this.getHeight() - 8) / 2,
-                textColor
+                    MinecraftClient.getInstance().textRenderer,
+                    this.getMessage(),
+                    this.getX() + this.getWidth() / 2,
+                    this.getY() + (this.getHeight() - 8) / 2 + yOffset,
+                    textColor
             );
         }
     }

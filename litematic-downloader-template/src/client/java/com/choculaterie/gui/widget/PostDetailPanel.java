@@ -1,5 +1,6 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.models.MinemevFileInfo;
 import com.choculaterie.models.MinemevPostDetailInfo;
 import com.choculaterie.models.MinemevPostInfo;
@@ -581,8 +582,8 @@ public class PostDetailPanel implements Drawable, Element {
                     return;
                 }
 
-                // Save to schematics folder
-                Path schematicsPath = Paths.get("/home/margot/Documents/GitHub/LitematicDownloader/litematic-downloader-template/run/schematics");
+                // Save to schematics folder (using configured path)
+                Path schematicsPath = Paths.get(DownloadSettings.getInstance().getAbsoluteDownloadPath());
                 File schematicsDir = schematicsPath.toFile();
                 if (!schematicsDir.exists()) {
                     boolean created = schematicsDir.mkdirs();
