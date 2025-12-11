@@ -5,10 +5,15 @@ import com.choculaterie.gui.widget.ConfirmPopup;
 import com.choculaterie.gui.widget.CustomButton;
 import com.choculaterie.gui.widget.ScrollBar;
 import com.choculaterie.gui.widget.TextInputPopup;
+import com.choculaterie.gui.widget.ToastManager;
+import com.choculaterie.network.ChoculaterieNetworkManager;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
+import net.minecraft.util.Util;
 
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,6 +33,7 @@ public class LocalFolderPage extends Screen {
     private CustomButton newFolderButton;
     private CustomButton renameButton;
     private CustomButton deleteButton;
+    private CustomButton openFolderButton;
     private ScrollBar scrollBar;
     private TextInputPopup activePopup;
     private ConfirmPopup confirmPopup;
@@ -36,7 +42,25 @@ public class LocalFolderPage extends Screen {
     private File baseDirectory; // The schematic folder - don't allow going above this
     private List<FileEntry> entries = new ArrayList<>();
     private int scrollOffset = 0;
-    private int selectedIndex = -1;
+    private int selectedIndex = -1; // Last clicked index for range selection
+
+    // Multi-select support
+    private List<Integer> selectedIndices = new ArrayList<>(); // All selected indices
+    private int lastClickedIndex = -1; // For shift+click range selection
+
+    // Drag-and-drop support
+    private boolean isDragging = false;
+    private int dragStartIndex = -1;
+    private double dragStartX = 0;
+    private double dragStartY = 0;
+    private int dropTargetIndex = -1; // The folder being hovered over during drag
+    private File dropTargetBreadcrumb = null; // The breadcrumb folder being hovered over during drag
+    private List<Integer> preClickSelection = new ArrayList<>(); // Store selection before click for drag restoration
+
+    // Quick share button tracking
+    private List<QuickShareButton> quickShareButtons = new ArrayList<>();
+    private int uploadingIndex = -1; // Index of file currently being uploaded (-1 = none)
+    private ToastManager toastManager;
 
     // Breadcrumb segments for click detection
     private List<BreadcrumbSegment> breadcrumbSegments = new ArrayList<>();
@@ -50,6 +74,26 @@ public class LocalFolderPage extends Screen {
             this.x = x;
             this.width = width;
             this.directory = directory;
+        }
+    }
+
+    private static class QuickShareButton {
+        final int x;
+        final int y;
+        final int width;
+        final int height;
+        final int entryIndex;
+
+        QuickShareButton(int x, int y, int width, int height, int entryIndex) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.entryIndex = entryIndex;
+        }
+
+        boolean isHovered(double mouseX, double mouseY) {
+            return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
         }
     }
 
@@ -85,6 +129,11 @@ public class LocalFolderPage extends Screen {
     @Override
     protected void init() {
         super.init();
+
+        // Initialize toast manager
+        if (this.client != null) {
+            toastManager = new ToastManager(this.client);
+        }
 
         // Back button (top left)
         backButton = new CustomButton(
@@ -146,6 +195,17 @@ public class LocalFolderPage extends Screen {
         deleteButton.active = false; // Disabled until something is selected
         this.addDrawableChild(deleteButton);
 
+        // Open in File Explorer button (next to Delete button)
+        openFolderButton = new CustomButton(
+                PADDING * 6 + BUTTON_HEIGHT + 60 + 100 + 70 + 60,
+                PADDING,
+                120,
+                BUTTON_HEIGHT,
+                Text.literal("📁 Open Folder"),
+                button -> openInFileExplorer()
+        );
+        this.addDrawableChild(openFolderButton);
+
         // Settings button (top right)
         settingsButton = new CustomButton(
                 this.width - PADDING - BUTTON_HEIGHT,
@@ -176,6 +236,104 @@ public class LocalFolderPage extends Screen {
         }
     }
 
+    private void openInFileExplorer() {
+        // Use Minecraft's built-in Util class to open folders cross-platform
+        // This is the same method used by vanilla Minecraft to open the resource pack folder
+        Util.getOperatingSystem().open(currentDirectory);
+    }
+
+    private void handleQuickShare(int entryIndex) {
+        if (entryIndex < 0 || entryIndex >= entries.size()) {
+            return;
+        }
+
+        FileEntry entry = entries.get(entryIndex);
+
+        // Only allow sharing litematic files
+        if (entry.isDirectory || !entry.file.getName().toLowerCase().endsWith(".litematic")) {
+            if (toastManager != null) {
+                toastManager.showError("Only .litematic files can be shared");
+            }
+            return;
+        }
+
+        // Mark as uploading
+        uploadingIndex = entryIndex;
+        if (toastManager != null) {
+            toastManager.showInfo("Uploading " + entry.file.getName() + "...");
+        }
+
+        // Upload asynchronously
+        ChoculaterieNetworkManager.uploadLitematic(entry.file)
+            .thenAccept(response -> {
+                // Copy to clipboard
+                try {
+                    String shortUrl = response.getShortUrl();
+
+                    // Use Minecraft's native clipboard if available
+                    if (client != null && client.keyboard != null) {
+                        client.keyboard.setClipboard(shortUrl);
+                        if (toastManager != null) {
+                            toastManager.showSuccess("Link copied to clipboard!");
+                        }
+                        System.out.println("Quick share URL copied: " + shortUrl);
+                    } else {
+                        // Fallback to AWT clipboard
+                        StringSelection selection = new StringSelection(shortUrl);
+                        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+                        if (toastManager != null) {
+                            toastManager.showSuccess("Link copied to clipboard!");
+                        }
+                        System.out.println("Quick share URL copied (AWT): " + shortUrl);
+                    }
+                } catch (Exception e) {
+                    if (toastManager != null) {
+                        toastManager.showError("Failed to copy to clipboard");
+                    }
+                    System.err.println("Failed to copy to clipboard: " + e.getMessage());
+                    e.printStackTrace();
+                }
+                uploadingIndex = -1;
+            })
+            .exceptionally(error -> {
+                String errorMessage = error.getMessage();
+                String userMessage;
+
+                // Parse error for user-friendly message
+                if (errorMessage != null) {
+                    if (errorMessage.contains("UnknownHostException") ||
+                        errorMessage.contains("ConnectException") ||
+                        errorMessage.contains("NoRouteToHostException")) {
+                        userMessage = "Upload failed: No internet connection";
+                    } else if (errorMessage.contains("SocketTimeoutException")) {
+                        userMessage = "Upload failed: Connection timeout";
+                    } else if (errorMessage.contains("HTTP error code: 413")) {
+                        userMessage = "Upload failed: File too large";
+                    } else if (errorMessage.contains("HTTP error code:")) {
+                        userMessage = "Upload failed: Server error";
+                    } else {
+                        userMessage = "Upload failed: " + errorMessage;
+                    }
+                } else {
+                    userMessage = "Upload failed: Unknown error";
+                }
+
+                // Full error for copying
+                String fullError = "Quick Share Error: " + errorMessage;
+                if (error.getCause() != null) {
+                    fullError += "\nCause: " + error.getCause().toString();
+                }
+
+                if (toastManager != null) {
+                    toastManager.showError(userMessage, fullError);
+                }
+                System.err.println("Quick share failed: " + errorMessage);
+                error.printStackTrace();
+                uploadingIndex = -1;
+                return null;
+            });
+    }
+
     private void openNewFolderPopup() {
         activePopup = new TextInputPopup(
                 this,
@@ -204,6 +362,9 @@ public class LocalFolderPage extends Screen {
         boolean success = newFolder.mkdir();
         if (success) {
             System.out.println("Created folder: " + newFolder.getAbsolutePath());
+            if (toastManager != null) {
+                toastManager.showSuccess("Folder created: " + folderName);
+            }
             closePopup();
             loadEntries(); // Refresh the list
         } else {
@@ -219,11 +380,17 @@ public class LocalFolderPage extends Screen {
     }
 
     private void openRenamePopup() {
-        if (selectedIndex < 0 || selectedIndex >= entries.size()) {
+        // Can only rename single items
+        if (selectedIndices.size() != 1) {
             return;
         }
 
-        FileEntry entry = entries.get(selectedIndex);
+        int index = selectedIndices.get(0);
+        if (index < 0 || index >= entries.size()) {
+            return;
+        }
+
+        FileEntry entry = entries.get(index);
         String currentName = entry.file.getName();
 
         activePopup = new TextInputPopup(
@@ -263,6 +430,9 @@ public class LocalFolderPage extends Screen {
         boolean success = file.renameTo(newFile);
         if (success) {
             System.out.println("Renamed: " + file.getName() + " -> " + newName);
+            if (toastManager != null) {
+                toastManager.showSuccess("Renamed to: " + newName);
+            }
             closePopup();
             loadEntries();
         } else {
@@ -273,11 +443,9 @@ public class LocalFolderPage extends Screen {
     }
 
     private void handleDeleteClick() {
-        if (selectedIndex < 0 || selectedIndex >= entries.size()) {
+        if (selectedIndices.isEmpty()) {
             return;
         }
-
-        FileEntry entry = entries.get(selectedIndex);
 
         // Check if shift is held - skip confirmation
         long windowHandle = this.client != null ? this.client.getWindow().getHandle() : 0;
@@ -288,17 +456,90 @@ public class LocalFolderPage extends Screen {
         }
 
         if (shiftHeld) {
-            // Delete immediately without confirmation
-            deleteFile(entry.file);
+            // Shift held - delete immediately without confirmation
+            deleteSelectedFiles();
         } else {
-            // Show confirmation popup
-            String itemType = entry.isDirectory ? "folder" : "file";
+            // Show confirmation dialog
+            String message;
+            String title;
+
+            if (selectedIndices.size() == 1) {
+                // Single item
+                FileEntry entry = entries.get(selectedIndices.get(0));
+                String itemType = entry.isDirectory ? "folder" : "file";
+                title = "Delete " + itemType + "?";
+
+                if (entry.isDirectory) {
+                    // Build tree view for folder contents
+                    StringBuilder messageBuilder = new StringBuilder();
+                    messageBuilder.append("Are you sure you want to delete \"").append(entry.file.getName()).append("\"?\n\n");
+                    messageBuilder.append("Contents:\n");
+                    buildDeleteTree(entry.file, messageBuilder, "", true);
+                    message = messageBuilder.toString();
+                } else {
+                    message = "Are you sure you want to delete \"" + entry.file.getName() + "\"?";
+                }
+            } else {
+                // Multiple items
+                title = "Delete " + selectedIndices.size() + " items?";
+
+                // Check if any folders are selected
+                boolean hasFolders = false;
+                for (int idx : selectedIndices) {
+                    if (idx >= 0 && idx < entries.size() && entries.get(idx).isDirectory) {
+                        hasFolders = true;
+                        break;
+                    }
+                }
+
+                if (hasFolders) {
+                    // Build tree view for all selected items
+                    StringBuilder messageBuilder = new StringBuilder();
+                    messageBuilder.append("Are you sure you want to delete ").append(selectedIndices.size()).append(" selected items?\n\n");
+                    messageBuilder.append("Items to delete:\n");
+
+                    // Get the selected entries and sort them (directories first, then files, both alphabetically)
+                    List<FileEntry> selectedEntries = new ArrayList<>();
+                    for (int idx : selectedIndices) {
+                        if (idx >= 0 && idx < entries.size()) {
+                            selectedEntries.add(entries.get(idx));
+                        }
+                    }
+                    selectedEntries.sort((a, b) -> {
+                        if (a.isDirectory && !b.isDirectory) return -1;
+                        if (!a.isDirectory && b.isDirectory) return 1;
+                        return a.file.getName().compareToIgnoreCase(b.file.getName());
+                    });
+
+                    for (int i = 0; i < selectedEntries.size(); i++) {
+                        FileEntry entry = selectedEntries.get(i);
+                        boolean isLast = (i == selectedEntries.size() - 1);
+                        String connector = isLast ? "└── " : "├── ";
+
+                        if (entry.isDirectory) {
+                            File[] subFiles = entry.file.listFiles();
+                            boolean isEmpty = subFiles == null || subFiles.length == 0;
+                            messageBuilder.append(connector).append("📁 ").append(entry.file.getName()).append("/\n");
+                            if (!isEmpty) {
+                                String newIndent = isLast ? "    " : "│   ";
+                                buildDeleteTree(entry.file, messageBuilder, newIndent, false);
+                            }
+                        } else {
+                            messageBuilder.append(connector).append("📄 ").append(entry.file.getName()).append("\n");
+                        }
+                    }
+                    message = messageBuilder.toString();
+                } else {
+                    message = "Are you sure you want to delete " + selectedIndices.size() + " selected items?";
+                }
+            }
+
             confirmPopup = new ConfirmPopup(
                     this,
-                    "Delete " + itemType + "?",
-                    "Are you sure you want to delete \"" + entry.file.getName() + "\"?",
+                    title,
+                    message,
                     () -> {
-                        deleteFile(entry.file);
+                        deleteSelectedFiles();
                         closePopup();
                     },
                     this::closePopup
@@ -306,24 +547,214 @@ public class LocalFolderPage extends Screen {
         }
     }
 
-    private void deleteFile(File file) {
-        if (file == null) {
+    private void deleteSelectedFiles() {
+        if (selectedIndices.isEmpty()) {
             return;
         }
 
-        boolean success;
-        if (file.isDirectory()) {
-            // Delete directory recursively
-            success = deleteDirectoryRecursively(file);
-        } else {
-            success = file.delete();
+        // Sort indices in descending order to avoid index shifting issues
+        List<Integer> sortedIndices = new ArrayList<>(selectedIndices);
+        sortedIndices.sort((a, b) -> b - a);
+
+        int successCount = 0;
+        int failCount = 0;
+
+        for (int index : sortedIndices) {
+            if (index >= 0 && index < entries.size()) {
+                FileEntry entry = entries.get(index);
+                boolean success;
+
+                if (entry.isDirectory) {
+                    success = deleteDirectoryRecursively(entry.file);
+                } else {
+                    success = entry.file.delete();
+                }
+
+                if (success) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    System.err.println("Failed to delete: " + entry.file.getAbsolutePath());
+                }
+            }
         }
 
-        if (success) {
-            System.out.println("Deleted: " + file.getAbsolutePath());
-            loadEntries();
-        } else {
-            System.err.println("Failed to delete: " + file.getAbsolutePath());
+        // Show result toast
+        if (toastManager != null) {
+            if (failCount == 0) {
+                if (successCount == 1) {
+                    toastManager.showSuccess("Deleted 1 item");
+                } else {
+                    toastManager.showSuccess("Deleted " + successCount + " items");
+                }
+            } else if (successCount == 0) {
+                if (failCount == 1) {
+                    toastManager.showError("Failed to delete 1 item");
+                } else {
+                    toastManager.showError("Failed to delete " + failCount + " items");
+                }
+            } else {
+                toastManager.showError("Deleted " + successCount + ", failed " + failCount);
+            }
+        }
+
+        loadEntries();
+    }
+
+    private void performMove(File targetFolder) {
+        if (selectedIndices.isEmpty() || targetFolder == null || !targetFolder.isDirectory()) {
+            return;
+        }
+
+        int successCount = 0;
+        int failCount = 0;
+
+        // Sort indices in descending order to avoid issues with index shifting
+        List<Integer> sortedIndices = new ArrayList<>(selectedIndices);
+        sortedIndices.sort((a, b) -> b - a);
+
+        for (int index : sortedIndices) {
+            if (index >= 0 && index < entries.size()) {
+                FileEntry entry = entries.get(index);
+                File sourceFile = entry.file;
+                File destFile = new File(targetFolder, sourceFile.getName());
+
+                // Check if destination already exists
+                if (destFile.exists()) {
+                    failCount++;
+                    System.err.println("Cannot move: destination already exists: " + destFile.getAbsolutePath());
+                    continue;
+                }
+
+                // Perform the move
+                boolean success = sourceFile.renameTo(destFile);
+
+                if (success) {
+                    successCount++;
+                    System.out.println("Moved: " + sourceFile.getName() + " -> " + targetFolder.getName());
+                } else {
+                    failCount++;
+                    System.err.println("Failed to move: " + sourceFile.getAbsolutePath());
+                }
+            }
+        }
+
+        // Show result toast
+        if (toastManager != null) {
+            if (failCount == 0) {
+                if (successCount == 1) {
+                    toastManager.showSuccess("Moved 1 item");
+                } else {
+                    toastManager.showSuccess("Moved " + successCount + " items");
+                }
+            } else if (successCount == 0) {
+                if (failCount == 1) {
+                    toastManager.showError("Failed to move 1 item");
+                } else {
+                    toastManager.showError("Failed to move " + failCount + " items");
+                }
+            } else {
+                toastManager.showError("Moved " + successCount + ", failed " + failCount);
+            }
+        }
+
+        loadEntries();
+    }
+
+    /**
+     * Recursively count all files and folders in a directory
+     */
+    private int[] countFilesRecursively(File directory) {
+        int[] counts = new int[2]; // [0] = folders, [1] = files
+
+        if (!directory.isDirectory()) {
+            return counts;
+        }
+
+        File[] files = directory.listFiles();
+        if (files == null) {
+            return counts;
+        }
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                counts[0]++; // Count this folder
+                // Recursively count contents
+                int[] subCounts = countFilesRecursively(file);
+                counts[0] += subCounts[0];
+                counts[1] += subCounts[1];
+            } else {
+                counts[1]++; // Count this file
+            }
+        }
+
+        return counts;
+    }
+
+    /**
+     * Build a tree representation of folder contents for delete confirmation
+     */
+    private void buildDeleteTree(File directory, StringBuilder builder, String indent, boolean showCount) {
+        if (!directory.isDirectory()) return;
+
+        File[] files = directory.listFiles();
+        if (files == null || files.length == 0) {
+            builder.append(indent).append("(empty)\n");
+            return;
+        }
+
+        // Sort files: directories first, then files, both alphabetically
+        Arrays.sort(files, (a, b) -> {
+            if (a.isDirectory() && !b.isDirectory()) return -1;
+            if (!a.isDirectory() && b.isDirectory()) return 1;
+            return a.getName().compareToIgnoreCase(b.getName());
+        });
+
+        // Limit items shown to prevent huge dialogs
+        int maxItems = 20;
+
+        // Show up to maxItems
+        int shown = 0;
+        for (int i = 0; i < files.length; i++) {
+            File file = files[i];
+            if (shown >= maxItems) {
+                int remaining = files.length - shown;
+                builder.append(indent).append("└── ... and ").append(remaining).append(" more item(s)\n");
+                break;
+            }
+
+            // Determine if this is the last item to show proper tree connector
+            boolean isLast = (i == files.length - 1) || (shown == maxItems - 1 && files.length > maxItems);
+            String connector = isLast ? "└── " : "├── ";
+
+            if (file.isDirectory()) {
+                File[] subFiles = file.listFiles();
+                boolean isEmpty = subFiles == null || subFiles.length == 0;
+                builder.append(indent).append(connector).append("📁 ").append(file.getName()).append("/\n");
+
+                // Recursively show folder contents (limited depth)
+                if (!isEmpty && indent.length() < 12) { // Max 3 levels deep
+                    String newIndent = indent + (isLast ? "    " : "│   ");
+                    buildDeleteTree(file, builder, newIndent, false);
+                }
+            } else {
+                builder.append(indent).append(connector).append("📄 ").append(file.getName()).append("\n");
+            }
+            shown++;
+        }
+
+        // Show count summary if requested (recursive count)
+        if (showCount && files.length > 0) {
+            int[] counts = countFilesRecursively(directory);
+            int totalFolders = counts[0];
+            int totalFiles = counts[1];
+
+            builder.append("\n");
+            if (totalFolders > 0) {
+                builder.append("Total: ").append(totalFolders).append(" folder(s), ").append(totalFiles).append(" file(s)");
+            } else {
+                builder.append("Total: ").append(totalFiles).append(" file(s)");
+            }
         }
     }
 
@@ -342,11 +773,13 @@ public class LocalFolderPage extends Screen {
     }
 
     private void updateSelectionButtons() {
-        boolean hasSelection = selectedIndex >= 0 && selectedIndex < entries.size();
+        boolean hasSelection = !selectedIndices.isEmpty();
         if (renameButton != null) {
-            renameButton.active = hasSelection;
+            // Can only rename single items
+            renameButton.active = selectedIndices.size() == 1;
         }
         if (deleteButton != null) {
+            // Can delete multiple items
             deleteButton.active = hasSelection;
         }
     }
@@ -354,6 +787,8 @@ public class LocalFolderPage extends Screen {
     private void loadEntries() {
         entries.clear();
         selectedIndex = -1;
+        selectedIndices.clear();
+        lastClickedIndex = -1;
 
         if (currentDirectory != null && currentDirectory.exists()) {
             File[] files = currentDirectory.listFiles();
@@ -409,6 +844,9 @@ public class LocalFolderPage extends Screen {
                 }
             } catch (Exception e) {
                 System.err.println("Error navigating up: " + e.getMessage());
+                if (toastManager != null) {
+                    toastManager.showError("Navigation error: " + e.getMessage());
+                }
             }
         }
     }
@@ -518,14 +956,25 @@ public class LocalFolderPage extends Screen {
             // Check if this is the current directory (last segment)
             boolean isCurrent = (i == pathSegments.size() - 1);
 
+            // Check if this breadcrumb is a drop target during drag
+            boolean isDropTarget = isDragging && dropTargetBreadcrumb != null &&
+                                  dropTargetBreadcrumb.equals(segment);
+
             // Draw segment with appropriate color
             int color;
-            if (isCurrent) {
+            if (isDropTarget) {
+                color = 0xFF55FF55; // Green for drop target
+            } else if (isCurrent) {
                 color = 0xFFFFFFFF; // White for current
             } else if (isHovered) {
                 color = 0xFF55AAFF; // Light blue when hovered
             } else {
                 color = 0xFF88CCFF; // Blue for clickable
+            }
+
+            // Draw background highlight for drop target
+            if (isDropTarget) {
+                context.fill(currentX - 2, breadcrumbY - 2, currentX + segmentWidth + 2, breadcrumbY + 12, 0x88336633);
             }
 
             // Draw underline if hovered and not current
@@ -549,6 +998,95 @@ public class LocalFolderPage extends Screen {
         // Fill the entire screen with dark grey background
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
+        // Check for drag state using GLFW
+        if (dragStartIndex != -1 && this.client != null && this.client.getWindow() != null) {
+            long windowHandle = this.client.getWindow().getHandle();
+            boolean mouseButtonPressed = org.lwjgl.glfw.GLFW.glfwGetMouseButton(windowHandle, org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+
+            if (mouseButtonPressed) {
+                // Check if mouse moved enough to start drag (3 pixel threshold)
+                if (!isDragging) {
+                    double distX = mouseX - dragStartX;
+                    double distY = mouseY - dragStartY;
+                    if (Math.sqrt(distX * distX + distY * distY) > 3) {
+                        isDragging = true;
+                        // Drag started - preClickSelection is no longer needed
+                        preClickSelection.clear();
+                    }
+                }
+
+                // Update drop target while dragging
+                if (isDragging) {
+                    int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
+                    int listHeight = this.height - listY - PADDING * 2;
+                    int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
+
+                    dropTargetIndex = -1;
+                    dropTargetBreadcrumb = null;
+
+                    // Check breadcrumb drop targets first
+                    int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT;
+                    if (mouseY >= breadcrumbY - 2 && mouseY < breadcrumbY + 12) {
+                        for (BreadcrumbSegment segment : breadcrumbSegments) {
+                            if (mouseX >= segment.x && mouseX < segment.x + segment.width) {
+                                // Found breadcrumb hover
+                                dropTargetBreadcrumb = segment.directory;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Check list drop targets if not hovering breadcrumb
+                    if (dropTargetBreadcrumb == null &&
+                        mouseX >= PADDING && mouseX < listRightEdge &&
+                        mouseY >= listY && mouseY < listY + listHeight) {
+
+                        int hoveredIndex = scrollOffset + (int)((mouseY - listY) / ITEM_HEIGHT);
+
+                        // Only allow dropping into folders that aren't selected
+                        if (hoveredIndex >= 0 && hoveredIndex < entries.size()) {
+                            FileEntry hoveredEntry = entries.get(hoveredIndex);
+                            if (hoveredEntry.isDirectory && !selectedIndices.contains(hoveredIndex)) {
+                                dropTargetIndex = hoveredIndex;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Mouse button released
+                if (isDragging) {
+                    // Perform drop if dragging
+                    if (dropTargetBreadcrumb != null) {
+                        // Drop onto breadcrumb
+                        performMove(dropTargetBreadcrumb);
+                    } else if (dropTargetIndex != -1 && dropTargetIndex < entries.size()) {
+                        // Drop onto folder in list
+                        FileEntry targetFolder = entries.get(dropTargetIndex);
+                        performMove(targetFolder.file);
+                    }
+                } else {
+                    // No drag happened - check if we need to clear to single selection
+                    if (!preClickSelection.isEmpty()) {
+                        // User clicked on multi-selected item but didn't drag
+                        // Clear to just that item
+                        int singleItem = preClickSelection.get(0);
+                        selectedIndices.clear();
+                        selectedIndices.add(singleItem);
+                        selectedIndex = singleItem;
+                        lastClickedIndex = singleItem;
+                        updateSelectionButtons();
+                    }
+                }
+
+                // Reset drag state
+                isDragging = false;
+                dragStartIndex = -1;
+                dropTargetIndex = -1;
+                dropTargetBreadcrumb = null;
+                preClickSelection.clear(); // Clear saved selection
+            }
+        }
+
         // If popup is active, render buttons without hover effects
         boolean popupActive = activePopup != null || confirmPopup != null;
         int renderMouseX = popupActive ? -1 : mouseX;
@@ -571,6 +1109,8 @@ public class LocalFolderPage extends Screen {
         context.fill(PADDING, listY, listRightEdge, listY + listHeight, 0xFF151515);
 
         // Draw entries
+        quickShareButtons.clear(); // Reset button positions each frame
+
         for (int i = scrollOffset; i < Math.min(entries.size(), scrollOffset + maxVisibleItems); i++) {
             FileEntry entry = entries.get(i);
             int itemY = listY + (i - scrollOffset) * ITEM_HEIGHT;
@@ -579,10 +1119,23 @@ public class LocalFolderPage extends Screen {
             boolean isHovered = !popupActive &&
                               mouseX >= PADDING && mouseX < listRightEdge &&
                               mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
-            boolean isSelected = i == selectedIndex;
+            boolean isSelected = selectedIndices.contains(i);
+            boolean isDropTarget = isDragging && entry.isDirectory && i == dropTargetIndex && !selectedIndices.contains(i);
+            boolean isBeingDragged = isDragging && selectedIndices.contains(i);
 
             // Draw item background (end before scrollbar)
-            int bgColor = isSelected ? 0xFF404040 : (isHovered ? 0xFF2A2A2A : 0xFF1A1A1A);
+            int bgColor;
+            if (isDropTarget) {
+                bgColor = 0xFF336633; // Green tint for valid drop target
+            } else if (isBeingDragged) {
+                bgColor = 0xFF505050; // Lighter for items being dragged
+            } else if (isSelected) {
+                bgColor = 0xFF404040;
+            } else if (isHovered) {
+                bgColor = 0xFF2A2A2A;
+            } else {
+                bgColor = 0xFF1A1A1A;
+            }
             context.fill(PADDING + 2, itemY + 2, listRightEdge - 2, itemY + ITEM_HEIGHT - 2, bgColor);
 
             // Draw icon and name
@@ -602,6 +1155,54 @@ public class LocalFolderPage extends Screen {
                     itemY + 8,
                     0xFFFFFFFF
             );
+
+            // Draw quick share button for litematic files
+            if (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic")) {
+                int buttonWidth = 80;
+                int buttonHeight = 16;
+                int buttonX = listRightEdge - buttonWidth - 5;
+                int buttonY = itemY + (ITEM_HEIGHT - buttonHeight) / 2;
+
+                // Track button position for click detection
+                quickShareButtons.add(new QuickShareButton(buttonX, buttonY, buttonWidth, buttonHeight, i));
+
+                // Check if mouse is hovering over button
+                boolean buttonHovered = !popupActive &&
+                                       mouseX >= buttonX && mouseX < buttonX + buttonWidth &&
+                                       mouseY >= buttonY && mouseY < buttonY + buttonHeight;
+
+                // Determine button appearance based on state
+                String buttonText;
+                int buttonBgColor;
+                int buttonTextColor = 0xFFFFFFFF;
+
+                if (i == uploadingIndex) {
+                    buttonText = "Uploading...";
+                    buttonBgColor = 0xFF555555;
+                } else if (buttonHovered) {
+                    buttonText = "📤 Share";
+                    buttonBgColor = 0xFF4488FF;
+                } else {
+                    buttonText = "📤 Share";
+                    buttonBgColor = 0xFF3366CC;
+                }
+
+                // Draw button background
+                context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, buttonBgColor);
+
+                // Draw button border (lighter when hovered)
+                int borderColor = buttonHovered ? 0xFF66AAFF : 0xFF4477DD;
+                context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + 1, borderColor);
+                context.fill(buttonX, buttonY + buttonHeight - 1, buttonX + buttonWidth, buttonY + buttonHeight, borderColor);
+                context.fill(buttonX, buttonY, buttonX + 1, buttonY + buttonHeight, borderColor);
+                context.fill(buttonX + buttonWidth - 1, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, borderColor);
+
+                // Draw button text centered
+                int textWidth = this.textRenderer.getWidth(buttonText);
+                int textX = buttonX + (buttonWidth - textWidth) / 2;
+                int textY = buttonY + (buttonHeight - 8) / 2;
+                context.drawTextWithShadow(this.textRenderer, buttonText, textX, textY, buttonTextColor);
+            }
         }
 
         // Render scrollbar widget with drag support
@@ -624,6 +1225,31 @@ public class LocalFolderPage extends Screen {
         if (confirmPopup != null) {
             confirmPopup.render(context, mouseX, mouseY, delta);
         }
+
+        // Render drag cursor
+        if (isDragging && !selectedIndices.isEmpty()) {
+            String dragText = selectedIndices.size() + " item" + (selectedIndices.size() > 1 ? "s" : "");
+            int textWidth = this.textRenderer.getWidth(dragText);
+            int cursorX = mouseX + 10;
+            int cursorY = mouseY + 10;
+
+            // Draw background
+            context.fill(cursorX - 2, cursorY - 2, cursorX + textWidth + 2, cursorY + this.textRenderer.fontHeight + 2, 0xCC000000);
+
+            // Draw border
+            context.fill(cursorX - 2, cursorY - 2, cursorX + textWidth + 2, cursorY - 1, 0xFF888888);
+            context.fill(cursorX - 2, cursorY + this.textRenderer.fontHeight + 1, cursorX + textWidth + 2, cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
+            context.fill(cursorX - 2, cursorY - 2, cursorX - 1, cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
+            context.fill(cursorX + textWidth + 1, cursorY - 2, cursorX + textWidth + 2, cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
+
+            // Draw text
+            context.drawText(this.textRenderer, dragText, cursorX, cursorY, 0xFFFFFFFF, false);
+        }
+
+        // Render toasts on top of everything
+        if (toastManager != null) {
+            toastManager.render(context, delta, mouseX, mouseY);
+        }
     }
 
     @Override
@@ -642,6 +1268,17 @@ public class LocalFolderPage extends Screen {
         if (activePopup != null) {
             activePopup.mouseClicked(mouseX, mouseY, button);
             return true; // Always consume click when popup is active
+        }
+
+        // Check toast clicks (copy button and close button)
+        if (button == 0 && toastManager != null) {
+            if (toastManager.mouseClicked(mouseX, mouseY)) {
+                return true;
+            }
+            // Block clicks to elements below if hovering over a toast
+            if (toastManager.isMouseOverToast(mouseX, mouseY)) {
+                return true;
+            }
         }
 
         if (super.mouseClicked(click, doubled)) {
@@ -670,29 +1307,88 @@ public class LocalFolderPage extends Screen {
         if (mouseX >= PADDING && mouseX < listRightEdge &&
             mouseY >= listY && mouseY < listY + listHeight) {
 
+            // Check if clicking on a quick share button first
+            for (QuickShareButton qsButton : quickShareButtons) {
+                if (qsButton.isHovered(mouseX, mouseY)) {
+                    if (button == 0 && uploadingIndex == -1) { // Left click and not currently uploading
+                        handleQuickShare(qsButton.entryIndex);
+                        return true;
+                    }
+                }
+            }
+
             int clickedIndex = scrollOffset + (int)((mouseY - listY) / ITEM_HEIGHT);
 
             if (clickedIndex >= 0 && clickedIndex < entries.size()) {
                 if (button == 0) { // Left click
                     FileEntry entry = entries.get(clickedIndex);
 
-                    if (entry.isDirectory) {
-                        if (clickedIndex == selectedIndex && doubled) {
-                            // Double click on directory - enter it
-                            currentDirectory = entry.file;
-                            loadEntries();
-                            scrollOffset = 0;
-                        } else {
-                            // Single click - select
-                            selectedIndex = clickedIndex;
-                            updateSelectionButtons();
-                        }
-                    } else {
-                        // File selected
-                        selectedIndex = clickedIndex;
-                        updateSelectionButtons();
-                        // Could add file preview or actions here in the future
+                    // Check for Shift and Ctrl modifiers using GLFW
+                    long windowHandle = this.client != null ? this.client.getWindow().getHandle() : 0;
+                    boolean shiftHeld = false;
+                    boolean ctrlHeld = false;
+                    if (windowHandle != 0) {
+                        shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                                   org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                        ctrlHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                                  org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
                     }
+
+                    // Handle double-click on selected directory first
+                    if (entry.isDirectory && selectedIndices.contains(clickedIndex) && doubled && !shiftHeld && !ctrlHeld) {
+                        // Double click on already selected directory - enter it
+                        currentDirectory = entry.file;
+                        loadEntries();
+                        scrollOffset = 0;
+                    } else if (shiftHeld && lastClickedIndex != -1) {
+                        // Shift+click: Range selection from last clicked to current
+                        selectedIndices.clear();
+                        int start = Math.min(lastClickedIndex, clickedIndex);
+                        int end = Math.max(lastClickedIndex, clickedIndex);
+                        for (int i = start; i <= end; i++) {
+                            selectedIndices.add(i);
+                        }
+                        selectedIndex = clickedIndex;
+                    } else if (ctrlHeld) {
+                        // Ctrl+click: Toggle individual selection
+                        if (selectedIndices.contains(clickedIndex)) {
+                            selectedIndices.remove(Integer.valueOf(clickedIndex));
+                        } else {
+                            selectedIndices.add(clickedIndex);
+                        }
+                        selectedIndex = clickedIndex;
+                        lastClickedIndex = clickedIndex;
+                    } else {
+                        // Normal click (no modifiers)
+                        if (selectedIndices.contains(clickedIndex) && selectedIndices.size() > 1) {
+                            // Clicking on an already selected item in multi-selection
+                            // Mark that we need to clear to single selection on mouse release (if no drag)
+                            preClickSelection.clear();
+                            preClickSelection.add(clickedIndex); // Store just the clicked index
+
+                            // Keep multi-selection visible (don't clear yet)
+                            selectedIndex = clickedIndex;
+                            lastClickedIndex = clickedIndex;
+
+                            // Prepare for potential drag
+                            dragStartIndex = clickedIndex;
+                            dragStartX = mouseX;
+                            dragStartY = mouseY;
+                        } else {
+                            // Single selection or new selection
+                            preClickSelection.clear(); // No special handling needed
+                            selectedIndices.clear();
+                            selectedIndices.add(clickedIndex);
+                            selectedIndex = clickedIndex;
+                            lastClickedIndex = clickedIndex;
+
+                            // Prepare for potential drag
+                            dragStartIndex = clickedIndex;
+                            dragStartX = mouseX;
+                            dragStartY = mouseY;
+                        }
+                    }
+                    updateSelectionButtons();
                     return true;
                 }
             }
@@ -701,9 +1397,76 @@ public class LocalFolderPage extends Screen {
         return false;
     }
 
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+        // Check if we should start dragging
+        if (!isDragging && dragStartIndex != -1 && button == 0) {
+            // Check if mouse moved enough to start drag (3 pixel threshold)
+            double distX = mouseX - dragStartX;
+            double distY = mouseY - dragStartY;
+            if (Math.sqrt(distX * distX + distY * distY) > 3) {
+                isDragging = true;
+            }
+        }
+
+        // Update drop target while dragging
+        if (isDragging) {
+            int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
+            int listHeight = this.height - listY - PADDING * 2;
+            int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
+
+            dropTargetIndex = -1;
+
+            if (mouseX >= PADDING && mouseX < listRightEdge &&
+                mouseY >= listY && mouseY < listY + listHeight) {
+
+                int hoveredIndex = scrollOffset + (int)((mouseY - listY) / ITEM_HEIGHT);
+
+                // Only allow dropping into folders that aren't selected
+                if (hoveredIndex >= 0 && hoveredIndex < entries.size()) {
+                    FileEntry hoveredEntry = entries.get(hoveredIndex);
+                    if (hoveredEntry.isDirectory && !selectedIndices.contains(hoveredIndex)) {
+                        dropTargetIndex = hoveredIndex;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0 && isDragging) {
+            // Perform the drop action
+            if (dropTargetIndex != -1 && dropTargetIndex < entries.size()) {
+                FileEntry targetFolder = entries.get(dropTargetIndex);
+                performMove(targetFolder.file);
+            }
+
+            // Reset drag state
+            isDragging = false;
+            dragStartIndex = -1;
+            dropTargetIndex = -1;
+            return true;
+        }
+
+        // Reset drag start if mouse released without dragging
+        dragStartIndex = -1;
+        return false;
+    }
+
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Block scrolling when popup is active
+        // Handle confirm popup scroll first
+        if (confirmPopup != null) {
+            if (confirmPopup.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
+                return true;
+            }
+        }
+
+        // Block scrolling when other popup is active
         if (activePopup != null) {
             return true;
         }

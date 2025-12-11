@@ -487,8 +487,16 @@ public class PostDetailPanel implements Drawable, Element {
                 if (client != null) {
                     client.execute(() -> {
                         isLoadingFiles = false;
-                        downloadStatus = "Failed to load files";
-                        System.err.println("Failed to load files: " + throwable.getMessage());
+                        // Provide more specific error message
+                        String errorMsg = throwable.getMessage();
+                        if (errorMsg != null && errorMsg.contains("UnknownHost")) {
+                            downloadStatus = "✗ Error: No internet connection";
+                        } else if (errorMsg != null && errorMsg.contains("timeout")) {
+                            downloadStatus = "✗ Error: Connection timeout";
+                        } else {
+                            downloadStatus = "✗ Error: Failed to load file list";
+                        }
+                        System.err.println("Failed to load files: " + errorMsg);
                     });
                 }
                 return null;
@@ -571,7 +579,25 @@ public class PostDetailPanel implements Drawable, Element {
                 System.out.println("[Download] Content length: " + response.body().length);
 
                 if (response.statusCode() != 200) {
-                    String errorMsg = "Download failed: " + response.statusCode();
+                    String errorMsg;
+                    switch (response.statusCode()) {
+                        case 404:
+                            errorMsg = "✗ Error: File not found on server";
+                            break;
+                        case 403:
+                            errorMsg = "✗ Error: Access denied";
+                            break;
+                        case 500:
+                        case 502:
+                        case 503:
+                            errorMsg = "✗ Error: Server error (" + response.statusCode() + ")";
+                            break;
+                        case 429:
+                            errorMsg = "✗ Error: Too many requests, try again later";
+                            break;
+                        default:
+                            errorMsg = "✗ Download failed: HTTP " + response.statusCode();
+                    }
                     System.err.println("[Download] " + errorMsg);
                     client.execute(() -> {
                         downloadStatus = errorMsg;
@@ -613,7 +639,7 @@ public class PostDetailPanel implements Drawable, Element {
                 final String finalFileName = outputFile.getName();
                 final String finalPath = outputFile.getAbsolutePath();
                 client.execute(() -> {
-                    downloadStatus = "Downloaded: " + finalFileName;
+                    downloadStatus = "✓ Downloaded: " + finalFileName;
                     if (schematicDropdown != null) {
                         schematicDropdown.setStatusMessage(downloadStatus);
                     }
@@ -622,7 +648,27 @@ public class PostDetailPanel implements Drawable, Element {
 
             } catch (Exception e) {
                 client.execute(() -> {
-                    downloadStatus = "Error: " + e.getMessage();
+                    // Provide more specific error messages
+                    String errorMsg;
+                    if (e instanceof java.net.UnknownHostException) {
+                        errorMsg = "✗ Error: No internet connection";
+                    } else if (e instanceof java.net.SocketTimeoutException) {
+                        errorMsg = "✗ Error: Connection timeout";
+                    } else if (e instanceof java.io.FileNotFoundException) {
+                        errorMsg = "✗ Error: File not found";
+                    } else if (e instanceof java.io.IOException && e.getMessage().contains("Permission denied")) {
+                        errorMsg = "✗ Error: Cannot write to disk (permission denied)";
+                    } else if (e instanceof java.io.IOException && e.getMessage().contains("No space")) {
+                        errorMsg = "✗ Error: Not enough disk space";
+                    } else {
+                        String msg = e.getMessage();
+                        if (msg != null && msg.length() > 40) {
+                            msg = msg.substring(0, 37) + "...";
+                        }
+                        errorMsg = "✗ Error: " + (msg != null ? msg : "Unknown error");
+                    }
+
+                    downloadStatus = errorMsg;
                     if (schematicDropdown != null) {
                         schematicDropdown.setStatusMessage(downloadStatus);
                     }
@@ -641,6 +687,14 @@ public class PostDetailPanel implements Drawable, Element {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        // Block hover effects on elements below if dropdown is open and mouse is over it
+        int renderMouseX = mouseX;
+        int renderMouseY = mouseY;
+        if (schematicDropdown != null && schematicDropdown.isOpen() && schematicDropdown.isMouseOver(mouseX, mouseY)) {
+            renderMouseX = -1;
+            renderMouseY = -1;
+        }
+
         // Draw panel background
         context.fill(x, y, x + width, y + height, PANEL_BG_COLOR);
 
@@ -673,7 +727,7 @@ public class PostDetailPanel implements Drawable, Element {
             downloadButton.setY(downloadBtnY);
             downloadButton.active = !isLoadingFiles;
         }
-        downloadButton.render(context, mouseX, mouseY, delta);
+        downloadButton.render(context, renderMouseX, renderMouseY, delta);
 
         // Enable scissor for scrolling (start below the download button)
         int contentStartY = y + downloadBtnSize;
@@ -729,7 +783,7 @@ public class PostDetailPanel implements Drawable, Element {
 
             // Render navigation buttons using CustomButton widgets
             if (prevImageButton != null) {
-                prevImageButton.render(context, mouseX, mouseY, delta);
+                prevImageButton.render(context, renderMouseX, renderMouseY, delta);
             }
 
             // Index indicator
@@ -737,7 +791,7 @@ public class PostDetailPanel implements Drawable, Element {
 
             // Render next button
             if (nextImageButton != null) {
-                nextImageButton.render(context, mouseX, mouseY, delta);
+                nextImageButton.render(context, renderMouseX, renderMouseY, delta);
             }
 
             currentY += 16 + PADDING;
@@ -935,7 +989,8 @@ public class PostDetailPanel implements Drawable, Element {
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
             boolean handled = schematicDropdown.mouseClicked(mouseX, mouseY, button);
             // If clicked outside dropdown, it will close itself
-            return handled || schematicDropdown.isOpen(); // Return true if still processing dropdown
+            // Also block all clicks if mouse is over dropdown
+            return handled || schematicDropdown.isOpen() || schematicDropdown.isMouseOver(mouseX, mouseY);
         }
 
         if (mouseX < x || mouseX >= x + width || mouseY < y || mouseY >= y + height) {

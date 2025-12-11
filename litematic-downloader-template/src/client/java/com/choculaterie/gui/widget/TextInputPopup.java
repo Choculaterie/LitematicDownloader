@@ -31,7 +31,6 @@ public class TextInputPopup implements Drawable, Element {
     private CustomButton cancelButton;
     private String errorMessage = "";
 
-    private boolean wasEnterPressed = false;
     private boolean wasEscapePressed = false;
 
     private final int x;
@@ -71,6 +70,7 @@ public class TextInputPopup implements Drawable, Element {
         textField.setMaxLength(255);
         textField.setFocused(true);
         textField.setOnChanged(() -> errorMessage = ""); // Clear error when typing
+        textField.setOnEnterPressed(this::handleConfirm);
 
         // Buttons
         int buttonY = y + POPUP_HEIGHT - PADDING - BUTTON_HEIGHT;
@@ -167,20 +167,14 @@ public class TextInputPopup implements Drawable, Element {
         MinecraftClient client = MinecraftClient.getInstance();
         long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
 
-        // Handle Enter/Escape through GLFW polling
+        // Handle Escape through GLFW polling (Enter is handled by TextField callback)
         if (windowHandle != 0) {
-            boolean enterPressed = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_ENTER) == GLFW.GLFW_PRESS ||
-                                  GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_KP_ENTER) == GLFW.GLFW_PRESS;
             boolean escapePressed = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_ESCAPE) == GLFW.GLFW_PRESS;
 
-            if (enterPressed && !wasEnterPressed) {
-                handleConfirm();
-            }
             if (escapePressed && !wasEscapePressed) {
                 onCancel.run();
             }
 
-            wasEnterPressed = enterPressed;
             wasEscapePressed = escapePressed;
         }
 

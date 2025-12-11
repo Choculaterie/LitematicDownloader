@@ -3,6 +3,7 @@ package com.choculaterie.gui;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.gui.widget.CustomButton;
 import com.choculaterie.gui.widget.ScrollBar;
+import com.choculaterie.gui.widget.ToastManager;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
@@ -30,6 +31,7 @@ public class DirectoryPickerScreen extends Screen {
     private CustomButton upButton;
     private ScrollBar scrollBar;
     private int selectedIndex = -1;
+    private ToastManager toastManager;
 
     public DirectoryPickerScreen(Screen parentScreen, String startPath, Consumer<String> onPathSelected) {
         super(Text.literal("Select Directory"));
@@ -56,6 +58,11 @@ public class DirectoryPickerScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+
+        // Initialize toast manager
+        if (this.client != null) {
+            toastManager = new ToastManager(this.client);
+        }
 
         // Back button (top left)
         backButton = new CustomButton(
@@ -151,6 +158,9 @@ public class DirectoryPickerScreen extends Screen {
         if (directoryToSelect != null) {
             File gameDir = new File(DownloadSettings.getInstance().getGameDirectory());
             String relativePath = getRelativePath(gameDir, directoryToSelect);
+            if (toastManager != null) {
+                toastManager.showSuccess("Directory selected!");
+            }
             onPathSelected.accept(relativePath);
             close();
         }
@@ -237,6 +247,11 @@ public class DirectoryPickerScreen extends Screen {
                 int maxScroll = Math.max(0, directories.size() - maxVisibleItems);
                 scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
             }
+        }
+
+        // Render toasts on top of everything
+        if (toastManager != null) {
+            toastManager.render(context, delta, mouseX, mouseY);
         }
     }
 

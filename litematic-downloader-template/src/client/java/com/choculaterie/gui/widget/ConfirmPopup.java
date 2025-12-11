@@ -14,10 +14,11 @@ import java.util.List;
  * A popup dialog for confirmation with Yes/No buttons
  */
 public class ConfirmPopup implements Drawable, Element {
-    private static final int POPUP_WIDTH = 300;
+    private static final int POPUP_WIDTH = 400; // Increased from 300 for tree view
     private static final int PADDING = 10;
     private static final int BUTTON_HEIGHT = 20;
     private static final int LINE_HEIGHT = 12;
+    private static final int MAX_MESSAGE_HEIGHT = 300; // Maximum height for message area
 
     private final Screen parent;
     private final String title;
@@ -35,6 +36,10 @@ public class ConfirmPopup implements Drawable, Element {
     private final int y;
     private final int popupHeight;
     private final List<String> wrappedMessage;
+    private final int actualMessageHeight; // Full height of all message lines
+    private final int visibleMessageHeight; // Height of visible area (capped)
+    private ScrollBar scrollBar;
+    private double scrollOffset = 0;
 
     public ConfirmPopup(Screen parent, String title, String message, Runnable onConfirm, Runnable onCancel) {
         this.parent = parent;
@@ -48,40 +53,73 @@ public class ConfirmPopup implements Drawable, Element {
         // Wrap message text
         this.wrappedMessage = wrapText(message, POPUP_WIDTH - PADDING * 2, client);
 
-        // Calculate popup height based on wrapped text
-        int messageHeight = wrappedMessage.size() * LINE_HEIGHT;
-        this.popupHeight = PADDING + LINE_HEIGHT + PADDING + messageHeight + PADDING + BUTTON_HEIGHT + PADDING;
+        // Calculate screen dimensions
+        int screenHeight = client.getWindow().getScaledHeight();
+        int screenWidth = client.getWindow().getScaledWidth();
 
-        this.x = (client.getWindow().getScaledWidth() - POPUP_WIDTH) / 2;
-        this.y = (client.getWindow().getScaledHeight() - popupHeight) / 2;
+        // Calculate maximum available height for message (leave margins top and bottom)
+        int verticalMargin = 40; // Min space from top/bottom of screen
+        int popupChrome = PADDING + LINE_HEIGHT + PADDING + PADDING + BUTTON_HEIGHT + PADDING; // Title + paddings + buttons
+        int maxAvailableMessageHeight = screenHeight - (verticalMargin * 2) - popupChrome;
+
+        // Ensure we don't exceed MAX_MESSAGE_HEIGHT or available screen space
+        int effectiveMaxHeight = Math.min(MAX_MESSAGE_HEIGHT, maxAvailableMessageHeight);
+
+        // Calculate actual message height and visible height
+        this.actualMessageHeight = wrappedMessage.size() * LINE_HEIGHT;
+        this.visibleMessageHeight = Math.min(actualMessageHeight, effectiveMaxHeight);
+        this.popupHeight = PADDING + LINE_HEIGHT + PADDING + visibleMessageHeight + PADDING + BUTTON_HEIGHT + PADDING;
+
+        // Center on screen
+        this.x = (screenWidth - POPUP_WIDTH) / 2;
+        this.y = (screenHeight - popupHeight) / 2;
+
+        // Initialize scrollbar if content exceeds visible height
+        if (actualMessageHeight > visibleMessageHeight) {
+            int messageAreaY = y + PADDING + LINE_HEIGHT + PADDING;
+            int scrollBarX = x + POPUP_WIDTH - PADDING - 8; // 8 = scrollbar width
+            this.scrollBar = new ScrollBar(scrollBarX, messageAreaY, visibleMessageHeight);
+            this.scrollBar.setScrollData(actualMessageHeight, visibleMessageHeight);
+        }
 
         initWidgets();
     }
 
     private List<String> wrapText(String text, int maxWidth, MinecraftClient client) {
         List<String> lines = new ArrayList<>();
-        String[] words = text.split(" ");
-        StringBuilder currentLine = new StringBuilder();
 
-        for (String word : words) {
-            String testLine = currentLine.length() == 0 ? word : currentLine + " " + word;
-            int width = client.textRenderer.getWidth(testLine);
+        // Split by newlines first to preserve explicit line breaks
+        String[] paragraphs = text.split("\n");
 
-            if (width <= maxWidth) {
-                if (currentLine.length() > 0) {
-                    currentLine.append(" ");
-                }
-                currentLine.append(word);
-            } else {
-                if (currentLine.length() > 0) {
-                    lines.add(currentLine.toString());
-                }
-                currentLine = new StringBuilder(word);
+        for (String paragraph : paragraphs) {
+            if (paragraph.isEmpty()) {
+                lines.add(""); // Preserve empty lines
+                continue;
             }
-        }
 
-        if (currentLine.length() > 0) {
-            lines.add(currentLine.toString());
+            String[] words = paragraph.split(" ");
+            StringBuilder currentLine = new StringBuilder();
+
+            for (String word : words) {
+                String testLine = currentLine.length() == 0 ? word : currentLine + " " + word;
+                int width = client.textRenderer.getWidth(testLine);
+
+                if (width <= maxWidth) {
+                    if (currentLine.length() > 0) {
+                        currentLine.append(" ");
+                    }
+                    currentLine.append(word);
+                } else {
+                    if (currentLine.length() > 0) {
+                        lines.add(currentLine.toString());
+                    }
+                    currentLine = new StringBuilder(word);
+                }
+            }
+
+            if (currentLine.length() > 0) {
+                lines.add(currentLine.toString());
+            }
         }
 
         return lines.isEmpty() ? List.of(text) : lines;
@@ -154,17 +192,39 @@ public class ConfirmPopup implements Drawable, Element {
                 0xFFFFFFFF
         );
 
-        // Draw wrapped message
-        int messageY = y + PADDING + LINE_HEIGHT + PADDING;
+        // Draw wrapped message with scissor for scrolling
+        int messageAreaY = y + PADDING + LINE_HEIGHT + PADDING;
+        int messageAreaHeight = visibleMessageHeight;
+
+        // Enable scissor to clip content
+        context.enableScissor(x + PADDING, messageAreaY, x + POPUP_WIDTH - PADDING, messageAreaY + messageAreaHeight);
+
+        int messageY = messageAreaY - (int)scrollOffset;
         for (String line : wrappedMessage) {
-            context.drawCenteredTextWithShadow(
-                    client.textRenderer,
-                    line,
-                    x + POPUP_WIDTH / 2,
-                    messageY,
-                    0xFFCCCCCC
-            );
+            // Only render lines that are visible
+            if (messageY + LINE_HEIGHT >= messageAreaY && messageY < messageAreaY + messageAreaHeight) {
+                context.drawTextWithShadow(
+                        client.textRenderer,
+                        line,
+                        x + PADDING,
+                        messageY,
+                        0xFFCCCCCC
+                );
+            }
             messageY += LINE_HEIGHT;
+        }
+
+        context.disableScissor();
+
+        // Render scrollbar if needed
+        if (scrollBar != null && client.getWindow() != null) {
+            scrollBar.setScrollPercentage(scrollOffset / Math.max(1, actualMessageHeight - visibleMessageHeight));
+            boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, client.getWindow().getHandle());
+
+            if (scrollChanged || scrollBar.isDragging()) {
+                double maxScroll = actualMessageHeight - visibleMessageHeight;
+                scrollOffset = scrollBar.getScrollPercentage() * maxScroll;
+            }
         }
 
         // Draw buttons
@@ -208,6 +268,22 @@ public class ConfirmPopup implements Drawable, Element {
         }
 
         return true; // Consume all clicks within popup
+    }
+
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        // Only scroll if mouse is over the message area and scrollbar exists
+        if (scrollBar != null) {
+            int messageAreaY = y + PADDING + LINE_HEIGHT + PADDING;
+            if (mouseX >= x && mouseX < x + POPUP_WIDTH &&
+                mouseY >= messageAreaY && mouseY < messageAreaY + visibleMessageHeight) {
+
+                double maxScroll = actualMessageHeight - visibleMessageHeight;
+                scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - verticalAmount * LINE_HEIGHT));
+
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

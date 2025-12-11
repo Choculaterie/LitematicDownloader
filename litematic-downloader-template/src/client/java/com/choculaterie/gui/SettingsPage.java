@@ -3,6 +3,7 @@ package com.choculaterie.gui;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.gui.widget.CustomButton;
 import com.choculaterie.gui.widget.CustomTextField;
+import com.choculaterie.gui.widget.ToastManager;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
@@ -22,6 +23,7 @@ public class SettingsPage extends Screen {
     private CustomTextField downloadPathField;
     private CustomButton saveButton;
     private CustomButton browseButton;
+    private ToastManager toastManager;
 
     public SettingsPage(Screen parentScreen) {
         super(Text.literal("Settings"));
@@ -31,6 +33,11 @@ public class SettingsPage extends Screen {
     @Override
     protected void init() {
         super.init();
+
+        // Initialize toast manager
+        if (this.client != null) {
+            toastManager = new ToastManager(this.client);
+        }
 
         // Back button (top left)
         backButton = new CustomButton(
@@ -97,6 +104,13 @@ public class SettingsPage extends Screen {
             if (!path.isEmpty()) {
                 DownloadSettings.getInstance().setDownloadPath(path);
                 System.out.println("Download path saved: " + path);
+                if (toastManager != null) {
+                    toastManager.showSuccess("Settings saved!");
+                }
+            } else {
+                if (toastManager != null) {
+                    toastManager.showError("Path cannot be empty");
+                }
             }
         }
     }
@@ -117,6 +131,9 @@ public class SettingsPage extends Screen {
                         if (!selectedPath.isEmpty()) {
                             DownloadSettings.getInstance().setDownloadPath(selectedPath);
                             System.out.println("Download path saved from directory picker: " + selectedPath);
+                            if (toastManager != null) {
+                                toastManager.showSuccess("Download path updated!");
+                            }
                         }
                     }
             );
@@ -162,6 +179,11 @@ public class SettingsPage extends Screen {
                 contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 5,
                 0xFFAAAAAA
         );
+
+        // Render toasts on top of everything
+        if (toastManager != null) {
+            toastManager.render(context, delta, mouseX, mouseY);
+        }
     }
 
     @Override

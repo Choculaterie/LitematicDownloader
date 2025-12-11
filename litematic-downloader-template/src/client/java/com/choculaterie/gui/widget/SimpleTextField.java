@@ -5,7 +5,6 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
 import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWCharCallbackI;
 
 /**
  * A simple text input field that handles ALL input through GLFW.
@@ -31,6 +30,7 @@ public class SimpleTextField implements Drawable, Element {
     private int maxLength = 255;
     private boolean focused = false;
     private Runnable onChanged;
+    private Runnable onEnterPressed;
 
     // Key state tracking for special keys
     private boolean wasBackspacePressed = false;
@@ -65,6 +65,9 @@ public class SimpleTextField implements Drawable, Element {
     private static boolean callbackInstalled = false;
     private static long installedWindowHandle = 0;
 
+    // Flag to handle Enter key press in next render cycle (after char callback)
+    private boolean enterPressedThisFrame = false;
+
     public SimpleTextField(MinecraftClient client, int x, int y, int width, int height) {
         this.client = client;
         this.x = x;
@@ -83,6 +86,10 @@ public class SimpleTextField implements Drawable, Element {
 
     public void setOnChanged(Runnable onChanged) {
         this.onChanged = onChanged;
+    }
+
+    public void setOnEnterPressed(Runnable onEnterPressed) {
+        this.onEnterPressed = onEnterPressed;
     }
 
     public String getText() {
@@ -114,18 +121,34 @@ public class SimpleTextField implements Drawable, Element {
     private void installCharCallback() {
         long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
         if (windowHandle != 0 && (!callbackInstalled || installedWindowHandle != windowHandle)) {
-            // Store old callback and install ours
+            // Install character callback for text input
             GLFW.glfwSetCharCallback(windowHandle, (window, codepoint) -> {
                 if (activeField != null && activeField.focused) {
                     activeField.onCharTyped((char) codepoint);
                 }
             });
+
+            // Install key callback for special keys (Enter, Escape, etc)
+            GLFW.glfwSetKeyCallback(windowHandle, (window, key, scancode, action, mods) -> {
+                if (activeField != null && activeField.focused && action == GLFW.GLFW_PRESS) {
+                    if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                        // Mark that Enter was pressed - will be handled in next render after char processing
+                        activeField.enterPressedThisFrame = true;
+                    }
+                }
+            });
+
             callbackInstalled = true;
             installedWindowHandle = windowHandle;
         }
     }
 
     private void onCharTyped(char c) {
+        // Check if it's Enter key (char code 13 or 10)
+        if (c == '\r' || c == '\n') {
+            return; // Don't add Enter to text
+        }
+
         if (text.length() < maxLength) {
             text.insert(cursorPosition, c);
             cursorPosition++;
@@ -141,6 +164,14 @@ public class SimpleTextField implements Drawable, Element {
             if (activeField != this) {
                 activeField = this;
                 installCharCallback();
+            }
+
+            // Handle Enter key press from previous frame (after char callback processed)
+            if (enterPressedThisFrame) {
+                enterPressedThisFrame = false;
+                if (onEnterPressed != null) {
+                    onEnterPressed.run();
+                }
             }
 
             handleSpecialKeys(windowHandle);

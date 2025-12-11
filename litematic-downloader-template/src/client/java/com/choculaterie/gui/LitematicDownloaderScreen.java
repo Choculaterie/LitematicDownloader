@@ -5,6 +5,7 @@ import com.choculaterie.gui.widget.CustomTextField;
 import com.choculaterie.gui.widget.PostListWidget;
 import com.choculaterie.gui.widget.PostDetailPanel;
 import com.choculaterie.gui.widget.LoadingSpinner;
+import com.choculaterie.gui.widget.ToastManager;
 import com.choculaterie.models.MinemevPostInfo;
 import com.choculaterie.models.MinemevSearchResponse;
 import com.choculaterie.network.MinemevNetworkManager;
@@ -27,6 +28,7 @@ public class LitematicDownloaderScreen extends Screen {
     private CustomButton folderButton;
     private CustomButton closeButton;
     private LoadingSpinner loadingSpinner;
+    private ToastManager toastManager;
 
     private int currentPage = 1; // API uses 1-based pagination
     private int totalPages = 1;
@@ -42,6 +44,11 @@ public class LitematicDownloaderScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+
+        // Initialize toast manager
+        if (this.client != null) {
+            toastManager = new ToastManager(this.client);
+        }
 
         // Calculate split layout dimensions
         int leftPanelWidth = this.width / 2;
@@ -188,7 +195,53 @@ public class LitematicDownloaderScreen extends Screen {
                             isLoading = false;
                             searchButton.active = true;
                             updatePaginationButtons();
-                            System.err.println("Error loading posts: " + throwable.getMessage());
+
+                            // Parse the error to provide user-friendly message
+                            String errorMessage = throwable.getMessage();
+                            String userMessage;
+
+                            if (errorMessage != null) {
+                                if (errorMessage.contains("UnknownHostException") ||
+                                    errorMessage.contains("ConnectException") ||
+                                    errorMessage.contains("SocketTimeoutException") ||
+                                    errorMessage.contains("NoRouteToHostException")) {
+                                    userMessage = "Network error: No internet connection";
+                                } else if (errorMessage.contains("HTTP error code: 404")) {
+                                    userMessage = "Server error: Resource not found";
+                                } else if (errorMessage.contains("HTTP error code: 500")) {
+                                    userMessage = "Server error: Internal server error";
+                                } else if (errorMessage.contains("HTTP error code:")) {
+                                    userMessage = "Server error: " + errorMessage.substring(errorMessage.indexOf("HTTP error code:"));
+                                } else if (errorMessage.contains("Failed to search posts")) {
+                                    // Extract the actual cause
+                                    Throwable cause = throwable.getCause();
+                                    if (cause != null) {
+                                        String causeMsg = cause.getMessage();
+                                        if (causeMsg != null && causeMsg.contains("java.net.")) {
+                                            userMessage = "Network error: Cannot reach server";
+                                        } else {
+                                            userMessage = "Search failed: " + (causeMsg != null ? causeMsg : "Unknown error");
+                                        }
+                                    } else {
+                                        userMessage = "Search failed: Connection error";
+                                    }
+                                } else {
+                                    userMessage = "Search failed: " + errorMessage;
+                                }
+                            } else {
+                                userMessage = "Search failed: Unknown error";
+                            }
+
+                            // Full error for copying
+                            String fullError = "Error: " + errorMessage;
+                            if (throwable.getCause() != null) {
+                                fullError += "\nCause: " + throwable.getCause().toString();
+                            }
+
+                            System.err.println("Error loading posts: " + errorMessage);
+                            if (toastManager != null) {
+                                toastManager.showError(userMessage, fullError);
+                            }
                         });
                     }
                     return null;
@@ -309,6 +362,11 @@ public class LitematicDownloaderScreen extends Screen {
         if (closeButton != null) {
             closeButton.render(context, mouseX, mouseY, delta);
         }
+
+        // Render toasts on top of everything
+        if (toastManager != null) {
+            toastManager.render(context, delta, mouseX, mouseY);
+        }
     }
 
 
@@ -317,6 +375,17 @@ public class LitematicDownloaderScreen extends Screen {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+
+        // Check toast clicks first (copy button and close button)
+        if (button == 0 && toastManager != null) {
+            if (toastManager.mouseClicked(mouseX, mouseY)) {
+                return true;
+            }
+            // Block clicks to elements below if hovering over a toast
+            if (toastManager.isMouseOverToast(mouseX, mouseY)) {
+                return true;
+            }
+        }
 
         // Check close button first (highest priority, on top)
         if (button == 0 && closeButton != null) {
