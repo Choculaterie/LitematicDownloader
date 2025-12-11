@@ -64,6 +64,15 @@ public class DirectoryPickerScreen extends Screen {
             toastManager = new ToastManager(this.client);
         }
 
+        // Calculate responsive sizes based on screen width
+        boolean isCompact = this.width < 400;
+        boolean isVeryCompact = this.width < 300;
+
+        int upButtonWidth = isVeryCompact ? 30 : (isCompact ? 45 : 60);
+        int selectButtonWidth = isVeryCompact ? 100 : (isCompact ? 150 : 200);
+        String upLabel = isVeryCompact ? "↑" : "Up ↑";
+        String selectLabel = isVeryCompact ? "Select" : (isCompact ? "Select Folder" : "Select This Folder");
+
         // Back button (top left)
         backButton = new CustomButton(
                 PADDING,
@@ -79,20 +88,20 @@ public class DirectoryPickerScreen extends Screen {
         upButton = new CustomButton(
                 PADDING * 2 + BUTTON_HEIGHT,
                 PADDING,
-                60,
+                upButtonWidth,
                 BUTTON_HEIGHT,
-                Text.literal("Up ↑"),
+                Text.literal(upLabel),
                 button -> goUpDirectory()
         );
         this.addDrawableChild(upButton);
 
         // Select current directory button (bottom)
         selectButton = new CustomButton(
-                this.width / 2 - 100,
+                this.width / 2 - selectButtonWidth / 2,
                 this.height - PADDING - BUTTON_HEIGHT - PADDING,
-                200,
+                selectButtonWidth,
                 BUTTON_HEIGHT,
-                Text.literal("Select This Folder"),
+                Text.literal(selectLabel),
                 button -> selectCurrentDirectory()
         );
         this.addDrawableChild(selectButton);

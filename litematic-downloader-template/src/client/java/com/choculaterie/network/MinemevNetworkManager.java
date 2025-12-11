@@ -25,6 +25,22 @@ public class MinemevNetworkManager {
     private static final int TIMEOUT = 10000; // 10 seconds
 
     /**
+     * Get list of available vendors
+     * @return CompletableFuture with array of vendor names
+     */
+    public static CompletableFuture<String[]> getVendors() {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String urlString = "https://www.minemev.com/api/vendors";
+                String jsonResponse = makeGetRequest(urlString);
+                return parseVendorList(jsonResponse);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to get vendors", e);
+            }
+        });
+    }
+
+    /**
      * Search for posts on Minemev
      * @param searchQuery The search query string
      * @param sort Sort method (e.g., "popular", "recent")
@@ -33,13 +49,51 @@ public class MinemevNetworkManager {
      * @return CompletableFuture with the search response
      */
     public static CompletableFuture<MinemevSearchResponse> searchPosts(String searchQuery, String sort, int cleanUuid, int page) {
+        return searchPostsAdvanced(searchQuery, sort, cleanUuid, page, null, null, null);
+    }
+
+    /**
+     * Search for posts on Minemev with advanced filtering options
+     * @param searchQuery The search query string
+     * @param sort Sort method: "popular", "newest", "oldest", or "downloads"
+     * @param cleanUuid Whether to use clean UUID format (1 or 0)
+     * @param page The page number to fetch (1-based)
+     * @param tag Optional tag filter (prefix with "server_" for server filtering)
+     * @param versions Optional version filter (comma-separated, or "all")
+     * @param excludeVendor Optional vendor to exclude from results
+     * @return CompletableFuture with the search response
+     */
+    public static CompletableFuture<MinemevSearchResponse> searchPostsAdvanced(
+            String searchQuery, String sort, int cleanUuid, int page,
+            String tag, String versions, String excludeVendor) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String encodedQuery = URLEncoder.encode(searchQuery, StandardCharsets.UTF_8);
-                String urlString = String.format("%s/search?search=%s&sort=%s&clean_uuid=%d&page=%d",
-                        BASE_URL, encodedQuery, sort, cleanUuid, page);
+                StringBuilder urlBuilder = new StringBuilder();
+                urlBuilder.append(BASE_URL).append("/search?clean_uuid=").append(cleanUuid);
 
-                String jsonResponse = makeGetRequest(urlString);
+                if (searchQuery != null && !searchQuery.isEmpty()) {
+                    urlBuilder.append("&search=").append(URLEncoder.encode(searchQuery, StandardCharsets.UTF_8));
+                }
+                if (sort != null && !sort.isEmpty()) {
+                    urlBuilder.append("&sort=").append(sort);
+                }
+                if (page > 0) {
+                    urlBuilder.append("&page=").append(page);
+                }
+                if (tag != null && !tag.isEmpty()) {
+                    urlBuilder.append("&tag=").append(URLEncoder.encode(tag, StandardCharsets.UTF_8));
+                }
+                if (versions != null && !versions.isEmpty() && !versions.equals("all")) {
+                    urlBuilder.append("&versions=").append(URLEncoder.encode(versions, StandardCharsets.UTF_8));
+                }
+                if (excludeVendor != null && !excludeVendor.isEmpty()) {
+                    urlBuilder.append("&exclude_vendor=").append(URLEncoder.encode(excludeVendor, StandardCharsets.UTF_8));
+                }
+
+                String finalUrl = urlBuilder.toString();
+                System.out.println("[MinemevNetworkManager] Request URL: " + finalUrl);
+
+                String jsonResponse = makeGetRequest(finalUrl);
                 return parseSearchResponse(jsonResponse);
             } catch (Exception e) {
                 throw new RuntimeException("Failed to search posts", e);
@@ -301,6 +355,24 @@ public class MinemevNetworkManager {
         String[] result = new String[array.size()];
         for (int i = 0; i < array.size(); i++) {
             result[i] = array.get(i).getAsString();
+        }
+        return result;
+    }
+
+    /**
+     * Parse vendor list response JSON
+     * Format: {"vendors":["minemev","redenmc","choculaterie"]}
+     */
+    private static String[] parseVendorList(String json) {
+        JsonObject root = GSON.fromJson(json, JsonObject.class);
+        if (!root.has("vendors") || root.get("vendors").isJsonNull()) {
+            return new String[0];
+        }
+
+        JsonArray vendorsArray = root.getAsJsonArray("vendors");
+        String[] result = new String[vendorsArray.size()];
+        for (int i = 0; i < vendorsArray.size(); i++) {
+            result[i] = vendorsArray.get(i).getAsString();
         }
         return result;
     }

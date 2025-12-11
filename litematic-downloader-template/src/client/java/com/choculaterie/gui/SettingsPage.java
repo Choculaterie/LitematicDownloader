@@ -4,6 +4,7 @@ import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.gui.widget.CustomButton;
 import com.choculaterie.gui.widget.CustomTextField;
 import com.choculaterie.gui.widget.ToastManager;
+import com.choculaterie.gui.widget.ToggleButton;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
@@ -21,9 +22,14 @@ public class SettingsPage extends Screen {
     private final Screen parentScreen;
     private CustomButton backButton;
     private CustomTextField downloadPathField;
-    private CustomButton saveButton;
     private CustomButton browseButton;
+    private ToggleButton successToastsToggle;
+    private ToggleButton errorToastsToggle;
+    private ToggleButton infoToastsToggle;
+    private ToggleButton warningToastsToggle;
     private ToastManager toastManager;
+    private String pendingToastMessage;
+    private boolean pendingToastSuccess;
 
     public SettingsPage(Screen parentScreen) {
         super(Text.literal("Settings"));
@@ -39,6 +45,13 @@ public class SettingsPage extends Screen {
             toastManager = new ToastManager(this.client);
         }
 
+        // Calculate responsive sizes based on screen width
+        boolean isCompact = this.width < 400;
+        boolean isVeryCompact = this.width < 300;
+
+        int browseButtonWidth = isVeryCompact ? 50 : (isCompact ? 70 : 90);
+        String browseLabel = isVeryCompact ? "..." : "Browse...";
+
         // Back button (top left)
         backButton = new CustomButton(
                 PADDING,
@@ -52,7 +65,7 @@ public class SettingsPage extends Screen {
 
         // Download path section
         int contentY = PADDING * 4 + BUTTON_HEIGHT;
-        int fieldWidth = this.width - PADDING * 4 - 100; // Leave space for browse button
+        int fieldWidth = Math.max(100, this.width - PADDING * 4 - browseButtonWidth - PADDING);
 
         // Download path text field
         if (this.client != null) {
@@ -73,45 +86,57 @@ public class SettingsPage extends Screen {
         browseButton = new CustomButton(
                 PADDING * 2 + fieldWidth + PADDING,
                 contentY + LABEL_HEIGHT,
-                90,
+                browseButtonWidth,
                 TEXT_FIELD_HEIGHT,
-                Text.literal("Browse..."),
+                Text.literal(browseLabel),
                 button -> openFileDialog()
         );
         this.addDrawableChild(browseButton);
 
-        // Save button
-        saveButton = new CustomButton(
-                this.width / 2 - 40,
-                this.height - PADDING - BUTTON_HEIGHT - PADDING,
-                80,
-                BUTTON_HEIGHT,
-                Text.literal("Save"),
-                button -> saveSettings()
+        // Toasts toggle section
+        int toastsY = contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 30;
+        int toggleSpacing = 25;
+
+        // Info toasts toggle
+        infoToastsToggle = new ToggleButton(
+                PADDING * 2 + 120,
+                toastsY + LABEL_HEIGHT,
+                DownloadSettings.getInstance().isInfoToastsEnabled(),
+                enabled -> DownloadSettings.getInstance().setInfoToastsEnabled(enabled)
         );
-        this.addDrawableChild(saveButton);
+        this.addDrawableChild(infoToastsToggle);
+
+        // Success toasts toggle
+        successToastsToggle = new ToggleButton(
+                PADDING * 2 + 120,
+                toastsY + LABEL_HEIGHT + toggleSpacing,
+                DownloadSettings.getInstance().isSuccessToastsEnabled(),
+                enabled -> DownloadSettings.getInstance().setSuccessToastsEnabled(enabled)
+        );
+        this.addDrawableChild(successToastsToggle);
+
+        // Warning toasts toggle
+        warningToastsToggle = new ToggleButton(
+                PADDING * 2 + 120,
+                toastsY + LABEL_HEIGHT + toggleSpacing * 2,
+                DownloadSettings.getInstance().isWarningToastsEnabled(),
+                enabled -> DownloadSettings.getInstance().setWarningToastsEnabled(enabled)
+        );
+        this.addDrawableChild(warningToastsToggle);
+
+        // Error toasts toggle
+        errorToastsToggle = new ToggleButton(
+                PADDING * 2 + 120,
+                toastsY + LABEL_HEIGHT + toggleSpacing * 3,
+                DownloadSettings.getInstance().isErrorToastsEnabled(),
+                enabled -> DownloadSettings.getInstance().setErrorToastsEnabled(enabled)
+        );
+        this.addDrawableChild(errorToastsToggle);
     }
 
     private void goBack() {
         if (this.client != null) {
             this.client.setScreen(parentScreen);
-        }
-    }
-
-    private void saveSettings() {
-        if (downloadPathField != null) {
-            String path = downloadPathField.getText().trim();
-            if (!path.isEmpty()) {
-                DownloadSettings.getInstance().setDownloadPath(path);
-                System.out.println("Download path saved: " + path);
-                if (toastManager != null) {
-                    toastManager.showSuccess("Settings saved!");
-                }
-            } else {
-                if (toastManager != null) {
-                    toastManager.showError("Path cannot be empty");
-                }
-            }
         }
     }
 
@@ -128,12 +153,14 @@ public class SettingsPage extends Screen {
                             downloadPathField.setText(selectedPath);
                         }
                         // Auto-save the selected path
-                        if (!selectedPath.isEmpty()) {
+                        if (selectedPath != null && !selectedPath.isEmpty()) {
                             DownloadSettings.getInstance().setDownloadPath(selectedPath);
                             System.out.println("Download path saved from directory picker: " + selectedPath);
-                            if (toastManager != null) {
-                                toastManager.showSuccess("Download path updated!");
-                            }
+                            pendingToastMessage = "Download path updated!";
+                            pendingToastSuccess = true;
+                        } else {
+                            pendingToastMessage = "Failed to select folder";
+                            pendingToastSuccess = false;
                         }
                     }
             );
@@ -143,6 +170,16 @@ public class SettingsPage extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        // Show pending toast if any
+        if (pendingToastMessage != null && toastManager != null) {
+            if (pendingToastSuccess) {
+                toastManager.showSuccess(pendingToastMessage);
+            } else {
+                toastManager.showError(pendingToastMessage);
+            }
+            pendingToastMessage = null;
+        }
+
         // Fill the entire screen with dark grey background
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
@@ -178,6 +215,51 @@ public class SettingsPage extends Screen {
                 PADDING * 2,
                 contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 5,
                 0xFFAAAAAA
+        );
+
+        // Draw toasts toggle section header
+        int toastsY = contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 30;
+        int toggleSpacing = 25;
+
+        context.drawTextWithShadow(
+                this.textRenderer,
+                "Show Notifications:",
+                PADDING * 2,
+                toastsY,
+                0xFFFFFFFF
+        );
+
+        // Draw individual toast type labels
+        context.drawTextWithShadow(
+                this.textRenderer,
+                "Info:",
+                PADDING * 2,
+                toastsY + LABEL_HEIGHT + 6,
+                0xFF2196F3
+        );
+
+        context.drawTextWithShadow(
+                this.textRenderer,
+                "Success:",
+                PADDING * 2,
+                toastsY + LABEL_HEIGHT + toggleSpacing + 6,
+                0xFF4CAF50
+        );
+
+        context.drawTextWithShadow(
+                this.textRenderer,
+                "Warning:",
+                PADDING * 2,
+                toastsY + LABEL_HEIGHT + toggleSpacing * 2 + 6,
+                0xFFFFC107
+        );
+
+        context.drawTextWithShadow(
+                this.textRenderer,
+                "Error:",
+                PADDING * 2,
+                toastsY + LABEL_HEIGHT + toggleSpacing * 3 + 6,
+                0xFFFF5252
         );
 
         // Render toasts on top of everything

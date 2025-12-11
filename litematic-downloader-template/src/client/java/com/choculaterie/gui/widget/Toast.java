@@ -45,6 +45,9 @@ public class Toast {
     private final MinecraftClient client;
 
     private boolean dismissed = false;
+    private boolean hovered = false;
+    private long pausedTime = 0; // Total time the toast has been paused (hovered)
+    private long hoverStartTime = 0; // When the current hover started
 
     public Toast(String message, Type type, int screenWidth, int yPosition, MinecraftClient client) {
         this(message, type, screenWidth, yPosition, false, null, client);
@@ -89,7 +92,14 @@ public class Toast {
      */
     public boolean render(DrawContext context, net.minecraft.client.font.TextRenderer textRenderer) {
         long now = System.currentTimeMillis();
-        long elapsed = now - createdTime;
+
+        // Calculate effective elapsed time (excluding time spent hovered)
+        long totalPausedTime = pausedTime;
+        if (hovered && hoverStartTime > 0) {
+            // Currently hovering, add current hover duration to paused time
+            totalPausedTime += now - hoverStartTime;
+        }
+        long elapsed = now - createdTime - totalPausedTime;
 
         // Use longer display time for errors with copy button
         long displayDuration = hasCopyButton ? ERROR_DISPLAY_DURATION : DISPLAY_DURATION;
@@ -284,6 +294,27 @@ public class Toast {
 
     public void dismiss() {
         this.dismissed = true;
+    }
+
+    /**
+     * Set hover state - pauses the timer when true
+     */
+    public void setHovered(boolean hovered) {
+        if (hovered && !this.hovered) {
+            // Started hovering - record the time
+            this.hoverStartTime = System.currentTimeMillis();
+        } else if (!hovered && this.hovered) {
+            // Stopped hovering - add the hover duration to paused time
+            this.pausedTime += System.currentTimeMillis() - this.hoverStartTime;
+        }
+        this.hovered = hovered;
+    }
+
+    /**
+     * Check if toast is currently hovered
+     */
+    public boolean isHovered() {
+        return hovered;
     }
 
     public int getHeight() {

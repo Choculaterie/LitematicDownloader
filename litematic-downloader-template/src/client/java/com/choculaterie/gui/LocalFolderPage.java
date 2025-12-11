@@ -65,6 +65,51 @@ public class LocalFolderPage extends Screen {
     // Breadcrumb segments for click detection
     private List<BreadcrumbSegment> breadcrumbSegments = new ArrayList<>();
 
+    // Undo/Redo support
+    private List<FileAction> undoStack = new ArrayList<>();
+    private List<FileAction> redoStack = new ArrayList<>();
+    private static final int MAX_UNDO_HISTORY = 50;
+    private boolean wasCtrlZPressed = false;
+    private boolean wasCtrlYPressed = false;
+    private boolean wasDeletePressed = false;
+    private File trashFolder; // Hidden folder for storing deleted files for undo
+
+    /**
+     * Represents a file operation that can be undone/redone
+     */
+    private static class FileAction {
+        enum Type { MOVE, DELETE, RENAME, CREATE_FOLDER }
+
+        final Type type;
+        final List<FileOperation> operations;
+
+        FileAction(Type type, List<FileOperation> operations) {
+            this.type = type;
+            this.operations = operations;
+        }
+
+        FileAction(Type type, FileOperation operation) {
+            this.type = type;
+            this.operations = new ArrayList<>();
+            this.operations.add(operation);
+        }
+    }
+
+    /**
+     * Represents a single file operation (source -> destination)
+     */
+    private static class FileOperation {
+        final File source;
+        final File destination;
+        final boolean wasDirectory;
+
+        FileOperation(File source, File destination, boolean wasDirectory) {
+            this.source = source;
+            this.destination = destination;
+            this.wasDirectory = wasDirectory;
+        }
+    }
+
     private static class BreadcrumbSegment {
         final int x;
         final int width;
@@ -123,6 +168,12 @@ public class LocalFolderPage extends Screen {
             this.currentDirectory.mkdirs();
         }
 
+        // Initialize trash folder for undo support (hidden folder)
+        this.trashFolder = new File(this.baseDirectory, ".trash");
+        if (!this.trashFolder.exists()) {
+            this.trashFolder.mkdirs();
+        }
+
         loadEntries();
     }
 
@@ -135,9 +186,30 @@ public class LocalFolderPage extends Screen {
             toastManager = new ToastManager(this.client);
         }
 
+        // Calculate responsive button sizes based on screen width
+        int availableWidth = this.width - PADDING * 2 - BUTTON_HEIGHT - PADDING; // Leave space for settings button
+        boolean isCompact = availableWidth < 500; // Use compact mode for small screens
+        boolean isVeryCompact = availableWidth < 350; // Use very compact mode for very small screens
+
+        // Define button widths based on screen size
+        int upButtonWidth = isVeryCompact ? 30 : (isCompact ? 45 : 60);
+        int newFolderWidth = isVeryCompact ? 25 : (isCompact ? 70 : 100);
+        int renameWidth = isVeryCompact ? 25 : (isCompact ? 50 : 70);
+        int deleteWidth = isVeryCompact ? 25 : (isCompact ? 45 : 60);
+        int openFolderWidth = isVeryCompact ? 25 : (isCompact ? 80 : 120);
+
+        // Define button labels based on screen size
+        String upLabel = isVeryCompact ? "↑" : "Up ↑";
+        String newFolderLabel = isVeryCompact ? "+" : (isCompact ? "+ New" : "+ New Folder");
+        String renameLabel = isVeryCompact ? "✏" : "Rename";
+        String deleteLabel = isVeryCompact ? "🗑" : "Delete";
+        String openFolderLabel = isVeryCompact ? "📁" : (isCompact ? "📁 Open" : "📁 Open Folder");
+
+        int currentX = PADDING;
+
         // Back button (top left)
         backButton = new CustomButton(
-                PADDING,
+                currentX,
                 PADDING,
                 BUTTON_HEIGHT,
                 BUTTON_HEIGHT,
@@ -145,63 +217,68 @@ public class LocalFolderPage extends Screen {
                 button -> goBack()
         );
         this.addDrawableChild(backButton);
+        currentX += BUTTON_HEIGHT + PADDING;
 
         // Up directory button (next to back button)
         upButton = new CustomButton(
-                PADDING * 2 + BUTTON_HEIGHT,
+                currentX,
                 PADDING,
-                60,
+                upButtonWidth,
                 BUTTON_HEIGHT,
-                Text.literal("Up ↑"),
+                Text.literal(upLabel),
                 button -> goUpDirectory()
         );
         this.addDrawableChild(upButton);
+        currentX += upButtonWidth + PADDING;
 
         // Update up button state (disabled at root)
         updateUpButtonState();
 
         // New Folder button (next to Up button)
         newFolderButton = new CustomButton(
-                PADDING * 3 + BUTTON_HEIGHT + 60,
+                currentX,
                 PADDING,
-                100,
+                newFolderWidth,
                 BUTTON_HEIGHT,
-                Text.literal("+ New Folder"),
+                Text.literal(newFolderLabel),
                 button -> openNewFolderPopup()
         );
         this.addDrawableChild(newFolderButton);
+        currentX += newFolderWidth + PADDING;
 
         // Rename button (next to New Folder button)
         renameButton = new CustomButton(
-                PADDING * 4 + BUTTON_HEIGHT + 60 + 100,
+                currentX,
                 PADDING,
-                70,
+                renameWidth,
                 BUTTON_HEIGHT,
-                Text.literal("Rename"),
+                Text.literal(renameLabel),
                 button -> openRenamePopup()
         );
         renameButton.active = false; // Disabled until something is selected
         this.addDrawableChild(renameButton);
+        currentX += renameWidth + PADDING;
 
         // Delete button (next to Rename button)
         deleteButton = new CustomButton(
-                PADDING * 5 + BUTTON_HEIGHT + 60 + 100 + 70,
+                currentX,
                 PADDING,
-                60,
+                deleteWidth,
                 BUTTON_HEIGHT,
-                Text.literal("Delete"),
+                Text.literal(deleteLabel),
                 button -> handleDeleteClick()
         );
         deleteButton.active = false; // Disabled until something is selected
         this.addDrawableChild(deleteButton);
+        currentX += deleteWidth + PADDING;
 
         // Open in File Explorer button (next to Delete button)
         openFolderButton = new CustomButton(
-                PADDING * 6 + BUTTON_HEIGHT + 60 + 100 + 70 + 60,
+                currentX,
                 PADDING,
-                120,
+                openFolderWidth,
                 BUTTON_HEIGHT,
-                Text.literal("📁 Open Folder"),
+                Text.literal(openFolderLabel),
                 button -> openInFileExplorer()
         );
         this.addDrawableChild(openFolderButton);
@@ -267,33 +344,49 @@ public class LocalFolderPage extends Screen {
         ChoculaterieNetworkManager.uploadLitematic(entry.file)
             .thenAccept(response -> {
                 // Copy to clipboard
-                try {
-                    String shortUrl = response.getShortUrl();
-
-                    // Use Minecraft's native clipboard if available
-                    if (client != null && client.keyboard != null) {
-                        client.keyboard.setClipboard(shortUrl);
-                        if (toastManager != null) {
-                            toastManager.showSuccess("Link copied to clipboard!");
-                        }
-                        System.out.println("Quick share URL copied: " + shortUrl);
-                    } else {
-                        // Fallback to AWT clipboard
-                        StringSelection selection = new StringSelection(shortUrl);
-                        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
-                        if (toastManager != null) {
-                            toastManager.showSuccess("Link copied to clipboard!");
-                        }
-                        System.out.println("Quick share URL copied (AWT): " + shortUrl);
+                String shortUrl = response.getShortUrl();
+                if (shortUrl == null || shortUrl.isEmpty()) {
+                    if (client != null) {
+                        client.execute(() -> {
+                            if (toastManager != null) {
+                                toastManager.showError("Upload failed: No URL returned");
+                            }
+                            uploadingIndex = -1;
+                        });
                     }
-                } catch (Exception e) {
-                    if (toastManager != null) {
-                        toastManager.showError("Failed to copy to clipboard");
-                    }
-                    System.err.println("Failed to copy to clipboard: " + e.getMessage());
-                    e.printStackTrace();
+                    System.err.println("Upload failed: No URL returned");
+                    return;
                 }
-                uploadingIndex = -1;
+
+                if (client != null) {
+                    client.execute(() -> {
+                        try {
+                            // Use Minecraft's native clipboard if available
+                            if (client.keyboard != null) {
+                                client.keyboard.setClipboard(shortUrl);
+                                if (toastManager != null) {
+                                    toastManager.showSuccess("Link copied to clipboard!");
+                                }
+                                System.out.println("Quick share URL copied: " + shortUrl);
+                            } else {
+                                // Fallback to AWT clipboard
+                                StringSelection selection = new StringSelection(shortUrl);
+                                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+                                if (toastManager != null) {
+                                    toastManager.showSuccess("Link copied to clipboard!");
+                                }
+                                System.out.println("Quick share URL copied (AWT): " + shortUrl);
+                            }
+                        } catch (Exception e) {
+                            if (toastManager != null) {
+                                toastManager.showError("Failed to copy to clipboard");
+                            }
+                            System.err.println("Failed to copy to clipboard: " + e.getMessage());
+                            e.printStackTrace();
+                        }
+                        uploadingIndex = -1;
+                    });
+                }
             })
             .exceptionally(error -> {
                 String errorMessage = error.getMessage();
@@ -353,7 +446,7 @@ public class LocalFolderPage extends Screen {
         File newFolder = new File(currentDirectory, folderName);
         if (newFolder.exists()) {
             if (activePopup != null) {
-                activePopup.setErrorMessage("A folder with this name already exists");
+                activePopup.setErrorMessage("\"" + folderName + "\" already exists in this folder");
             }
             return;
         }
@@ -361,15 +454,18 @@ public class LocalFolderPage extends Screen {
         // Try to create the folder
         boolean success = newFolder.mkdir();
         if (success) {
+            // Record for undo (source is null for creation, destination is the new folder)
+            addUndoAction(new FileAction(FileAction.Type.CREATE_FOLDER, new FileOperation(null, newFolder, true)));
+
             System.out.println("Created folder: " + newFolder.getAbsolutePath());
             if (toastManager != null) {
-                toastManager.showSuccess("Folder created: " + folderName);
+                toastManager.showSuccess("Created folder \"" + folderName + "\"");
             }
             closePopup();
             loadEntries(); // Refresh the list
         } else {
             if (activePopup != null) {
-                activePopup.setErrorMessage("Failed to create folder");
+                activePopup.setErrorMessage("Failed to create folder - check folder permissions");
             }
         }
     }
@@ -421,23 +517,27 @@ public class LocalFolderPage extends Screen {
         File newFile = new File(file.getParentFile(), newName);
         if (newFile.exists()) {
             if (activePopup != null) {
-                activePopup.setErrorMessage("A file/folder with this name already exists");
+                activePopup.setErrorMessage("\"" + newName + "\" already exists in this folder");
             }
             return;
         }
 
         // Try to rename
+        boolean isDirectory = file.isDirectory();
         boolean success = file.renameTo(newFile);
         if (success) {
+            // Record for undo
+            addUndoAction(new FileAction(FileAction.Type.RENAME, new FileOperation(file, newFile, isDirectory)));
+
             System.out.println("Renamed: " + file.getName() + " -> " + newName);
             if (toastManager != null) {
-                toastManager.showSuccess("Renamed to: " + newName);
+                toastManager.showSuccess("Renamed to \"" + newName + "\"");
             }
             closePopup();
             loadEntries();
         } else {
             if (activePopup != null) {
-                activePopup.setErrorMessage("Failed to rename");
+                activePopup.setErrorMessage("Failed to rename - file may be in use or protected");
             }
         }
     }
@@ -552,49 +652,72 @@ public class LocalFolderPage extends Screen {
             return;
         }
 
+        // Ensure trash folder exists
+        if (!trashFolder.exists()) {
+            trashFolder.mkdirs();
+        }
+
         // Sort indices in descending order to avoid index shifting issues
         List<Integer> sortedIndices = new ArrayList<>(selectedIndices);
         sortedIndices.sort((a, b) -> b - a);
 
         int successCount = 0;
         int failCount = 0;
+        List<String> failedNames = new ArrayList<>();
+        List<FileOperation> successfulOperations = new ArrayList<>();
 
         for (int index : sortedIndices) {
             if (index >= 0 && index < entries.size()) {
                 FileEntry entry = entries.get(index);
-                boolean success;
+                File sourceFile = entry.file;
 
-                if (entry.isDirectory) {
-                    success = deleteDirectoryRecursively(entry.file);
-                } else {
-                    success = entry.file.delete();
-                }
+                // Generate unique trash name to avoid conflicts (timestamp + original name)
+                String trashName = System.currentTimeMillis() + "_" + sourceFile.getName();
+                File trashFile = new File(trashFolder, trashName);
+
+                // Move to trash instead of deleting
+                boolean success = sourceFile.renameTo(trashFile);
 
                 if (success) {
                     successCount++;
+                    // Record operation: source is original location, destination is trash location
+                    successfulOperations.add(new FileOperation(sourceFile, trashFile, entry.isDirectory));
+                    System.out.println("Moved to trash: " + sourceFile.getName());
                 } else {
                     failCount++;
-                    System.err.println("Failed to delete: " + entry.file.getAbsolutePath());
+                    failedNames.add(sourceFile.getName());
+                    System.err.println("Failed to delete: " + sourceFile.getAbsolutePath());
                 }
             }
+        }
+
+        // Record successful operations for undo
+        if (!successfulOperations.isEmpty()) {
+            addUndoAction(new FileAction(FileAction.Type.DELETE, successfulOperations));
         }
 
         // Show result toast
         if (toastManager != null) {
             if (failCount == 0) {
                 if (successCount == 1) {
-                    toastManager.showSuccess("Deleted 1 item");
+                    toastManager.showSuccess("Deleted 1 item (Ctrl+Z to undo)");
                 } else {
-                    toastManager.showSuccess("Deleted " + successCount + " items");
+                    toastManager.showSuccess("Deleted " + successCount + " items (Ctrl+Z to undo)");
                 }
             } else if (successCount == 0) {
                 if (failCount == 1) {
-                    toastManager.showError("Failed to delete 1 item");
+                    toastManager.showError("Failed to delete \"" + failedNames.get(0) + "\" - file may be in use or protected");
+                } else if (failCount <= 3) {
+                    toastManager.showError("Failed to delete: " + String.join(", ", failedNames) + " - files may be in use or protected");
                 } else {
-                    toastManager.showError("Failed to delete " + failCount + " items");
+                    toastManager.showError("Failed to delete " + failCount + " items - files may be in use or protected");
                 }
             } else {
-                toastManager.showError("Deleted " + successCount + ", failed " + failCount);
+                if (failCount == 1) {
+                    toastManager.showError("Deleted " + successCount + " items, failed to delete \"" + failedNames.get(0) + "\"");
+                } else {
+                    toastManager.showError("Deleted " + successCount + " items, failed to delete " + failCount + " items");
+                }
             }
         }
 
@@ -607,7 +730,11 @@ public class LocalFolderPage extends Screen {
         }
 
         int successCount = 0;
-        int failCount = 0;
+        int conflictCount = 0;
+        int otherFailCount = 0;
+        List<String> conflictNames = new ArrayList<>();
+        List<String> otherFailNames = new ArrayList<>();
+        List<FileOperation> successfulOperations = new ArrayList<>();
 
         // Sort indices in descending order to avoid issues with index shifting
         List<Integer> sortedIndices = new ArrayList<>(selectedIndices);
@@ -621,7 +748,8 @@ public class LocalFolderPage extends Screen {
 
                 // Check if destination already exists
                 if (destFile.exists()) {
-                    failCount++;
+                    conflictCount++;
+                    conflictNames.add(sourceFile.getName());
                     System.err.println("Cannot move: destination already exists: " + destFile.getAbsolutePath());
                     continue;
                 }
@@ -631,30 +759,64 @@ public class LocalFolderPage extends Screen {
 
                 if (success) {
                     successCount++;
+                    successfulOperations.add(new FileOperation(sourceFile, destFile, entry.isDirectory));
                     System.out.println("Moved: " + sourceFile.getName() + " -> " + targetFolder.getName());
                 } else {
-                    failCount++;
+                    otherFailCount++;
+                    otherFailNames.add(sourceFile.getName());
                     System.err.println("Failed to move: " + sourceFile.getAbsolutePath());
                 }
             }
         }
 
+        // Record successful operations for undo
+        if (!successfulOperations.isEmpty()) {
+            addUndoAction(new FileAction(FileAction.Type.MOVE, successfulOperations));
+        }
+
+        int totalFailCount = conflictCount + otherFailCount;
+
         // Show result toast
         if (toastManager != null) {
-            if (failCount == 0) {
+            if (totalFailCount == 0) {
                 if (successCount == 1) {
-                    toastManager.showSuccess("Moved 1 item");
+                    toastManager.showSuccess("Moved 1 item to " + targetFolder.getName());
                 } else {
-                    toastManager.showSuccess("Moved " + successCount + " items");
+                    toastManager.showSuccess("Moved " + successCount + " items to " + targetFolder.getName());
                 }
             } else if (successCount == 0) {
-                if (failCount == 1) {
-                    toastManager.showError("Failed to move 1 item");
+                // All failed - provide specific error message
+                if (conflictCount > 0 && otherFailCount == 0) {
+                    // All failures are due to conflicts
+                    if (conflictCount == 1) {
+                        toastManager.showError("\"" + conflictNames.get(0) + "\" already exists in " + targetFolder.getName());
+                    } else if (conflictCount <= 3) {
+                        toastManager.showError("Items already exist in " + targetFolder.getName() + ": " + String.join(", ", conflictNames));
+                    } else {
+                        toastManager.showError(conflictCount + " items already exist in " + targetFolder.getName());
+                    }
+                } else if (otherFailCount > 0 && conflictCount == 0) {
+                    // All failures are due to other reasons
+                    if (otherFailCount == 1) {
+                        toastManager.showError("Failed to move \"" + otherFailNames.get(0) + "\" - check file permissions");
+                    } else {
+                        toastManager.showError("Failed to move " + otherFailCount + " items - check file permissions");
+                    }
                 } else {
-                    toastManager.showError("Failed to move " + failCount + " items");
+                    // Mixed failures
+                    toastManager.showError("Failed to move " + totalFailCount + " items (" + conflictCount + " already exist, " + otherFailCount + " other errors)");
                 }
             } else {
-                toastManager.showError("Moved " + successCount + ", failed " + failCount);
+                // Partial success
+                String errorDetail;
+                if (conflictCount > 0 && otherFailCount == 0) {
+                    errorDetail = conflictCount + " already exist";
+                } else if (otherFailCount > 0 && conflictCount == 0) {
+                    errorDetail = otherFailCount + " failed";
+                } else {
+                    errorDetail = conflictCount + " already exist, " + otherFailCount + " failed";
+                }
+                toastManager.showError("Moved " + successCount + " to " + targetFolder.getName() + ", " + errorDetail);
             }
         }
 
@@ -801,6 +963,10 @@ public class LocalFolderPage extends Screen {
                 });
 
                 for (File file : files) {
+                    // Hide the .trash folder used for undo support
+                    if (file.getName().equals(".trash")) {
+                        continue;
+                    }
                     entries.add(new FileEntry(file));
                 }
             }
@@ -997,6 +1163,41 @@ public class LocalFolderPage extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         // Fill the entire screen with dark grey background
         context.fill(0, 0, this.width, this.height, 0xFF202020);
+
+        // Handle Ctrl+Z (Undo) and Ctrl+Y (Redo) and DELETE key using GLFW polling
+        if (this.client != null && this.client.getWindow() != null && activePopup == null && confirmPopup == null) {
+            long windowHandle = this.client.getWindow().getHandle();
+            boolean ctrlHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                              org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+            boolean shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                               org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+            boolean zPressed = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_Z) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+            boolean yPressed = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_Y) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+            boolean deletePressed = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+
+            // Ctrl+Z - Undo (on key down edge)
+            if (ctrlHeld && zPressed && !wasCtrlZPressed) {
+                performUndo();
+            }
+            // Ctrl+Y - Redo (on key down edge)
+            if (ctrlHeld && yPressed && !wasCtrlYPressed) {
+                performRedo();
+            }
+            // DELETE key - Delete selected files/folders (on key down edge)
+            if (deletePressed && !wasDeletePressed && !selectedIndices.isEmpty()) {
+                if (shiftHeld) {
+                    // Shift+Delete - delete immediately without confirmation
+                    deleteSelectedFiles();
+                } else {
+                    // Delete - show confirmation dialog
+                    handleDeleteClick();
+                }
+            }
+
+            wasCtrlZPressed = ctrlHeld && zPressed;
+            wasCtrlYPressed = ctrlHeld && yPressed;
+            wasDeletePressed = deletePressed;
+        }
 
         // Check for drag state using GLFW
         if (dragStartIndex != -1 && this.client != null && this.client.getWindow() != null) {
@@ -1485,6 +1686,269 @@ public class LocalFolderPage extends Screen {
         return true;
     }
 
+    /**
+     * Perform undo operation
+     */
+    private void performUndo() {
+        if (undoStack.isEmpty()) {
+            if (toastManager != null) {
+                toastManager.showInfo("Nothing to undo");
+            }
+            return;
+        }
+
+        FileAction action = undoStack.remove(undoStack.size() - 1);
+        boolean success = false;
+        String actionName = "";
+
+        switch (action.type) {
+            case MOVE -> {
+                actionName = "move";
+                success = undoMove(action);
+            }
+            case DELETE -> {
+                actionName = "delete";
+                success = undoDelete(action);
+            }
+            case RENAME -> {
+                actionName = "rename";
+                success = undoRename(action);
+            }
+            case CREATE_FOLDER -> {
+                actionName = "folder creation";
+                success = undoCreateFolder(action);
+            }
+        }
+
+        if (success) {
+            redoStack.add(action);
+            if (redoStack.size() > MAX_UNDO_HISTORY) {
+                redoStack.remove(0);
+            }
+            if (toastManager != null) {
+                toastManager.showSuccess("Undid " + actionName);
+            }
+            loadEntries();
+        } else {
+            if (toastManager != null) {
+                toastManager.showError("Failed to undo " + actionName);
+            }
+        }
+    }
+
+    /**
+     * Perform redo operation
+     */
+    private void performRedo() {
+        if (redoStack.isEmpty()) {
+            if (toastManager != null) {
+                toastManager.showInfo("Nothing to redo");
+            }
+            return;
+        }
+
+        FileAction action = redoStack.remove(redoStack.size() - 1);
+        boolean success = false;
+        String actionName = "";
+
+        switch (action.type) {
+            case MOVE -> {
+                actionName = "move";
+                success = redoMove(action);
+            }
+            case DELETE -> {
+                actionName = "delete";
+                success = redoDelete(action);
+            }
+            case RENAME -> {
+                actionName = "rename";
+                success = redoRename(action);
+            }
+            case CREATE_FOLDER -> {
+                actionName = "folder creation";
+                success = redoCreateFolder(action);
+            }
+        }
+
+        if (success) {
+            undoStack.add(action);
+            if (undoStack.size() > MAX_UNDO_HISTORY) {
+                undoStack.remove(0);
+            }
+            if (toastManager != null) {
+                toastManager.showSuccess("Redid " + actionName);
+            }
+            loadEntries();
+        } else {
+            if (toastManager != null) {
+                toastManager.showError("Failed to redo " + actionName);
+            }
+        }
+    }
+
+    private boolean undoMove(FileAction action) {
+        // Move files back from destination to source
+        boolean allSuccess = true;
+        for (FileOperation op : action.operations) {
+            if (op.destination.exists()) {
+                boolean success = op.destination.renameTo(op.source);
+                if (!success) allSuccess = false;
+            } else {
+                allSuccess = false;
+            }
+        }
+        return allSuccess;
+    }
+
+    private boolean redoMove(FileAction action) {
+        // Move files from source to destination again
+        boolean allSuccess = true;
+        for (FileOperation op : action.operations) {
+            if (op.source.exists()) {
+                boolean success = op.source.renameTo(op.destination);
+                if (!success) allSuccess = false;
+            } else {
+                allSuccess = false;
+            }
+        }
+        return allSuccess;
+    }
+
+    private boolean undoDelete(FileAction action) {
+        // Restore files from trash back to original location
+        boolean allSuccess = true;
+        for (FileOperation op : action.operations) {
+            // op.source is original location, op.destination is trash location
+            if (op.destination.exists()) {
+                // Check if something already exists at the original location
+                if (op.source.exists()) {
+                    System.err.println("Cannot restore - file already exists at: " + op.source.getAbsolutePath());
+                    allSuccess = false;
+                    continue;
+                }
+                boolean success = op.destination.renameTo(op.source);
+                if (!success) {
+                    System.err.println("Failed to restore from trash: " + op.destination.getAbsolutePath());
+                    allSuccess = false;
+                } else {
+                    System.out.println("Restored from trash: " + op.source.getName());
+                }
+            } else {
+                System.err.println("Trash file not found: " + op.destination.getAbsolutePath());
+                allSuccess = false;
+            }
+        }
+        return allSuccess;
+    }
+
+    private boolean redoDelete(FileAction action) {
+        // Move files back to trash (re-delete)
+        boolean allSuccess = true;
+        for (FileOperation op : action.operations) {
+            // op.source is original location, op.destination is trash location
+            if (op.source.exists()) {
+                boolean success = op.source.renameTo(op.destination);
+                if (!success) {
+                    System.err.println("Failed to re-delete: " + op.source.getAbsolutePath());
+                    allSuccess = false;
+                } else {
+                    System.out.println("Re-deleted: " + op.source.getName());
+                }
+            } else {
+                System.err.println("File not found for re-delete: " + op.source.getAbsolutePath());
+                allSuccess = false;
+            }
+        }
+        return allSuccess;
+    }
+
+    private boolean undoRename(FileAction action) {
+        // Rename back from destination to source
+        if (action.operations.isEmpty()) return false;
+        FileOperation op = action.operations.get(0);
+        if (op.destination.exists()) {
+            return op.destination.renameTo(op.source);
+        }
+        return false;
+    }
+
+    private boolean redoRename(FileAction action) {
+        // Rename from source to destination again
+        if (action.operations.isEmpty()) return false;
+        FileOperation op = action.operations.get(0);
+        if (op.source.exists()) {
+            return op.source.renameTo(op.destination);
+        }
+        return false;
+    }
+
+    private boolean undoCreateFolder(FileAction action) {
+        // Delete the created folder (only if empty)
+        if (action.operations.isEmpty()) return false;
+        FileOperation op = action.operations.get(0);
+        if (op.destination.exists() && op.destination.isDirectory()) {
+            File[] contents = op.destination.listFiles();
+            if (contents == null || contents.length == 0) {
+                return op.destination.delete();
+            } else {
+                if (toastManager != null) {
+                    toastManager.showWarning("Cannot undo - folder is not empty");
+                }
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private boolean redoCreateFolder(FileAction action) {
+        // Create the folder again
+        if (action.operations.isEmpty()) return false;
+        FileOperation op = action.operations.get(0);
+        if (!op.destination.exists()) {
+            return op.destination.mkdir();
+        }
+        return false;
+    }
+
+    /**
+     * Add an action to the undo stack and clear redo stack
+     */
+    private void addUndoAction(FileAction action) {
+        undoStack.add(action);
+        if (undoStack.size() > MAX_UNDO_HISTORY) {
+            FileAction removed = undoStack.remove(0);
+            // If removing a DELETE action, permanently delete the trash files
+            if (removed.type == FileAction.Type.DELETE) {
+                cleanupTrashFiles(removed);
+            }
+        }
+        // Clear redo stack and clean up any DELETE actions in it
+        for (FileAction redoAction : redoStack) {
+            if (redoAction.type == FileAction.Type.DELETE) {
+                cleanupTrashFiles(redoAction);
+            }
+        }
+        redoStack.clear();
+    }
+
+    /**
+     * Permanently delete trash files for a DELETE action that's no longer undoable
+     */
+    private void cleanupTrashFiles(FileAction action) {
+        if (action.type != FileAction.Type.DELETE) return;
+
+        for (FileOperation op : action.operations) {
+            // op.destination is the trash file location
+            if (op.destination != null && op.destination.exists()) {
+                if (op.wasDirectory) {
+                    deleteDirectoryRecursively(op.destination);
+                } else {
+                    op.destination.delete();
+                }
+                System.out.println("Permanently deleted from trash: " + op.destination.getName());
+            }
+        }
+    }
 
 
     @Override

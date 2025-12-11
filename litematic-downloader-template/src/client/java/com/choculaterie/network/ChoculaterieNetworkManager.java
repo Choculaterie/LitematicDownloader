@@ -1,5 +1,6 @@
 package com.choculaterie.network;
 
+import com.choculaterie.models.ModMessage;
 import com.choculaterie.models.QuickShareResponse;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -164,5 +165,85 @@ public class ChoculaterieNetworkManager {
     public static CompletableFuture<QuickShareResponse> uploadLitematic(String filePath) {
         return uploadLitematic(new File(filePath));
     }
-}
 
+    /**
+     * Get the current mod message from the server
+     * @return CompletableFuture with the mod message
+     */
+    public static CompletableFuture<ModMessage> getModMessage() {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String urlString = BASE_URL + "/GetModMessage";
+                System.out.println("[ChoculaterieNetworkManager] Request URL: " + urlString);
+
+                String jsonResponse = makeGetRequest(urlString);
+                return parseModMessage(jsonResponse);
+            } catch (Exception e) {
+                System.err.println("[ChoculaterieNetworkManager] Failed to get mod message: " + e.getMessage());
+                // Return empty message on error
+                return new ModMessage(false, null, null, null, null);
+            }
+        });
+    }
+
+    /**
+     * Parse mod message response JSON
+     */
+    private static ModMessage parseModMessage(String json) {
+        JsonObject root = GSON.fromJson(json, JsonObject.class);
+
+        boolean hasMessage = root.has("hasMessage") && !root.get("hasMessage").isJsonNull()
+                && root.get("hasMessage").getAsBoolean();
+
+        if (!hasMessage) {
+            return new ModMessage(false, null, null, null, null);
+        }
+
+        Integer id = root.has("id") && !root.get("id").isJsonNull()
+                ? root.get("id").getAsInt() : null;
+        String message = root.has("message") && !root.get("message").isJsonNull()
+                ? root.get("message").getAsString() : null;
+        String type = root.has("type") && !root.get("type").isJsonNull()
+                ? root.get("type").getAsString() : null;
+        String time = root.has("time") && !root.get("time").isJsonNull()
+                ? root.get("time").getAsString() : null;
+
+        return new ModMessage(hasMessage, id, message, type, time);
+    }
+
+    /**
+     * Make a GET request to the specified URL
+     * @param urlString The URL to request
+     * @return The response body as a string
+     * @throws IOException If the request fails
+     */
+    private static String makeGetRequest(String urlString) throws IOException {
+        URL url = new URL(urlString);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+
+        try {
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
+            connection.setRequestProperty("User-Agent", "LitematicDownloader/1.0");
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                throw new IOException("HTTP error code: " + responseCode);
+            }
+
+            StringBuilder response = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+            }
+
+            return response.toString();
+        } finally {
+            connection.disconnect();
+        }
+    }
+}

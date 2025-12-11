@@ -69,10 +69,10 @@ public class CustomButton extends ButtonWidget {
         int yOffset = isSettingsIcon ? 0 : 1;
 
         if (renderAsXIcon) {
-            // Draw ❌ emoji
+            // Draw X symbol (same as SimpleTextField clear button)
             context.drawCenteredTextWithShadow(
                     MinecraftClient.getInstance().textRenderer,
-                    Text.literal("❌"),
+                    Text.literal("✕"),
                     this.getX() + this.getWidth() / 2,
                     this.getY() + (this.getHeight() - 8) / 2 + yOffset,
                     textColor

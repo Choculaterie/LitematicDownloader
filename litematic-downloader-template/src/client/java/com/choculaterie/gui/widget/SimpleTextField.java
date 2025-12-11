@@ -17,11 +17,14 @@ public class SimpleTextField implements Drawable, Element {
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int PLACEHOLDER_COLOR = 0xFF888888;
     private static final int CURSOR_COLOR = 0xFFFFFFFF;
+    private static final int CLEAR_BUTTON_SIZE = 12;
+    private static final int CLEAR_BUTTON_COLOR = 0xFF888888;
+    private static final int CLEAR_BUTTON_HOVER_COLOR = 0xFFAAAAAA;
 
     private final MinecraftClient client;
-    private final int x;
-    private final int y;
-    private final int width;
+    private int x;
+    private int y;
+    private int width;
     private final int height;
 
     private StringBuilder text = new StringBuilder();
@@ -31,6 +34,7 @@ public class SimpleTextField implements Drawable, Element {
     private boolean focused = false;
     private Runnable onChanged;
     private Runnable onEnterPressed;
+    private Runnable onClearPressed;
 
     // Key state tracking for special keys
     private boolean wasBackspacePressed = false;
@@ -76,6 +80,15 @@ public class SimpleTextField implements Drawable, Element {
         this.height = height;
     }
 
+    public void setPosition(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public void setWidth(int width) {
+        this.width = width;
+    }
+
     public void setPlaceholder(String placeholder) {
         this.placeholder = placeholder;
     }
@@ -90,6 +103,18 @@ public class SimpleTextField implements Drawable, Element {
 
     public void setOnEnterPressed(Runnable onEnterPressed) {
         this.onEnterPressed = onEnterPressed;
+    }
+
+    public void setOnClearPressed(Runnable onClearPressed) {
+        this.onClearPressed = onClearPressed;
+    }
+
+    private boolean isOverClearButton(int mouseX, int mouseY) {
+        if (text.length() == 0) return false;
+        int clearX = x + width - CLEAR_BUTTON_SIZE - 4;
+        int clearY = y + (height - CLEAR_BUTTON_SIZE) / 2;
+        return mouseX >= clearX && mouseX < clearX + CLEAR_BUTTON_SIZE &&
+               mouseY >= clearY && mouseY < clearY + CLEAR_BUTTON_SIZE;
     }
 
     public String getText() {
@@ -159,6 +184,18 @@ public class SimpleTextField implements Drawable, Element {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
 
+        // Handle clear button click (works even when not focused)
+        if (windowHandle != 0 && text.length() > 0) {
+            boolean mousePressed = GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+            if (mousePressed && !wasMousePressed && isOverClearButton(mouseX, mouseY)) {
+                text.setLength(0);
+                cursorPosition = 0;
+                scrollOffset = 0;
+                if (onChanged != null) onChanged.run();
+                if (onClearPressed != null) onClearPressed.run();
+            }
+        }
+
         if (windowHandle != 0 && focused) {
             // Ensure callback is installed
             if (activeField != this) {
@@ -191,7 +228,8 @@ public class SimpleTextField implements Drawable, Element {
         // Draw text or placeholder
         int textY = y + (height - 8) / 2;
         int textX = x + 4;
-        int maxTextWidth = width - 10; // Padding on both sides, extra for cursor
+        int clearButtonSpace = text.length() > 0 ? CLEAR_BUTTON_SIZE + 6 : 0;
+        int maxTextWidth = width - 10 - clearButtonSpace; // Padding on both sides, extra for cursor and clear button
 
         if (text.length() == 0 && !focused) {
             context.drawTextWithShadow(client.textRenderer, placeholder, textX, textY, PLACEHOLDER_COLOR);
@@ -239,6 +277,21 @@ public class SimpleTextField implements Drawable, Element {
             }
 
             context.disableScissor();
+        }
+
+        // Draw clear button (X) if there's text
+        if (text.length() > 0) {
+            int clearX = x + width - CLEAR_BUTTON_SIZE - 4;
+            int clearY = y + (height - CLEAR_BUTTON_SIZE) / 2;
+            boolean isHovered = isOverClearButton(mouseX, mouseY);
+            int clearColor = isHovered ? CLEAR_BUTTON_HOVER_COLOR : CLEAR_BUTTON_COLOR;
+
+            // Draw X
+            String xSymbol = "✕";
+            int xWidth = client.textRenderer.getWidth(xSymbol);
+            int xX = clearX + (CLEAR_BUTTON_SIZE - xWidth) / 2;
+            int xY = clearY + (CLEAR_BUTTON_SIZE - 8) / 2;
+            context.drawTextWithShadow(client.textRenderer, xSymbol, xX, xY, clearColor);
         }
     }
 

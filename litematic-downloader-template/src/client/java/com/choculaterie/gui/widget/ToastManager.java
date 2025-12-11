@@ -1,5 +1,6 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.config.DownloadSettings;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 
@@ -31,6 +32,23 @@ public class ToastManager {
      * Show a toast notification with optional copy button
      */
     public void showToast(String message, Toast.Type type, boolean hasCopyButton, String copyText) {
+        // Check if this toast type is enabled
+        DownloadSettings settings = DownloadSettings.getInstance();
+        switch (type) {
+            case SUCCESS:
+                if (!settings.isSuccessToastsEnabled()) return;
+                break;
+            case ERROR:
+                if (!settings.isErrorToastsEnabled()) return;
+                break;
+            case INFO:
+                if (!settings.isInfoToastsEnabled()) return;
+                break;
+            case WARNING:
+                if (!settings.isWarningToastsEnabled()) return;
+                break;
+        }
+
         if (client.getWindow() == null) return;
 
         int screenWidth = client.getWindow().getScaledWidth();
@@ -109,6 +127,10 @@ public class ToastManager {
 
         while (iterator.hasNext()) {
             Toast toast = iterator.next();
+
+            // Update hover state - pause timer when mouse is over the toast
+            toast.setHovered(toast.isHovering(mouseX, mouseY));
+
             boolean shouldRemove = toast.render(context, client.textRenderer);
 
             if (shouldRemove) {

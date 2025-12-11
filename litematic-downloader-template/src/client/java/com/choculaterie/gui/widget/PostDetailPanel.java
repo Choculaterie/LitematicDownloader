@@ -47,7 +47,8 @@ public class PostDetailPanel implements Drawable, Element {
     private static final int SUBTITLE_COLOR = 0xFFAAAAAA;
     private static final int TAG_BG_COLOR = 0xFF3A3A3A;
     private static final int TAG_TEXT_COLOR = 0xFFCCCCCC;
-    private static final int IMAGE_SIZE = 200;
+    private static final int MAX_IMAGE_SIZE = 200;
+    private static final int MIN_IMAGE_SIZE = 80;
     private static final int PADDING = 10;
 
     private int x;
@@ -65,6 +66,9 @@ public class PostDetailPanel implements Drawable, Element {
     private Identifier currentImageTexture;
     private final Map<String, Identifier> imageCache = new ConcurrentHashMap<>();
     private String loadingImageUrl = null;
+    private int originalImageWidth = 0;
+    private int originalImageHeight = 0;
+    private final Map<String, int[]> imageDimensionsCache = new ConcurrentHashMap<>();
 
     private final MinecraftClient client;
     private double scrollOffset = 0;
@@ -112,6 +116,52 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     /**
+     * Calculate display width for current image, respecting original aspect ratio
+     * Only uses full width if the image actually needs it
+     */
+    private int getDisplayImageWidth() {
+        int maxWidth = width - PADDING * 2 - 10; // Available width (10 for scrollbar)
+
+        if (originalImageWidth <= 0 || originalImageHeight <= 0) {
+            // No image loaded yet, use default square
+            return Math.min(MAX_IMAGE_SIZE, maxWidth);
+        }
+
+        // Calculate what width we'd need to display at max height
+        int widthAtMaxHeight = (int) ((float) originalImageWidth / originalImageHeight * MAX_IMAGE_SIZE);
+
+        // Use the smaller of: original width, calculated width at max height, or max available width
+        int desiredWidth = Math.min(originalImageWidth, Math.min(widthAtMaxHeight, maxWidth));
+
+        return Math.max(MIN_IMAGE_SIZE, desiredWidth);
+    }
+
+    /**
+     * Calculate display height for current image, respecting original aspect ratio
+     */
+    private int getDisplayImageHeight() {
+        int displayWidth = getDisplayImageWidth();
+
+        if (originalImageWidth <= 0 || originalImageHeight <= 0) {
+            // No image loaded yet, use default square
+            return Math.min(MAX_IMAGE_SIZE, displayWidth);
+        }
+
+        // Calculate height based on aspect ratio
+        int calculatedHeight = (int) ((float) originalImageHeight / originalImageWidth * displayWidth);
+
+        // Cap at max height
+        return Math.min(MAX_IMAGE_SIZE, Math.max(MIN_IMAGE_SIZE, calculatedHeight));
+    }
+
+    /**
+     * Check if panel is in compact mode (small width)
+     */
+    private boolean isCompactMode() {
+        return width < 200;
+    }
+
+    /**
      * Update carousel button positions based on current layout
      */
     private void updateCarouselButtons(int imageNavY) {
@@ -121,15 +171,18 @@ public class PostDetailPanel implements Drawable, Element {
             return;
         }
 
-        int btnWidth = 25;
-        int btnHeight = 16;
+        // Responsive button sizes
+        boolean compact = isCompactMode();
+        int btnWidth = compact ? 18 : 25;
+        int btnHeight = compact ? 14 : 16;
+        int btnSpacing = compact ? 5 : 10;
 
         String indicator = String.format("%d / %d", currentImageIndex + 1, imageUrls.length);
         int indicatorWidth = client.textRenderer.getWidth(indicator);
         int indicatorX = x + (width - indicatorWidth) / 2;
 
-        int prevBtnX = indicatorX - btnWidth - 10;
-        int nextBtnX = indicatorX + indicatorWidth + 10;
+        int prevBtnX = indicatorX - btnWidth - btnSpacing;
+        int nextBtnX = indicatorX + indicatorWidth + btnSpacing;
 
         // Create or update previous button
         if (prevImageButton == null) {
@@ -138,6 +191,7 @@ public class PostDetailPanel implements Drawable, Element {
         } else {
             prevImageButton.setX(prevBtnX);
             prevImageButton.setY(imageNavY);
+            prevImageButton.setWidth(btnWidth);
         }
 
         // Create or update next button
@@ -147,6 +201,7 @@ public class PostDetailPanel implements Drawable, Element {
         } else {
             nextImageButton.setX(nextBtnX);
             nextImageButton.setY(imageNavY);
+            nextImageButton.setWidth(btnWidth);
         }
     }
 
@@ -172,6 +227,8 @@ public class PostDetailPanel implements Drawable, Element {
         this.isLoadingDetails = true;
         this.currentImageIndex = 0;
         this.currentImageTexture = null;
+        this.originalImageWidth = 0;
+        this.originalImageHeight = 0;
         this.scrollOffset = 0;
 
         System.out.println("[PostDetailPanel] Post info set, loading details...");
@@ -261,6 +318,12 @@ public class PostDetailPanel implements Drawable, Element {
         // Check cache first
         if (imageCache.containsKey(imageUrl)) {
             currentImageTexture = imageCache.get(imageUrl);
+            // Also retrieve cached dimensions
+            int[] dims = imageDimensionsCache.get(imageUrl);
+            if (dims != null) {
+                originalImageWidth = dims[0];
+                originalImageHeight = dims[1];
+            }
             isLoadingImage = false;
             return;
         }
@@ -275,6 +338,12 @@ public class PostDetailPanel implements Drawable, Element {
                     client.execute(() -> {
                         if (imageUrl.equals(loadingImageUrl)) {
                             currentImageTexture = texId;
+                            // Set dimensions from cache
+                            int[] dims = imageDimensionsCache.get(imageUrl);
+                            if (dims != null) {
+                                originalImageWidth = dims[0];
+                                originalImageHeight = dims[1];
+                            }
                             isLoadingImage = false;
                         }
                     });
@@ -332,6 +401,9 @@ public class PostDetailPanel implements Drawable, Element {
             nativeImage.close();
             throw new Exception("Image too large");
         }
+
+        // Cache the original image dimensions
+        imageDimensionsCache.put(imageUrl, new int[]{imgWidth, imgHeight});
 
         // Register texture on main thread
         final NativeImage finalImage = nativeImage;
@@ -422,6 +494,8 @@ public class PostDetailPanel implements Drawable, Element {
         this.isLoadingDetails = false;
         this.isLoadingImage = false;
         this.currentImageTexture = null;
+        this.originalImageWidth = 0;
+        this.originalImageHeight = 0;
         this.imageUrls = null;
         this.currentImageIndex = 0;
         this.scrollOffset = 0;
@@ -736,40 +810,44 @@ public class PostDetailPanel implements Drawable, Element {
         int currentY = contentStartY + PADDING - (int) scrollOffset;
         contentHeight = 0;
 
-        // Draw image area
-        int imageX = x + (width - IMAGE_SIZE) / 2;
+        // Calculate responsive image dimensions (respecting aspect ratio)
+        int imageWidth = getDisplayImageWidth();
+        int imageHeight = getDisplayImageHeight();
+
+        // Draw image area (centered horizontally)
+        int imageX = x + (width - imageWidth) / 2;
         int imageY = currentY;
 
         if (isLoadingImage) {
             // Draw loading spinner centered in image area using reusable instance
-            context.fill(imageX, imageY, imageX + IMAGE_SIZE, imageY + IMAGE_SIZE, 0xFF333333);
+            context.fill(imageX, imageY, imageX + imageWidth, imageY + imageHeight, 0xFF333333);
             // Update spinner position to center it in the image area
             imageLoadingSpinner.setPosition(
-                imageX + IMAGE_SIZE / 2 - imageLoadingSpinner.getWidth() / 2,
-                imageY + IMAGE_SIZE / 2 - imageLoadingSpinner.getHeight() / 2
+                imageX + imageWidth / 2 - imageLoadingSpinner.getWidth() / 2,
+                imageY + imageHeight / 2 - imageLoadingSpinner.getHeight() / 2
             );
             imageLoadingSpinner.render(context, mouseX, mouseY, delta);
         } else if (currentImageTexture != null) {
-            // Draw image using RenderPipelines.GUI_TEXTURED
+            // Draw image using RenderPipelines.GUI_TEXTURED (stretch to fill)
             context.drawTexture(
                 RenderPipelines.GUI_TEXTURED,
                 currentImageTexture,
                 imageX, imageY,
                 0, 0,
-                IMAGE_SIZE, IMAGE_SIZE,
-                IMAGE_SIZE, IMAGE_SIZE
+                imageWidth, imageHeight,
+                imageWidth, imageHeight
             );
         } else {
             // Draw placeholder
-            context.fill(imageX, imageY, imageX + IMAGE_SIZE, imageY + IMAGE_SIZE, 0xFF333333);
-            String noImg = "No image";
+            context.fill(imageX, imageY, imageX + imageWidth, imageY + imageHeight, 0xFF333333);
+            String noImg = isCompactMode() ? "..." : "No image";
             int tw = client.textRenderer.getWidth(noImg);
             context.drawTextWithShadow(client.textRenderer, noImg,
-                imageX + (IMAGE_SIZE - tw) / 2, imageY + IMAGE_SIZE / 2 - 4, SUBTITLE_COLOR);
+                imageX + (imageWidth - tw) / 2, imageY + imageHeight / 2 - 4, SUBTITLE_COLOR);
         }
 
-        currentY += IMAGE_SIZE + PADDING;
-        contentHeight += IMAGE_SIZE + PADDING;
+        currentY += imageHeight + PADDING;
+        contentHeight += imageHeight + PADDING;
 
         // Draw image navigation if multiple images
         if (imageUrls != null && imageUrls.length > 1) {
