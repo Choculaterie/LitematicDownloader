@@ -5,6 +5,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ public class TextInputPopup implements Drawable, Element {
     private final Runnable onCancel;
     private final String confirmButtonText;
 
-    private SimpleTextField textField;
+    private CustomTextField textField;
     private CustomButton confirmButton;
     private CustomButton cancelButton;
     private String errorMessage = "";
@@ -57,17 +58,17 @@ public class TextInputPopup implements Drawable, Element {
     private void initWidgets() {
         MinecraftClient client = MinecraftClient.getInstance();
 
-        // Text field using SimpleTextField which handles all input through GLFW
+        // Text field using CustomTextField which handles all input through GLFW
         int fieldY = y + PADDING * 3;
-        textField = new SimpleTextField(
+        textField = new CustomTextField(
                 client,
                 x + PADDING,
                 fieldY,
                 POPUP_WIDTH - PADDING * 2,
-                20
+                20,
+                Text.literal("")
         );
-        textField.setPlaceholder("Enter folder name...");
-        textField.setMaxLength(255);
+        textField.setPlaceholder(Text.literal("Enter name..."));
         textField.setFocused(true);
         textField.setOnChanged(() -> errorMessage = ""); // Clear error when typing
         textField.setOnEnterPressed(this::handleConfirm);
@@ -201,6 +202,10 @@ public class TextInputPopup implements Drawable, Element {
 
         // Draw text field (it handles its own keyboard input through GLFW)
         if (textField != null) {
+            // Ensure text field stays focused to receive character input
+            if (!textField.isFocused()) {
+                textField.setFocused(true);
+            }
             textField.render(context, mouseX, mouseY, delta);
         }
 

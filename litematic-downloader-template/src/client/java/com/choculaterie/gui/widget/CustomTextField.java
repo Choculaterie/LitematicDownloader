@@ -161,7 +161,6 @@ public class CustomTextField extends TextFieldWidget {
 
             if (this.isFocused() && onEnterPressed != null && isEnterDown && !wasEnterDown) {
                 wasEnterDown = true;
-                // Just trigger search, don't unfocus here
                 onEnterPressed.run();
             } else if (!isEnterDown) {
                 wasEnterDown = false;

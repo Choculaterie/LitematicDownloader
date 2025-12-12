@@ -436,6 +436,15 @@ public class LocalFolderPage extends Screen {
     }
 
     private void openNewFolderPopup() {
+        // Don't open if popup already exists
+        if (activePopup != null) {
+            return;
+        }
+
+        // Unfocus search field when opening popup
+        if (searchField != null) {
+            searchField.setFocused(false);
+        }
         activePopup = new TextInputPopup(
                 this,
                 "Create New Folder",
@@ -484,6 +493,11 @@ public class LocalFolderPage extends Screen {
     }
 
     private void openRenamePopup() {
+        // Don't open if popup already exists
+        if (activePopup != null) {
+            return;
+        }
+
         // Can only rename single items
         if (selectedIndices.size() != 1) {
             return;
@@ -497,6 +511,10 @@ public class LocalFolderPage extends Screen {
         FileEntry entry = entries.get(index);
         String currentName = entry.file.getName();
 
+        // Unfocus search field when opening popup
+        if (searchField != null) {
+            searchField.setFocused(false);
+        }
         activePopup = new TextInputPopup(
                 this,
                 "Rename",
@@ -551,6 +569,11 @@ public class LocalFolderPage extends Screen {
     }
 
     private void handleDeleteClick() {
+        // Don't process if popup already exists
+        if (activePopup != null || confirmPopup != null) {
+            return;
+        }
+
         if (selectedIndices.isEmpty()) {
             return;
         }
@@ -642,6 +665,10 @@ public class LocalFolderPage extends Screen {
                 }
             }
 
+            // Unfocus search field when opening popup
+            if (searchField != null) {
+                searchField.setFocused(false);
+            }
             confirmPopup = new ConfirmPopup(
                     this,
                     title,
@@ -1369,9 +1396,9 @@ public class LocalFolderPage extends Screen {
 
         super.render(context, renderMouseX, renderMouseY, delta);
 
-        // Draw search field
-        if (searchField != null) {
-            searchField.render(context, popupActive ? -1 : mouseX, popupActive ? -1 : mouseY, delta);
+        // Draw search field (skip when popup is active to avoid interference)
+        if (searchField != null && !popupActive) {
+            searchField.render(context, mouseX, mouseY, delta);
         }
 
         // Draw current path as clickable breadcrumb (hide when search is active)

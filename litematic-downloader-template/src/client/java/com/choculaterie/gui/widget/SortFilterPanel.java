@@ -60,7 +60,7 @@ public class SortFilterPanel implements Drawable, Element {
     private Consumer<SortFilterPanel> onSettingsChanged;
 
     // UI Components
-    private SimpleTextField tagTextField;
+    private CustomTextField tagTextField;
     private CustomButton applyButton;
     private CustomButton resetButton;
 
@@ -76,8 +76,8 @@ public class SortFilterPanel implements Drawable, Element {
         loadSettings();
 
         // Initialize text field
-        this.tagTextField = new SimpleTextField(client, x + PADDING, y + 100, width - PADDING * 2 - 10, 18);
-        this.tagTextField.setPlaceholder("Enter tag...");
+        this.tagTextField = new CustomTextField(client, x + PADDING, y + 100, width - PADDING * 2 - 10, 18, Text.empty());
+        this.tagTextField.setPlaceholder(Text.literal("Enter tag..."));
         this.tagTextField.setText(tagFilter);
 
         // Initialize buttons
