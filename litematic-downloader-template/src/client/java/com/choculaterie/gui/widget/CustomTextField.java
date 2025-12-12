@@ -19,10 +19,34 @@ public class CustomTextField extends TextFieldWidget {
 
     private final MinecraftClient client;
     private Runnable onEnterPressed;
+    private Runnable onChanged;
     private boolean wasEnterDown = false;
     private boolean wasClearButtonMouseDown = false;
     private Text placeholderText;
     private Runnable onClearPressed;
+
+    // GLFW callback support for text input
+    private static CustomTextField activeField = null;
+    private static boolean callbackInstalled = false;
+    private static long installedWindowHandle = 0;
+
+    // Key state tracking for special keys
+    private boolean wasBackspacePressed = false;
+    private boolean wasDeletePressed = false;
+    private boolean wasLeftPressed = false;
+    private boolean wasRightPressed = false;
+    private boolean wasHomePressed = false;
+    private boolean wasEndPressed = false;
+
+    // Key repeat timing
+    private long backspaceHoldStart = 0;
+    private long deleteHoldStart = 0;
+    private long lastBackspaceRepeat = 0;
+    private long lastDeleteRepeat = 0;
+    private long leftHoldStart = 0;
+    private long rightHoldStart = 0;
+    private long lastLeftRepeat = 0;
+    private long lastRightRepeat = 0;
 
     public CustomTextField(MinecraftClient client, int x, int y, int width, int height, Text text) {
         super(client.textRenderer, x, y, width, height, text);
@@ -36,8 +60,60 @@ public class CustomTextField extends TextFieldWidget {
         this.onEnterPressed = callback;
     }
 
+    public void setOnChanged(Runnable callback) {
+        this.onChanged = callback;
+    }
+
     public void setOnClearPressed(Runnable callback) {
         this.onClearPressed = callback;
+    }
+
+    @Override
+    public void setFocused(boolean focused) {
+        super.setFocused(focused);
+        if (focused) {
+            activeField = this;
+            installCharCallback();
+        } else if (activeField == this) {
+            activeField = null;
+        }
+    }
+
+    private void installCharCallback() {
+        long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
+        if (windowHandle != 0 && (!callbackInstalled || installedWindowHandle != windowHandle)) {
+            // Install character callback for text input
+            GLFW.glfwSetCharCallback(windowHandle, (window, codepoint) -> {
+                if (activeField != null && activeField.isFocused()) {
+                    activeField.onCharTyped((char) codepoint);
+                }
+            });
+            callbackInstalled = true;
+            installedWindowHandle = windowHandle;
+        }
+    }
+
+    private void onCharTyped(char c) {
+        // Don't add Enter or other control characters to text
+        if (c == '\r' || c == '\n' || c < 32) {
+            return;
+        }
+
+        String currentText = this.getText();
+        int cursorPos = this.getCursor();
+
+        if (currentText.length() < this.getMaxLength()) {
+            String newText = currentText.substring(0, cursorPos) + c + currentText.substring(cursorPos);
+            this.setText(newText);
+            this.setCursor(cursorPos + 1, false);
+            if (onChanged != null) {
+                onChanged.run();
+            }
+        }
+    }
+
+    private int getMaxLength() {
+        return 256; // Match the value set in constructor
     }
 
     @Override
@@ -58,28 +134,19 @@ public class CustomTextField extends TextFieldWidget {
     public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
         long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
 
-        // Handle clicking on the text field to focus it using GLFW
+        // Handle clear button click using GLFW
         if (windowHandle != 0) {
             boolean isMouseDown = GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
 
-            // Check if mouse is over the text field (but not the clear button)
-            boolean isOverField = mouseX >= this.getX() && mouseX < this.getX() + this.getWidth() &&
-                                  mouseY >= this.getY() && mouseY < this.getY() + this.getHeight();
-
-            // If mouse just clicked and is over the field (not over clear button), focus it
-            if (isMouseDown && !wasClearButtonMouseDown && isOverField && !isOverClearButton(mouseX, mouseY)) {
-                if (!this.isFocused()) {
-                    this.setFocused(true);
-                }
-            }
-
-            // Handle clear button click separately
+            // Handle clear button click
             if (!this.getText().isEmpty() && isMouseDown && !wasClearButtonMouseDown && isOverClearButton(mouseX, mouseY)) {
                 this.setText("");
+                if (onChanged != null) {
+                    onChanged.run();
+                }
                 if (onClearPressed != null) {
                     onClearPressed.run();
                 }
-                // Don't set focus when clearing
             }
 
             wasClearButtonMouseDown = isMouseDown;
@@ -99,6 +166,11 @@ public class CustomTextField extends TextFieldWidget {
             } else if (!isEnterDown) {
                 wasEnterDown = false;
             }
+        }
+
+        // Handle special keys when focused
+        if (windowHandle != 0 && this.isFocused()) {
+            handleSpecialKeys(windowHandle);
         }
 
         // Draw custom background
@@ -166,6 +238,119 @@ public class CustomTextField extends TextFieldWidget {
             int xX = clearX + (CLEAR_BUTTON_SIZE - xWidth) / 2;
             int xY = clearY + (CLEAR_BUTTON_SIZE - 8) / 2;
             context.drawTextWithShadow(client.textRenderer, xSymbol, xX, xY, clearColor);
+        }
+    }
+
+    private void handleSpecialKeys(long windowHandle) {
+        long currentTime = System.currentTimeMillis();
+        long initialDelay = 400;
+        long repeatDelay = 50;
+
+        String currentText = this.getText();
+        int cursorPos = this.getCursor();
+
+        // Handle Backspace
+        boolean isBackspaceDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_BACKSPACE) == GLFW.GLFW_PRESS;
+        if (isBackspaceDown) {
+            boolean shouldDelete = false;
+            if (!wasBackspacePressed) {
+                shouldDelete = true;
+                backspaceHoldStart = currentTime;
+                lastBackspaceRepeat = currentTime;
+            } else if (currentTime - backspaceHoldStart > initialDelay && currentTime - lastBackspaceRepeat > repeatDelay) {
+                shouldDelete = true;
+                lastBackspaceRepeat = currentTime;
+            }
+            if (shouldDelete && cursorPos > 0) {
+                String newText = currentText.substring(0, cursorPos - 1) + currentText.substring(cursorPos);
+                this.setText(newText);
+                this.setCursor(cursorPos - 1, false);
+                currentText = newText; // Update for subsequent operations
+                cursorPos = cursorPos - 1;
+                if (onChanged != null) {
+                    onChanged.run();
+                }
+            }
+        }
+        wasBackspacePressed = isBackspaceDown;
+
+        // Handle Delete
+        boolean isDeleteDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_DELETE) == GLFW.GLFW_PRESS;
+        if (isDeleteDown) {
+            boolean shouldDelete = false;
+            if (!wasDeletePressed) {
+                shouldDelete = true;
+                deleteHoldStart = currentTime;
+                lastDeleteRepeat = currentTime;
+            } else if (currentTime - deleteHoldStart > initialDelay && currentTime - lastDeleteRepeat > repeatDelay) {
+                shouldDelete = true;
+                lastDeleteRepeat = currentTime;
+            }
+            if (shouldDelete && cursorPos < currentText.length()) {
+                String newText = currentText.substring(0, cursorPos) + currentText.substring(cursorPos + 1);
+                this.setText(newText);
+                currentText = newText; // Update for subsequent operations
+                if (onChanged != null) {
+                    onChanged.run();
+                }
+            }
+        }
+        wasDeletePressed = isDeleteDown;
+
+        // Handle Left Arrow
+        boolean isLeftDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_LEFT) == GLFW.GLFW_PRESS;
+        if (isLeftDown) {
+            boolean shouldMove = false;
+            if (!wasLeftPressed) {
+                shouldMove = true;
+                leftHoldStart = currentTime;
+                lastLeftRepeat = currentTime;
+            } else if (currentTime - leftHoldStart > initialDelay && currentTime - lastLeftRepeat > repeatDelay) {
+                shouldMove = true;
+                lastLeftRepeat = currentTime;
+            }
+            if (shouldMove && cursorPos > 0) {
+                this.setCursor(cursorPos - 1, false);
+            }
+        }
+        wasLeftPressed = isLeftDown;
+
+        // Handle Right Arrow
+        boolean isRightDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_RIGHT) == GLFW.GLFW_PRESS;
+        if (isRightDown) {
+            boolean shouldMove = false;
+            if (!wasRightPressed) {
+                shouldMove = true;
+                rightHoldStart = currentTime;
+                lastRightRepeat = currentTime;
+            } else if (currentTime - rightHoldStart > initialDelay && currentTime - lastRightRepeat > repeatDelay) {
+                shouldMove = true;
+                lastRightRepeat = currentTime;
+            }
+            if (shouldMove && cursorPos < currentText.length()) {
+                this.setCursor(cursorPos + 1, false);
+            }
+        }
+        wasRightPressed = isRightDown;
+
+        // Handle Home
+        boolean isHomeDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_HOME) == GLFW.GLFW_PRESS;
+        if (isHomeDown && !wasHomePressed) {
+            this.setCursor(0, false);
+        }
+        wasHomePressed = isHomeDown;
+
+        // Handle End
+        boolean isEndDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_END) == GLFW.GLFW_PRESS;
+        if (isEndDown && !wasEndPressed) {
+            this.setCursor(currentText.length(), false);
+        }
+        wasEndPressed = isEndDown;
+
+        // Handle Escape - unfocus the field
+        boolean isEscapeDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_ESCAPE) == GLFW.GLFW_PRESS;
+        if (isEscapeDown) {
+            this.setFocused(false);
         }
     }
 }

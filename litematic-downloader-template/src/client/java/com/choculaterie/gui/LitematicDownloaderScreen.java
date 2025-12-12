@@ -383,6 +383,10 @@ public class LitematicDownloaderScreen extends Screen {
 
         if (detailPanel != null && post != null) {
             detailPanel.setPost(post);
+            // Switch back to detail panel if filter panel is open
+            if (showFilterPanel) {
+                showFilterPanel = false;
+            }
             System.out.println("[LitematicDownloaderScreen] detailPanel.setPost() called");
         } else {
             System.out.println("[LitematicDownloaderScreen] WARNING: Cannot set post - detailPanel or post is null!");

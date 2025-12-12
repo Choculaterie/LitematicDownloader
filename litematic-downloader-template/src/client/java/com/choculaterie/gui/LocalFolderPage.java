@@ -4,6 +4,7 @@ import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.gui.widget.ConfirmPopup;
 import com.choculaterie.gui.widget.CustomButton;
 import com.choculaterie.gui.widget.ScrollBar;
+import com.choculaterie.gui.widget.CustomTextField;
 import com.choculaterie.gui.widget.TextInputPopup;
 import com.choculaterie.gui.widget.ToastManager;
 import com.choculaterie.network.ChoculaterieNetworkManager;
@@ -69,10 +70,18 @@ public class LocalFolderPage extends Screen {
     private List<FileAction> undoStack = new ArrayList<>();
     private List<FileAction> redoStack = new ArrayList<>();
     private static final int MAX_UNDO_HISTORY = 50;
-    private boolean wasCtrlZPressed = false;
-    private boolean wasCtrlYPressed = false;
-    private boolean wasDeletePressed = false;
     private File trashFolder; // Hidden folder for storing deleted files for undo
+
+    // Search support
+    private CustomTextField searchField;
+    private String searchQuery = "";
+    private List<FileEntry> filteredEntries = new ArrayList<>(); // Entries matching search
+    private boolean isSearchActive = false;
+
+    // Keyboard shortcut state tracking
+    private boolean wasDeleteKeyPressed = false;
+    private boolean wasZKeyPressed = false;
+    private boolean wasYKeyPressed = false;
 
     /**
      * Represents a file operation that can be undone/redone
@@ -145,10 +154,18 @@ public class LocalFolderPage extends Screen {
     private static class FileEntry {
         final File file;
         final boolean isDirectory;
+        String relativePath; // Path relative to base directory (for search results)
 
         FileEntry(File file) {
             this.file = file;
             this.isDirectory = file.isDirectory();
+            this.relativePath = null;
+        }
+
+        FileEntry(File file, String relativePath) {
+            this.file = file;
+            this.isDirectory = file.isDirectory();
+            this.relativePath = relativePath;
         }
     }
 
@@ -282,10 +299,12 @@ public class LocalFolderPage extends Screen {
                 button -> openInFileExplorer()
         );
         this.addDrawableChild(openFolderButton);
+        currentX += openFolderWidth + PADDING;
 
         // Settings button (top right)
+        int settingsX = this.width - PADDING - BUTTON_HEIGHT;
         settingsButton = new CustomButton(
-                this.width - PADDING - BUTTON_HEIGHT,
+                settingsX,
                 PADDING,
                 BUTTON_HEIGHT,
                 BUTTON_HEIGHT,
@@ -294,8 +313,18 @@ public class LocalFolderPage extends Screen {
         );
         this.addDrawableChild(settingsButton);
 
-        // Initialize scrollbar
-        int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
+        // Search field (same row, between Open Folder and Settings button)
+        int searchWidth = settingsX - currentX - PADDING;
+        if (this.client != null && searchWidth > 50) {
+            searchField = new CustomTextField(this.client, currentX, PADDING + 1, searchWidth, BUTTON_HEIGHT - 2, Text.literal("Search"));
+            searchField.setPlaceholder(Text.literal("Search..."));
+            searchField.setOnChanged(this::onSearchChanged);
+            searchField.setOnClearPressed(this::onSearchCleared);
+            this.addDrawableChild(searchField);
+        }
+
+        // Initialize scrollbar (no second row for search field)
+        int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
         int listHeight = this.height - listY - PADDING * 2;
         scrollBar = new ScrollBar(this.width - PADDING - SCROLLBAR_WIDTH, listY, listHeight);
         updateScrollBar();
@@ -946,11 +975,119 @@ public class LocalFolderPage extends Screen {
         }
     }
 
+    private void onSearchChanged() {
+        if (searchField != null) {
+            String newQuery = searchField.getText().trim().toLowerCase();
+            if (!newQuery.equals(searchQuery)) {
+                searchQuery = newQuery;
+                isSearchActive = !searchQuery.isEmpty();
+                performSearch();
+            }
+        }
+    }
+
+    private void onSearchCleared() {
+        searchQuery = "";
+        isSearchActive = false;
+        loadEntries();
+    }
+
+    private void performSearch() {
+        if (!isSearchActive || searchQuery.isEmpty()) {
+            loadEntries();
+            return;
+        }
+
+        entries.clear();
+        filteredEntries.clear();
+        selectedIndex = -1;
+        selectedIndices.clear();
+        lastClickedIndex = -1;
+        scrollOffset = 0;
+
+        // Search recursively from base directory
+        searchRecursively(baseDirectory, "");
+
+        // Sort results: directories first, then files, alphabetically by name
+        entries.sort((a, b) -> {
+            if (a.isDirectory && !b.isDirectory) return -1;
+            if (!a.isDirectory && b.isDirectory) return 1;
+            return a.file.getName().compareToIgnoreCase(b.file.getName());
+        });
+
+        updateScrollBar();
+        updateSelectionButtons();
+    }
+
+    private void searchRecursively(File directory, String pathPrefix) {
+        if (directory == null || !directory.exists() || !directory.isDirectory()) {
+            return;
+        }
+
+        File[] files = directory.listFiles();
+        if (files == null) {
+            return;
+        }
+
+        for (File file : files) {
+            // Skip hidden trash folder
+            if (file.getName().equals(".trash")) {
+                continue;
+            }
+
+            String fileName = file.getName().toLowerCase();
+            String currentPath = pathPrefix.isEmpty() ? file.getName() : pathPrefix + "/" + file.getName();
+
+            // Check if name matches search query
+            if (fileName.contains(searchQuery)) {
+                // Calculate relative path from base directory
+                String relativePath = getRelativePath(file);
+                entries.add(new FileEntry(file, relativePath));
+            }
+
+            // Recurse into directories
+            if (file.isDirectory()) {
+                searchRecursively(file, currentPath);
+            }
+        }
+    }
+
+    private String getRelativePath(File file) {
+        if (baseDirectory == null || file == null) {
+            return "";
+        }
+        try {
+            String basePath = baseDirectory.getCanonicalPath();
+            String filePath = file.getCanonicalPath();
+            if (filePath.startsWith(basePath)) {
+                String relative = filePath.substring(basePath.length());
+                if (relative.startsWith(File.separator)) {
+                    relative = relative.substring(1);
+                }
+                // Remove the file name to get just the directory path
+                int lastSep = relative.lastIndexOf(File.separator);
+                if (lastSep > 0) {
+                    return relative.substring(0, lastSep);
+                }
+                return "";
+            }
+        } catch (Exception e) {
+            // Ignore
+        }
+        return "";
+    }
+
     private void loadEntries() {
         entries.clear();
         selectedIndex = -1;
         selectedIndices.clear();
         lastClickedIndex = -1;
+
+        // If search is active, perform search instead
+        if (isSearchActive && !searchQuery.isEmpty()) {
+            performSearch();
+            return;
+        }
 
         if (currentDirectory != null && currentDirectory.exists()) {
             File[] files = currentDirectory.listFiles();
@@ -979,7 +1116,7 @@ public class LocalFolderPage extends Screen {
 
     private void updateScrollBar() {
         if (scrollBar != null) {
-            int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
+            int listY = PADDING * 3 + BUTTON_HEIGHT + 18; // Account for search field
             int listHeight = this.height - listY - PADDING * 2;
             int maxVisibleItems = listHeight / ITEM_HEIGHT;
 
@@ -992,6 +1129,15 @@ public class LocalFolderPage extends Screen {
     }
 
     private void goUpDirectory() {
+        // Clear search when navigating
+        if (isSearchActive) {
+            searchQuery = "";
+            isSearchActive = false;
+            if (searchField != null) {
+                searchField.setText("");
+            }
+        }
+
         if (currentDirectory != null && baseDirectory != null) {
             // Don't allow going above the base directory
             try {
@@ -1060,7 +1206,7 @@ public class LocalFolderPage extends Screen {
     private void renderBreadcrumb(DrawContext context, int mouseX, int mouseY) {
         breadcrumbSegments.clear();
 
-        int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT;
+        int breadcrumbY = PADDING + BUTTON_HEIGHT + PADDING + 14;
         int currentX = PADDING;
 
         // Draw "Current: " label
@@ -1164,39 +1310,46 @@ public class LocalFolderPage extends Screen {
         // Fill the entire screen with dark grey background
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
-        // Handle Ctrl+Z (Undo) and Ctrl+Y (Redo) and DELETE key using GLFW polling
-        if (this.client != null && this.client.getWindow() != null && activePopup == null && confirmPopup == null) {
+        // Handle keyboard shortcuts (only when search field is not focused and no popup is active)
+        if (this.client != null && this.client.getWindow() != null) {
             long windowHandle = this.client.getWindow().getHandle();
-            boolean ctrlHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                              org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-            boolean shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                               org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-            boolean zPressed = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_Z) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-            boolean yPressed = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_Y) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-            boolean deletePressed = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+            boolean searchFocused = searchField != null && searchField.isFocused();
+            boolean popupActive = activePopup != null || confirmPopup != null;
 
-            // Ctrl+Z - Undo (on key down edge)
-            if (ctrlHeld && zPressed && !wasCtrlZPressed) {
-                performUndo();
-            }
-            // Ctrl+Y - Redo (on key down edge)
-            if (ctrlHeld && yPressed && !wasCtrlYPressed) {
-                performRedo();
-            }
-            // DELETE key - Delete selected files/folders (on key down edge)
-            if (deletePressed && !wasDeletePressed && !selectedIndices.isEmpty()) {
-                if (shiftHeld) {
-                    // Shift+Delete - delete immediately without confirmation
-                    deleteSelectedFiles();
-                } else {
-                    // Delete - show confirmation dialog
-                    handleDeleteClick();
+            if (!searchFocused && !popupActive) {
+                // Check modifier keys
+                boolean ctrlHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                                   org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                                    org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+
+                // Handle DELETE key for deleting selected items
+                boolean isDeleteDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                if (isDeleteDown && !wasDeleteKeyPressed && !selectedIndices.isEmpty()) {
+                    if (shiftHeld) {
+                        // Shift+Delete - delete immediately without confirmation
+                        deleteSelectedFiles();
+                    } else {
+                        // Delete - show confirmation dialog
+                        handleDeleteClick();
+                    }
                 }
-            }
+                wasDeleteKeyPressed = isDeleteDown;
 
-            wasCtrlZPressed = ctrlHeld && zPressed;
-            wasCtrlYPressed = ctrlHeld && yPressed;
-            wasDeletePressed = deletePressed;
+                // Handle Ctrl+Z for Undo
+                boolean isZDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_Z) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                if (isZDown && !wasZKeyPressed && ctrlHeld) {
+                    performUndo();
+                }
+                wasZKeyPressed = isZDown;
+
+                // Handle Ctrl+Y for Redo
+                boolean isYDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_Y) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                if (isYDown && !wasYKeyPressed && ctrlHeld) {
+                    performRedo();
+                }
+                wasYKeyPressed = isYDown;
+            }
         }
 
         // Check for drag state using GLFW
@@ -1218,7 +1371,7 @@ public class LocalFolderPage extends Screen {
 
                 // Update drop target while dragging
                 if (isDragging) {
-                    int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
+                    int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
                     int listHeight = this.height - listY - PADDING * 2;
                     int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
@@ -1226,7 +1379,7 @@ public class LocalFolderPage extends Screen {
                     dropTargetBreadcrumb = null;
 
                     // Check breadcrumb drop targets first
-                    int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT;
+                    int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT + 18 - 14;
                     if (mouseY >= breadcrumbY - 2 && mouseY < breadcrumbY + 12) {
                         for (BreadcrumbSegment segment : breadcrumbSegments) {
                             if (mouseX >= segment.x && mouseX < segment.x + segment.width) {
@@ -1295,11 +1448,23 @@ public class LocalFolderPage extends Screen {
 
         super.render(context, renderMouseX, renderMouseY, delta);
 
-        // Draw current path as clickable breadcrumb
-        renderBreadcrumb(context, mouseX, mouseY);
+        // Draw search field
+        if (searchField != null) {
+            searchField.render(context, popupActive ? -1 : mouseX, popupActive ? -1 : mouseY, delta);
+        }
+
+        // Draw current path as clickable breadcrumb (hide when search is active)
+        if (!isSearchActive) {
+            renderBreadcrumb(context, mouseX, mouseY);
+        } else {
+            // Show search results count
+            int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT + 18 - 14;
+            String searchInfo = "Found " + entries.size() + " result" + (entries.size() != 1 ? "s" : "") + " for \"" + searchQuery + "\"";
+            context.drawTextWithShadow(this.textRenderer, searchInfo, PADDING, breadcrumbY, 0xFFAAAAFF);
+        }
 
         // Draw file/folder list
-        int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
+        int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
         int listHeight = this.height - listY - PADDING * 2;
         int maxVisibleItems = listHeight / ITEM_HEIGHT;
 
@@ -1341,21 +1506,63 @@ public class LocalFolderPage extends Screen {
 
             // Draw icon and name
             String icon = entry.isDirectory ? "📁" : "📄";
-            String displayName = icon + " " + entry.file.getName();
+            String fileName = entry.file.getName();
+            int textX = PADDING + 5;
+            int textY = itemY + (isSearchActive && entry.relativePath != null && !entry.relativePath.isEmpty() ? 4 : 8);
+
+            // Draw icon
+            context.drawTextWithShadow(this.textRenderer, icon + " ", textX, textY, 0xFFFFFFFF);
+            textX += this.textRenderer.getWidth(icon + " ");
+
+            // Draw file name with highlighting if search is active
+            if (isSearchActive && !searchQuery.isEmpty()) {
+                String lowerName = fileName.toLowerCase();
+                int searchIndex = lowerName.indexOf(searchQuery);
+
+                if (searchIndex >= 0) {
+                    // Draw text before match
+                    String beforeMatch = fileName.substring(0, searchIndex);
+                    if (!beforeMatch.isEmpty()) {
+                        context.drawTextWithShadow(this.textRenderer, beforeMatch, textX, textY, 0xFFFFFFFF);
+                        textX += this.textRenderer.getWidth(beforeMatch);
+                    }
+
+                    // Draw highlighted match
+                    String matchText = fileName.substring(searchIndex, searchIndex + searchQuery.length());
+                    int matchWidth = this.textRenderer.getWidth(matchText);
+                    context.fill(textX - 1, textY - 1, textX + matchWidth + 1, textY + 9, 0xFF4488FF); // Blue highlight bg
+                    context.drawTextWithShadow(this.textRenderer, matchText, textX, textY, 0xFFFFFFFF);
+                    textX += matchWidth;
+
+                    // Draw text after match
+                    String afterMatch = fileName.substring(searchIndex + searchQuery.length());
+                    if (!afterMatch.isEmpty()) {
+                        context.drawTextWithShadow(this.textRenderer, afterMatch, textX, textY, 0xFFFFFFFF);
+                        textX += this.textRenderer.getWidth(afterMatch);
+                    }
+                } else {
+                    // No match found, draw normally
+                    context.drawTextWithShadow(this.textRenderer, fileName, textX, textY, 0xFFFFFFFF);
+                    textX += this.textRenderer.getWidth(fileName);
+                }
+            } else {
+                // Normal display
+                context.drawTextWithShadow(this.textRenderer, fileName, textX, textY, 0xFFFFFFFF);
+                textX += this.textRenderer.getWidth(fileName);
+            }
 
             // Add file size for files
             if (!entry.isDirectory) {
                 long sizeKB = entry.file.length() / 1024;
-                displayName += " (" + sizeKB + " KB)";
+                String sizeText = " (" + sizeKB + " KB)";
+                context.drawTextWithShadow(this.textRenderer, sizeText, textX, textY, 0xFFAAAAAA);
             }
 
-            context.drawTextWithShadow(
-                    this.textRenderer,
-                    displayName,
-                    PADDING + 5,
-                    itemY + 8,
-                    0xFFFFFFFF
-            );
+            // Draw relative path for search results (below the file name)
+            if (isSearchActive && entry.relativePath != null && !entry.relativePath.isEmpty()) {
+                String pathDisplay = "📍 " + entry.relativePath;
+                context.drawTextWithShadow(this.textRenderer, pathDisplay, PADDING + 5 + this.textRenderer.getWidth(icon + " "), itemY + 15, 0xFF888888);
+            }
 
             // Draw quick share button for litematic files
             if (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic")) {
@@ -1399,10 +1606,10 @@ public class LocalFolderPage extends Screen {
                 context.fill(buttonX + buttonWidth - 1, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, borderColor);
 
                 // Draw button text centered
-                int textWidth = this.textRenderer.getWidth(buttonText);
-                int textX = buttonX + (buttonWidth - textWidth) / 2;
-                int textY = buttonY + (buttonHeight - 8) / 2;
-                context.drawTextWithShadow(this.textRenderer, buttonText, textX, textY, buttonTextColor);
+                int btnTextWidth = this.textRenderer.getWidth(buttonText);
+                int btnTextX = buttonX + (buttonWidth - btnTextWidth) / 2;
+                int btnTextY = buttonY + (buttonHeight - 8) / 2;
+                context.drawTextWithShadow(this.textRenderer, buttonText, btnTextX, btnTextY, buttonTextColor);
             }
         }
 
@@ -1482,15 +1689,33 @@ public class LocalFolderPage extends Screen {
             }
         }
 
+        // Handle search field click
+        if (button == 0 && searchField != null) {
+            if (searchField.isMouseOver(mouseX, mouseY)) {
+                searchField.setFocused(true);
+                return true;
+            } else {
+                searchField.setFocused(false);
+            }
+        }
+
         if (super.mouseClicked(click, doubled)) {
             return true;
         }
 
         // Handle breadcrumb clicks
-        int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT;
+        int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT + 18 - 14;
         if (mouseY >= breadcrumbY - 2 && mouseY < breadcrumbY + 12) {
             for (BreadcrumbSegment segment : breadcrumbSegments) {
                 if (mouseX >= segment.x && mouseX < segment.x + segment.width) {
+                    // Clear search when navigating
+                    if (isSearchActive) {
+                        searchQuery = "";
+                        isSearchActive = false;
+                        if (searchField != null) {
+                            searchField.setText("");
+                        }
+                    }
                     // Navigate to this directory
                     currentDirectory = segment.directory;
                     loadEntries();
@@ -1501,7 +1726,7 @@ public class LocalFolderPage extends Screen {
         }
 
         // Handle file/folder list clicks (only in list area, not scrollbar)
-        int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
+        int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
         int listHeight = this.height - listY - PADDING * 2;
         int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
@@ -1538,6 +1763,14 @@ public class LocalFolderPage extends Screen {
                     // Handle double-click on selected directory first
                     if (entry.isDirectory && selectedIndices.contains(clickedIndex) && doubled && !shiftHeld && !ctrlHeld) {
                         // Double click on already selected directory - enter it
+                        // Clear search when navigating
+                        if (isSearchActive) {
+                            searchQuery = "";
+                            isSearchActive = false;
+                            if (searchField != null) {
+                                searchField.setText("");
+                            }
+                        }
                         currentDirectory = entry.file;
                         loadEntries();
                         scrollOffset = 0;
@@ -1611,7 +1844,7 @@ public class LocalFolderPage extends Screen {
 
         // Update drop target while dragging
         if (isDragging) {
-            int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
+            int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
             int listHeight = this.height - listY - PADDING * 2;
             int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
@@ -1950,6 +2183,40 @@ public class LocalFolderPage extends Screen {
         }
     }
 
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // Let the search field handle key events first when focused
+        if (searchField != null && searchField.isFocused()) {
+            // The search field extends TextFieldWidget which handles keys internally
+            return true;
+        }
+
+        // Handle global shortcuts only if search field is not focused
+        if (searchField == null || !searchField.isFocused()) {
+            // Handle Ctrl+Z (Undo)
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z && (modifiers & org.lwjgl.glfw.GLFW.GLFW_MOD_CONTROL) != 0 && activePopup == null && confirmPopup == null) {
+                performUndo();
+                return true;
+            }
+            // Handle Ctrl+Y (Redo)
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Y && (modifiers & org.lwjgl.glfw.GLFW.GLFW_MOD_CONTROL) != 0 && activePopup == null && confirmPopup == null) {
+                performRedo();
+                return true;
+            }
+            // Handle DELETE key
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE && activePopup == null && confirmPopup == null && !selectedIndices.isEmpty()) {
+                if ((modifiers & org.lwjgl.glfw.GLFW.GLFW_MOD_SHIFT) != 0) {
+                    // Shift+Delete - delete immediately without confirmation
+                    deleteSelectedFiles();
+                } else {
+                    // Delete - show confirmation dialog
+                    handleDeleteClick();
+                }
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     @Override
     public boolean shouldPause() {
