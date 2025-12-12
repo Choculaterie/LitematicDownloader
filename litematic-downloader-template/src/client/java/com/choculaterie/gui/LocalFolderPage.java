@@ -192,6 +192,12 @@ public class LocalFolderPage extends Screen {
     protected void init() {
         super.init();
 
+        // Save current scroll position before reinitializing
+        int savedScrollOffset = scrollOffset;
+
+        // Save search text before reinitializing widgets
+        String previousSearchText = (searchField != null) ? searchField.getText() : "";
+
         // Initialize toast manager
         if (this.client != null) {
             toastManager = new ToastManager(this.client);
@@ -277,6 +283,10 @@ public class LocalFolderPage extends Screen {
             searchField.setPlaceholder(Text.literal("Search..."));
             searchField.setOnChanged(this::onSearchChanged);
             searchField.setOnClearPressed(this::onSearchCleared);
+            // Restore previous search text on resize
+            if (!previousSearchText.isEmpty()) {
+                searchField.setText(previousSearchText);
+            }
             this.addDrawableChild(searchField);
         }
 
@@ -284,7 +294,19 @@ public class LocalFolderPage extends Screen {
         int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
         int listHeight = this.height - listY - PADDING * 2;
         scrollBar = new ScrollBar(this.width - PADDING - SCROLLBAR_WIDTH, listY, listHeight);
-        updateScrollBar();
+
+        // Restore scroll position
+        int contentHeight = entries.size() * ITEM_HEIGHT;
+        // maxScroll = how many items are hidden when scrolled to bottom
+        int maxScroll = contentHeight <= listHeight ? 0 : entries.size() - listHeight / ITEM_HEIGHT;
+        // Set scroll data first
+        scrollBar.setScrollData(contentHeight, listHeight);
+        // Clamp and restore scroll offset
+        scrollOffset = Math.max(0, Math.min(maxScroll, savedScrollOffset));
+        // Update scrollbar percentage to match
+        if (maxScroll > 0) {
+            scrollBar.setScrollPercentage((double) scrollOffset / maxScroll);
+        }
     }
 
     private void goBack() {
@@ -1083,12 +1105,13 @@ public class LocalFolderPage extends Screen {
         if (scrollBar != null) {
             int listY = PADDING * 3 + BUTTON_HEIGHT + 18; // Account for search field
             int listHeight = this.height - listY - PADDING * 2;
-            int maxVisibleItems = listHeight / ITEM_HEIGHT;
+            int contentHeight = entries.size() * ITEM_HEIGHT;
 
-            scrollBar.setScrollData(entries.size() * ITEM_HEIGHT, maxVisibleItems * ITEM_HEIGHT);
+            scrollBar.setScrollData(contentHeight, listHeight);
 
             // Update scroll offset from scrollbar percentage
-            int maxScroll = Math.max(0, entries.size() - maxVisibleItems);
+            // maxScroll = how many items are hidden when scrolled to bottom
+            int maxScroll = contentHeight <= listHeight ? 0 : entries.size() - listHeight / ITEM_HEIGHT;
             scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
         }
     }
@@ -1364,13 +1387,17 @@ public class LocalFolderPage extends Screen {
         // Draw file/folder list
         int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
         int listHeight = this.height - listY - PADDING * 2;
-        int maxVisibleItems = listHeight / ITEM_HEIGHT;
+        // Add 1 to include partial items at the bottom
+        int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
 
         // Calculate list width (end before scrollbar)
         int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
         // Draw list background (end before scrollbar)
         context.fill(PADDING, listY, listRightEdge, listY + listHeight, 0xFF151515);
+
+        // Enable scissor to clip content outside the list area
+        context.enableScissor(PADDING, listY, listRightEdge, listY + listHeight);
 
         // Draw entries
         quickShareButtons.clear(); // Reset button positions each frame
@@ -1510,6 +1537,9 @@ public class LocalFolderPage extends Screen {
                 context.drawTextWithShadow(this.textRenderer, buttonText, btnTextX, btnTextY, buttonTextColor);
             }
         }
+
+        // Disable scissor after rendering entries
+        context.disableScissor();
 
         // Render scrollbar widget with drag support
         if (scrollBar != null && scrollBar.isVisible() && this.client != null) {
@@ -1739,9 +1769,11 @@ public class LocalFolderPage extends Screen {
             return true;
         }
 
-        int listHeight = this.height - (PADDING * 4 + BUTTON_HEIGHT + 10) - PADDING * 2;
-        int maxVisibleItems = listHeight / ITEM_HEIGHT;
-        int maxScroll = Math.max(0, entries.size() - maxVisibleItems);
+        int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
+        int listHeight = this.height - listY - PADDING * 2;
+        int contentHeight = entries.size() * ITEM_HEIGHT;
+        // maxScroll = how many items are hidden when scrolled to bottom
+        int maxScroll = contentHeight <= listHeight ? 0 : entries.size() - listHeight / ITEM_HEIGHT;
 
         scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int)verticalAmount));
 

@@ -45,6 +45,7 @@ public class LitematicDownloaderScreen extends Screen {
     private String currentSearchQuery = "";
     private boolean noResultsFound = false;
     private boolean showFilterPanel = false; // Toggle between detail and filter panel
+    private boolean initialized = false; // Track if first init has been done
 
     public LitematicDownloaderScreen() {
         super(Text.literal("Litematic Downloader"));
@@ -53,6 +54,9 @@ public class LitematicDownloaderScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+
+        // Store the current search text before reinitializing widgets
+        String previousSearchText = (searchField != null) ? searchField.getText() : "";
 
         // Initialize toast manager
         if (this.client != null) {
@@ -91,6 +95,10 @@ public class LitematicDownloaderScreen extends Screen {
             searchField.setPlaceholder(Text.literal(isCompact ? "Search..." : "Search schematics..."));
             searchField.setOnEnterPressed(this::performSearch);
             searchField.setOnClearPressed(this::performSearch);
+            // Restore previous search text on resize
+            if (!previousSearchText.isEmpty()) {
+                searchField.setText(previousSearchText);
+            }
             this.addDrawableChild(searchField);
         }
 
@@ -105,26 +113,44 @@ public class LitematicDownloaderScreen extends Screen {
         );
         this.addDrawableChild(searchButton);
 
-        // Post list area (left side)
+        // Post list area (left side) - reuse on resize to preserve scroll position
         int listY = PADDING + SEARCH_BAR_HEIGHT + PADDING;
         int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 2;
 
-        postList = new PostListWidget(
-                PADDING,
-                listY,
-                leftPanelWidth - PADDING * 2,
-                listHeight,
-                this::onPostClick
-        );
+        if (postList == null) {
+            postList = new PostListWidget(
+                    PADDING,
+                    listY,
+                    leftPanelWidth - PADDING * 2,
+                    listHeight,
+                    this::onPostClick
+            );
+        } else {
+            postList.setDimensions(
+                    PADDING,
+                    listY,
+                    leftPanelWidth - PADDING * 2,
+                    listHeight
+            );
+        }
         this.addDrawableChild(postList);
 
-        // Detail panel (right side)
-        detailPanel = new PostDetailPanel(
-                leftPanelWidth,
-                PADDING,
-                rightPanelWidth - PADDING,
-                this.height - PADDING * 2
-        );
+        // Detail panel (right side) - reuse on resize to preserve state
+        if (detailPanel == null) {
+            detailPanel = new PostDetailPanel(
+                    leftPanelWidth,
+                    PADDING,
+                    rightPanelWidth - PADDING,
+                    this.height - PADDING * 2
+            );
+        } else {
+            detailPanel.setDimensions(
+                    leftPanelWidth,
+                    PADDING,
+                    rightPanelWidth - PADDING,
+                    this.height - PADDING * 2
+            );
+        }
 
         // Sort/Filter panel (right side, same position as detail panel)
         sortFilterPanel = new SortFilterPanel(
@@ -200,11 +226,18 @@ public class LitematicDownloaderScreen extends Screen {
         modMessageBanner = new ModMessageBanner(0, 0, this.width);
         modMessageBanner.setOnDismiss(this::onModMessageDismissed);
 
-        // Fetch mod message from server
-        fetchModMessage();
-
-        // Perform initial search with empty query to show popular items
-        performSearch();
+        // Only perform initial actions on first init, not on resize
+        if (!initialized) {
+            initialized = true;
+            // Fetch mod message from server
+            fetchModMessage();
+            // Perform initial search with empty query to show popular items
+            performSearch();
+        } else {
+            // On resize, just update pagination button states
+            // Note: postList and detailPanel preserve their own state since we reuse instances
+            updatePaginationButtons();
+        }
     }
 
     private void fetchModMessage() {
@@ -431,20 +464,45 @@ public class LitematicDownloaderScreen extends Screen {
             detailPanel.render(context, effectiveMouseX, effectiveMouseY, delta);
         }
 
-        // Draw page indicator (left side)
+        // Draw page indicator (left side) - responsive text based on available space
         if (totalPages > 1 || totalItems > ITEMS_PER_PAGE) {
-            String pageText = String.format("Page %d / %d (%d items)",
+            // Calculate responsive sizes (same as init())
+            boolean isCompact = leftPanelWidth < 250;
+            boolean isVeryCompact = leftPanelWidth < 180;
+            int paginationButtonWidth = isVeryCompact ? 25 : (isCompact ? 50 : 80);
+
+            // Calculate available space between pagination buttons
+            int availableWidth = leftPanelWidth - PADDING - paginationButtonWidth - PADDING - paginationButtonWidth - PADDING;
+
+            // Try progressively shorter formats until one fits
+            String pageText;
+            String fullText = String.format("Page %d / %d (%d items)",
                     currentPage,
                     Math.max(totalPages, (int) Math.ceil(totalItems / (double) ITEMS_PER_PAGE)),
                     totalItems);
-            int textWidth = this.textRenderer.getWidth(pageText);
-            context.drawTextWithShadow(
-                    this.textRenderer,
-                    pageText,
-                    (leftPanelWidth - textWidth) / 2,
-                    this.height - BUTTON_HEIGHT / 2 - 4 - PADDING,
-                    0xFFFFFFFF
-            );
+            String mediumText = String.format("%d / %d", currentPage, Math.max(totalPages, 1));
+            String shortText = String.format("%d/%d", currentPage, Math.max(totalPages, 1));
+
+            if (this.textRenderer.getWidth(fullText) <= availableWidth) {
+                pageText = fullText;
+            } else if (this.textRenderer.getWidth(mediumText) <= availableWidth) {
+                pageText = mediumText;
+            } else if (this.textRenderer.getWidth(shortText) <= availableWidth) {
+                pageText = shortText;
+            } else {
+                pageText = null; // Don't show if even shortest doesn't fit
+            }
+
+            if (pageText != null) {
+                int textWidth = this.textRenderer.getWidth(pageText);
+                context.drawTextWithShadow(
+                        this.textRenderer,
+                        pageText,
+                        (leftPanelWidth - textWidth) / 2,
+                        this.height - BUTTON_HEIGHT / 2 - 4 - PADDING,
+                        0xFFFFFFFF
+                );
+            }
         }
 
         // Draw loading indicator (left side)

@@ -59,6 +59,10 @@ public class DirectoryPickerScreen extends Screen {
     protected void init() {
         super.init();
 
+        // Save current scroll position before reinitializing
+        int savedScrollOffset = scrollOffset;
+        int savedSelectedIndex = selectedIndex;
+
         // Initialize toast manager
         if (this.client != null) {
             toastManager = new ToastManager(this.client);
@@ -110,7 +114,20 @@ public class DirectoryPickerScreen extends Screen {
         int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
         int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;
         scrollBar = new ScrollBar(this.width - PADDING - SCROLLBAR_WIDTH, listY, listHeight);
-        updateScrollBar();
+
+        // Restore scroll position and selection
+        int contentHeight = directories.size() * ITEM_HEIGHT;
+        // Use ceiling to ensure we can scroll to show the last item
+        int maxScroll = Math.max(0, (contentHeight - listHeight + ITEM_HEIGHT - 1) / ITEM_HEIGHT);
+        // Set scroll data first
+        scrollBar.setScrollData(contentHeight, listHeight);
+        // Clamp and restore scroll offset and selection
+        scrollOffset = Math.max(0, Math.min(maxScroll, savedScrollOffset));
+        selectedIndex = savedSelectedIndex;
+        // Update scrollbar percentage to match
+        if (maxScroll > 0) {
+            scrollBar.setScrollPercentage((double) scrollOffset / maxScroll);
+        }
     }
 
     private void loadDirectories() {
@@ -132,12 +149,13 @@ public class DirectoryPickerScreen extends Screen {
         if (scrollBar != null) {
             int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
             int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;
-            int maxVisibleItems = listHeight / ITEM_HEIGHT;
+            int contentHeight = directories.size() * ITEM_HEIGHT;
 
-            scrollBar.setScrollData(directories.size() * ITEM_HEIGHT, maxVisibleItems * ITEM_HEIGHT);
+            scrollBar.setScrollData(contentHeight, listHeight);
 
             // Update scroll offset from scrollbar percentage
-            int maxScroll = Math.max(0, directories.size() - maxVisibleItems);
+            // Use ceiling to ensure we can scroll to show the last item
+            int maxScroll = Math.max(0, (contentHeight - listHeight + ITEM_HEIGHT - 1) / ITEM_HEIGHT);
             scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
         }
     }
@@ -214,13 +232,17 @@ public class DirectoryPickerScreen extends Screen {
         // Draw directories list
         int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
         int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;
-        int maxVisibleItems = listHeight / ITEM_HEIGHT;
+        // Add 1 to include partial items at the bottom
+        int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
 
         // Calculate list width (end before scrollbar)
         int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
         // Draw list background (end before scrollbar)
         context.fill(PADDING, listY, listRightEdge, listY + listHeight, 0xFF151515);
+
+        // Enable scissor to clip content outside the list area
+        context.enableScissor(PADDING, listY, listRightEdge, listY + listHeight);
 
         // Draw directories
         for (int i = scrollOffset; i < Math.min(directories.size(), scrollOffset + maxVisibleItems); i++) {
@@ -246,6 +268,9 @@ public class DirectoryPickerScreen extends Screen {
                     0xFFFFFFFF
             );
         }
+
+        // Disable scissor after rendering entries
+        context.disableScissor();
 
         // Render scrollbar widget with drag support
         if (scrollBar != null && scrollBar.isVisible() && this.client != null) {
@@ -305,15 +330,17 @@ public class DirectoryPickerScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        int listHeight = this.height - (PADDING * 4 + BUTTON_HEIGHT + 10) - BUTTON_HEIGHT - PADDING * 3;
-        int maxVisibleItems = listHeight / ITEM_HEIGHT;
-        int maxScroll = Math.max(0, directories.size() - maxVisibleItems);
+        int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
+        int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;
+        int contentHeight = directories.size() * ITEM_HEIGHT;
+        // Use ceiling to ensure we can scroll to show the last item
+        int maxScroll = Math.max(0, (contentHeight - listHeight + ITEM_HEIGHT - 1) / ITEM_HEIGHT);
 
         scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int)verticalAmount));
 
         // Update scrollbar to match
         if (scrollBar != null && maxScroll > 0) {
-            scrollBar.setScrollPercentage((double)scrollOffset / maxScroll);
+            scrollBar.setScrollPercentage((double) scrollOffset / maxScroll);
         }
 
         return true;

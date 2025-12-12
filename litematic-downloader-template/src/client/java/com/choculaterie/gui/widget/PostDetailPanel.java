@@ -215,6 +215,12 @@ public class PostDetailPanel implements Drawable, Element {
             return;
         }
 
+        // Skip if the same post is already loaded (avoid reload on resize)
+        if (this.postInfo != null && post.getUuid() != null && post.getUuid().equals(this.postInfo.getUuid())) {
+            System.out.println("[PostDetailPanel] Same post already loaded, skipping reload");
+            return;
+        }
+
         System.out.println("[PostDetailPanel] Setting post: " + post.getTitle());
         System.out.println("[PostDetailPanel] UUID: " + post.getUuid());
         System.out.println("[PostDetailPanel] Vendor: " + post.getVendor());

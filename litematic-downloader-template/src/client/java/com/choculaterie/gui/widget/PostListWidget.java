@@ -37,8 +37,20 @@ public class PostListWidget extends ClickableWidget {
         this.width = width;
         this.height = height;
         this.scrollBar = new ScrollBar(x + width - 8, y, height);
-        // Rebuild entries with new width
+        // Rebuild entries with new width, preserving scroll position
+        double savedScroll = this.scrollAmount;
         rebuildEntries();
+        this.scrollAmount = savedScroll;
+        updateScrollBar();
+    }
+
+    public double getScrollAmount() {
+        return scrollAmount;
+    }
+
+    public void setScrollAmount(double scrollAmount) {
+        this.scrollAmount = scrollAmount;
+        updateScrollBar();
     }
 
     private void rebuildEntries() {
