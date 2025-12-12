@@ -56,6 +56,15 @@ public class CustomTextField extends TextFieldWidget {
         this.setFocusUnlocked(true); // Allow focus to be set at any time
     }
 
+    /**
+     * Override to prevent parent class from processing character input.
+     * We handle all character input via our GLFW callback to avoid double input.
+     */
+    @Override
+    public void write(String text) {
+        // Do nothing - we handle text input via GLFW callback
+    }
+
     public void setOnEnterPressed(Runnable callback) {
         this.onEnterPressed = callback;
     }

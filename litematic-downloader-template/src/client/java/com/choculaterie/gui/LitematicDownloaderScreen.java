@@ -625,6 +625,16 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
+        // Handle search field click
+        if (button == 0 && searchField != null) {
+            if (searchField.isMouseOver(mouseX, mouseY)) {
+                searchField.setFocused(true);
+                return true;
+            } else {
+                searchField.setFocused(false);
+            }
+        }
+
         // Then let parent handle it (for other widgets)
         return super.mouseClicked(click, doubled);
     }
