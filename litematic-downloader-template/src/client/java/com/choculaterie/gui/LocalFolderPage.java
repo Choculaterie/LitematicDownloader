@@ -35,7 +35,7 @@ public class LocalFolderPage extends Screen {
     private ConfirmPopup confirmPopup;
 
     private File currentDirectory;
-    private final File baseDirectory; // The schematic folder - don't allow going above this
+    private File baseDirectory; // The schematic folder - don't allow going above this
     private final List<FileEntry> entries = new ArrayList<>();
     private int scrollOffset = 0;
 
@@ -64,7 +64,7 @@ public class LocalFolderPage extends Screen {
     private final List<FileAction> undoStack = new ArrayList<>();
     private final List<FileAction> redoStack = new ArrayList<>();
     private static final int MAX_UNDO_HISTORY = 50;
-    private final File trashFolder; // Hidden folder for storing deleted files for undo
+    private File trashFolder; // Hidden folder for storing deleted files for undo
 
     // Search support
     private CustomTextField searchField;
@@ -191,6 +191,32 @@ public class LocalFolderPage extends Screen {
     @Override
     protected void init() {
         super.init();
+
+        // Refresh directory from settings in case download path was changed
+        String downloadPath = DownloadSettings.getInstance().getAbsoluteDownloadPath();
+        File newBaseDirectory = new File(downloadPath);
+
+        // If base directory changed (e.g., from settings), update and reset to root
+        if (!newBaseDirectory.equals(this.baseDirectory)) {
+            this.baseDirectory = newBaseDirectory;
+            this.currentDirectory = newBaseDirectory;
+            this.trashFolder = new File(this.baseDirectory, ".trash");
+
+            // Ensure directories exist
+            if (!this.currentDirectory.exists()) {
+                this.currentDirectory.mkdirs();
+            }
+            if (!this.trashFolder.exists()) {
+                this.trashFolder.mkdirs();
+            }
+
+            // Clear selection and scroll when changing base directory
+            selectedIndices.clear();
+            scrollOffset = 0;
+        }
+
+        // Reload entries when (re-)entering the page to ensure fresh data
+        loadEntries();
 
         // Save current scroll position before reinitializing
         int savedScrollOffset = scrollOffset;

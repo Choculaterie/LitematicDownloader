@@ -23,6 +23,7 @@ public class SettingsPage extends Screen {
     private CustomButton backButton;
     private CustomTextField downloadPathField;
     private CustomButton browseButton;
+    private CustomButton setPathButton;
     private ToggleButton successToastsToggle;
     private ToggleButton errorToastsToggle;
     private ToggleButton infoToastsToggle;
@@ -65,7 +66,16 @@ public class SettingsPage extends Screen {
 
         // Download path section
         int contentY = PADDING * 4 + BUTTON_HEIGHT;
-        int fieldWidth = Math.max(100, this.width - PADDING * 4 - browseButtonWidth - PADDING);
+
+        // Set button is square, same height as text field, placed far right
+        int setButtonSize = TEXT_FIELD_HEIGHT;
+        int setButtonX = this.width - PADDING * 2 - setButtonSize;
+
+        // Browse button next to set button
+        int browseButtonX = setButtonX - PADDING - browseButtonWidth;
+
+        // Text field takes remaining space
+        int fieldWidth = Math.max(100, browseButtonX - PADDING * 3);
 
         // Download path text field
         if (this.client != null) {
@@ -79,12 +89,13 @@ public class SettingsPage extends Screen {
             );
             downloadPathField.setText(DownloadSettings.getInstance().getDownloadPath());
             downloadPathField.setPlaceholder(Text.literal("Enter download path..."));
-            this.addDrawableChild(downloadPathField);
+            // Don't add as drawable child - CustomTextField handles its own input via GLFW
+            // Adding it would cause double character input
         }
 
-        // Browse button (next to text field)
+        // Browse button
         browseButton = new CustomButton(
-                PADDING * 2 + fieldWidth + PADDING,
+                browseButtonX,
                 contentY + LABEL_HEIGHT,
                 browseButtonWidth,
                 TEXT_FIELD_HEIGHT,
@@ -92,6 +103,18 @@ public class SettingsPage extends Screen {
                 button -> openFileDialog()
         );
         this.addDrawableChild(browseButton);
+
+        // Set button (square, far right) - initially hidden, shown when path changes
+        setPathButton = new CustomButton(
+                setButtonX,
+                contentY + LABEL_HEIGHT,
+                setButtonSize,
+                setButtonSize,
+                Text.literal("✓"),
+                button -> saveDownloadPath()
+        );
+        setPathButton.visible = false; // Hidden by default
+        this.addDrawableChild(setPathButton);
 
         // Toasts toggle section
         int toastsY = contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 30;
@@ -168,6 +191,19 @@ public class SettingsPage extends Screen {
         }
     }
 
+    private void saveDownloadPath() {
+        if (downloadPathField != null) {
+            String newPath = downloadPathField.getText();
+            if (newPath != null && !newPath.isEmpty()) {
+                DownloadSettings.getInstance().setDownloadPath(newPath);
+                System.out.println("Download path saved: " + newPath);
+                if (toastManager != null) {
+                    toastManager.showSuccess("Download path saved!");
+                }
+            }
+        }
+    }
+
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         // Show pending toast if any
@@ -205,6 +241,19 @@ public class SettingsPage extends Screen {
                 contentY,
                 0xFFFFFFFF
         );
+
+        // Render download path text field manually (not a drawable child)
+        if (downloadPathField != null) {
+            downloadPathField.render(context, mouseX, mouseY, delta);
+
+            // Show/hide set button based on whether path has changed
+            String currentText = downloadPathField.getText();
+            String savedPath = DownloadSettings.getInstance().getDownloadPath();
+            boolean pathChanged = !currentText.equals(savedPath);
+            if (setPathButton != null) {
+                setPathButton.visible = pathChanged;
+            }
+        }
 
         // Draw absolute path preview below the text field
         String absolutePath = DownloadSettings.getInstance().getAbsoluteDownloadPath();
@@ -266,6 +315,24 @@ public class SettingsPage extends Screen {
         if (toastManager != null) {
             toastManager.render(context, delta, mouseX, mouseY);
         }
+    }
+
+    @Override
+    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
+        // Handle download path text field click
+        if (button == 0 && downloadPathField != null) {
+            if (downloadPathField.isMouseOver(mouseX, mouseY)) {
+                downloadPathField.setFocused(true);
+                return true;
+            } else {
+                downloadPathField.setFocused(false);
+            }
+        }
+        return super.mouseClicked(click, doubled);
     }
 
     @Override
