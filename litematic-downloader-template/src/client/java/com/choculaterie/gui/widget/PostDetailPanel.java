@@ -635,6 +635,9 @@ public class PostDetailPanel implements Drawable, Element {
                 System.out.println("[Download] Starting download from: " + downloadUrl);
                 System.out.println("[Download] File: " + file.getDefaultFileName());
 
+                // Encode spaces in URL (spaces are not valid in URIs)
+                String encodedUrl = downloadUrl.replace(" ", "%20");
+
                 // Download file - enable redirect following for 302 responses
                 HttpClient httpClient = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(30))
@@ -642,7 +645,7 @@ public class PostDetailPanel implements Drawable, Element {
                     .build();
 
                 HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(downloadUrl))
+                    .uri(URI.create(encodedUrl))
                     .GET()
                     .header("User-Agent", "LitematicDownloader/1.0")
                     .build();
