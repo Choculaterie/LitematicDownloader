@@ -1,7 +1,11 @@
-
-
+# Build script for Litematic Downloader
+# This will compile both the main JAR and sources JAR
 
 export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
 export PATH=$JAVA_HOME/bin:$PATH
 
 ./gradlew clean build -x test
+
+# Output files will be in build/libs/:
+# - litematic-downloader-1.1.0-beta.jar (main mod)
+# - litematic-downloader-1.1.0-beta-sources.jar (source code)

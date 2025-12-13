@@ -6,7 +6,6 @@ import com.choculaterie.models.MinemevPostDetailInfo;
 import com.choculaterie.models.MinemevPostInfo;
 import com.choculaterie.network.MinemevNetworkManager;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
@@ -420,7 +419,7 @@ public class PostDetailPanel implements Drawable, Element {
             client.execute(() -> {
                 client.getTextureManager().registerTexture(
                     texId,
-                    new NativeImageBackedTexture(() -> "minemev_image", finalImage)
+                    new NativeImageBackedTexture(finalImage)
                 );
                 imageCache.put(imageUrl, texId);
             });
@@ -835,17 +834,10 @@ public class PostDetailPanel implements Drawable, Element {
                 imageX + imageWidth / 2 - imageLoadingSpinner.getWidth() / 2,
                 imageY + imageHeight / 2 - imageLoadingSpinner.getHeight() / 2
             );
-            imageLoadingSpinner.render(context, mouseX, mouseY, delta);
         } else if (currentImageTexture != null) {
-            // Draw image using RenderPipelines.GUI_TEXTURED (stretch to fill)
-            context.drawTexture(
-                RenderPipelines.GUI_TEXTURED,
-                currentImageTexture,
-                imageX, imageY,
-                0, 0,
-                imageWidth, imageHeight,
-                imageWidth, imageHeight
-            );
+            // Draw image (stretch to fill)
+            context.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, currentImageTexture,
+                imageX, imageY, 0.0f, 0.0f, imageWidth, imageHeight, imageWidth, imageHeight);
         } else {
             // Draw placeholder
             context.fill(imageX, imageY, imageX + imageWidth, imageY + imageHeight, 0xFF333333);

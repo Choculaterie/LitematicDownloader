@@ -148,12 +148,8 @@ public class PostListWidget extends ClickableWidget {
     }
 
     @Override
-    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
-        double mouseX = click.x();
-        double mouseY = click.y();
-        int button = click.button();
-
-        System.out.println("[PostListWidget] mouseClicked called - mouseX: " + mouseX + ", mouseY: " + mouseY + ", button: " + button + ", doubled: " + doubled);
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        System.out.println("[PostListWidget] mouseClicked called - mouseX: " + mouseX + ", mouseY: " + mouseY + ", button: " + button);
 
         // Check scrollbar first
         if (scrollBar.mouseClicked(mouseX, mouseY, button)) {
@@ -184,64 +180,10 @@ public class PostListWidget extends ClickableWidget {
         }
 
         System.out.println("[PostListWidget] Click not handled by any entry");
-        return super.mouseClicked(click, doubled);
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
-    protected void onPress() {
-        // ClickableWidget calls this when the widget is clicked
-        System.out.println("[PostListWidget] onPress() called!");
-
-        // Get the current mouse position
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.mouse == null) return;
-
-        double mouseX = client.mouse.getX() * (double)client.getWindow().getScaledWidth() / (double)client.getWindow().getWidth();
-        double mouseY = client.mouse.getY() * (double)client.getWindow().getScaledHeight() / (double)client.getWindow().getHeight();
-
-        System.out.println("[PostListWidget] Mouse position: " + mouseX + ", " + mouseY);
-        System.out.println("[PostListWidget] Widget bounds: " + getX() + ", " + getY() + ", " + (getX() + width) + ", " + (getY() + height));
-
-        // Check scrollbar first
-        if (scrollBar.mouseClicked(mouseX, mouseY, 0)) {
-            System.out.println("[PostListWidget] Scrollbar handled the click");
-            return;
-        }
-
-        // Check if click is within list bounds
-        if (mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height) {
-            int offsetY = (int) scrollAmount;
-            int currentY = 0;
-
-            for (int i = 0; i < entries.size(); i++) {
-                PostEntryButton entry = entries.get(i);
-                int entryY = getY() + currentY - offsetY;
-
-                // Check if entry is visible and clicked
-                if (entryY + entry.getRowHeight() >= getY() && entryY < getY() + height) {
-                    entry.updateBounds(getX(), entryY, Math.max(0, width - SCROLLBAR_PADDING));
-                    if (entry.handlePress(mouseX, mouseY, 0)) {
-                        System.out.println("[PostListWidget] Entry " + i + " handled the click and triggered callback!");
-                        return;
-                    }
-                }
-
-                currentY += entry.getRowHeight() + ENTRY_SPACING;
-            }
-        }
-
-        System.out.println("[PostListWidget] Click not handled by any entry");
-    }
-
-    protected void onDrag(double mouseX, double mouseY, double deltaX, double deltaY) {
-        // Handle dragging for scrollbar
-        if (scrollBar.isDragging() || scrollBar.mouseDragged(mouseX, mouseY, 0, deltaX, deltaY)) {
-            scrollBar.mouseDragged(mouseX, mouseY, 0, deltaX, deltaY);
-            // Update scroll amount based on scrollbar
-            double maxScroll = getMaxScroll();
-            scrollAmount = scrollBar.getScrollPercentage() * maxScroll;
-        }
-    }
-
+    @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         // Always check scrollbar for release, even if mouse moved outside
         if (scrollBar.isDragging()) {
@@ -268,6 +210,7 @@ public class PostListWidget extends ClickableWidget {
         return scrollBar.mouseReleased(mouseX, mouseY, button);
     }
 
+    @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         // Always forward drag events to scrollbar if it's being dragged
         if (scrollBar.isDragging() || scrollBar.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {

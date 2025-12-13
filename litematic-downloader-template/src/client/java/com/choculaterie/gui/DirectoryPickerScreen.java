@@ -290,12 +290,8 @@ public class DirectoryPickerScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
-        double mouseX = click.x();
-        double mouseY = click.y();
-        int button = click.button();
-
-        if (super.mouseClicked(click, doubled)) {
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (super.mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
 
@@ -307,11 +303,11 @@ public class DirectoryPickerScreen extends Screen {
         if (mouseX >= PADDING && mouseX < listRightEdge &&
             mouseY >= listY && mouseY < listY + listHeight) {
 
-            int clickedIndex = scrollOffset + (int)((mouseY - listY) / ITEM_HEIGHT);
+            int clickedIndex = (int) ((mouseY - listY) / ITEM_HEIGHT) + scrollOffset;
 
             if (clickedIndex >= 0 && clickedIndex < directories.size()) {
                 if (button == 0) { // Left click
-                    if (clickedIndex == selectedIndex && doubled) {
+                    if (clickedIndex == selectedIndex) {
                         // Double click - enter directory
                         currentDirectory = directories.get(clickedIndex);
                         loadDirectories();
@@ -328,7 +324,6 @@ public class DirectoryPickerScreen extends Screen {
         return false;
     }
 
-    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
         int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;

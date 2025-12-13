@@ -551,11 +551,7 @@ public class LitematicDownloaderScreen extends Screen {
 
 
     @Override
-    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
-        double mouseX = click.x();
-        double mouseY = click.y();
-        int button = click.button();
-
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // Check toast clicks first (copy button and close button)
         if (button == 0 && toastManager != null) {
             if (toastManager.mouseClicked(mouseX, mouseY)) {
@@ -636,9 +632,10 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         // Then let parent handle it (for other widgets)
-        return super.mouseClicked(click, doubled);
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
+    @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         // Forward to the active panel for scrollbar dragging
         if (showFilterPanel) {
@@ -653,6 +650,7 @@ public class LitematicDownloaderScreen extends Screen {
         return false;
     }
 
+    @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         // Forward to the active panel for scrollbar release
         if (showFilterPanel) {
