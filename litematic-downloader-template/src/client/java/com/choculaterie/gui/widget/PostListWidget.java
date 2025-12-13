@@ -148,12 +148,8 @@ public class PostListWidget extends ClickableWidget {
     }
 
     @Override
-    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
-        double mouseX = click.x();
-        double mouseY = click.y();
-        int button = click.button();
-
-        System.out.println("[PostListWidget] mouseClicked called - mouseX: " + mouseX + ", mouseY: " + mouseY + ", button: " + button + ", doubled: " + doubled);
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        System.out.println("[PostListWidget] mouseClicked called - mouseX: " + mouseX + ", mouseY: " + mouseY + ", button: " + button);
 
         // Check scrollbar first
         if (scrollBar.mouseClicked(mouseX, mouseY, button)) {
@@ -184,7 +180,7 @@ public class PostListWidget extends ClickableWidget {
         }
 
         System.out.println("[PostListWidget] Click not handled by any entry");
-        return super.mouseClicked(click, doubled);
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     protected void onPress() {

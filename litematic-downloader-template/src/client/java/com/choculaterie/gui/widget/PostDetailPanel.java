@@ -6,7 +6,6 @@ import com.choculaterie.models.MinemevPostDetailInfo;
 import com.choculaterie.models.MinemevPostInfo;
 import com.choculaterie.network.MinemevNetworkManager;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
@@ -420,7 +419,7 @@ public class PostDetailPanel implements Drawable, Element {
             client.execute(() -> {
                 client.getTextureManager().registerTexture(
                     texId,
-                    new NativeImageBackedTexture(() -> "minemev_image", finalImage)
+                    new NativeImageBackedTexture(finalImage)
                 );
                 imageCache.put(imageUrl, texId);
             });
@@ -837,9 +836,8 @@ public class PostDetailPanel implements Drawable, Element {
             );
             imageLoadingSpinner.render(context, mouseX, mouseY, delta);
         } else if (currentImageTexture != null) {
-            // Draw image using RenderPipelines.GUI_TEXTURED (stretch to fill)
+            // Draw image (stretch to fill)
             context.drawTexture(
-                RenderPipelines.GUI_TEXTURED,
                 currentImageTexture,
                 imageX, imageY,
                 0, 0,

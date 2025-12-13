@@ -1642,11 +1642,7 @@ public class LocalFolderPage extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
-        double mouseX = click.x();
-        double mouseY = click.y();
-        int button = click.button();
-
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // Handle confirm popup first if active
         if (confirmPopup != null) {
             confirmPopup.mouseClicked(mouseX, mouseY, button);
@@ -1680,7 +1676,7 @@ public class LocalFolderPage extends Screen {
             }
         }
 
-        if (super.mouseClicked(click, doubled)) {
+        if (super.mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
 
@@ -1741,9 +1737,9 @@ public class LocalFolderPage extends Screen {
                                   org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
                     }
 
-                    // Handle double-click on selected directory first
-                    if (entry.isDirectory && selectedIndices.contains(clickedIndex) && doubled && !shiftHeld && !ctrlHeld) {
-                        // Double click on already selected directory - enter it
+                    // Handle double-click on selected directory first (simplified for now - just checks if already selected)
+                    if (entry.isDirectory && selectedIndices.contains(clickedIndex) && !shiftHeld && !ctrlHeld) {
+                        // Click on already selected directory - enter it
                         // Clear search when navigating
                         if (isSearchActive) {
                             searchQuery = "";

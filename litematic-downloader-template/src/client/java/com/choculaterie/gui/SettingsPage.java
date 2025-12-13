@@ -318,11 +318,7 @@ public class SettingsPage extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
-        double mouseX = click.x();
-        double mouseY = click.y();
-        int button = click.button();
-
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // Handle download path text field click
         if (button == 0 && downloadPathField != null) {
             if (downloadPathField.isMouseOver(mouseX, mouseY)) {
@@ -332,7 +328,7 @@ public class SettingsPage extends Screen {
                 downloadPathField.setFocused(false);
             }
         }
-        return super.mouseClicked(click, doubled);
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
