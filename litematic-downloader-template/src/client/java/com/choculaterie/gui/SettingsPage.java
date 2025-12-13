@@ -318,17 +318,25 @@ public class SettingsPage extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
         // Handle download path text field click
         if (button == 0 && downloadPathField != null) {
             if (downloadPathField.isMouseOver(mouseX, mouseY)) {
                 downloadPathField.setFocused(true);
                 return true;
-            } else {
+        return super.mouseClicked(click, doubled);
                 downloadPathField.setFocused(false);
             }
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, doubled);
     }
 
     @Override

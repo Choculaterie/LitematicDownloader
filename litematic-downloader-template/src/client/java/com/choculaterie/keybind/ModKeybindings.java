@@ -14,7 +14,7 @@ public class ModKeybindings {
                 "key.litematic-downloader.open_menu",
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_N,
-                "key.categories.misc"
+                KeyBinding.Category.MISC
         ));
     }
 }
