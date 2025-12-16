@@ -117,8 +117,9 @@ public class DirectoryPickerScreen extends Screen {
 
         // Restore scroll position and selection
         int contentHeight = directories.size() * ITEM_HEIGHT;
-        // Use ceiling to ensure we can scroll to show the last item
-        int maxScroll = Math.max(0, (contentHeight - listHeight + ITEM_HEIGHT - 1) / ITEM_HEIGHT);
+        int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
+        // maxScroll = how many items are hidden when scrolled to bottom
+        int maxScroll = contentHeight <= listHeight ? 0 : directories.size() - maxVisibleItems;
         // Set scroll data first
         scrollBar.setScrollData(contentHeight, listHeight);
         // Clamp and restore scroll offset and selection
@@ -154,8 +155,9 @@ public class DirectoryPickerScreen extends Screen {
             scrollBar.setScrollData(contentHeight, listHeight);
 
             // Update scroll offset from scrollbar percentage
-            // Use ceiling to ensure we can scroll to show the last item
-            int maxScroll = Math.max(0, (contentHeight - listHeight + ITEM_HEIGHT - 1) / ITEM_HEIGHT);
+            int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
+            // maxScroll = how many items are hidden when scrolled to bottom
+            int maxScroll = contentHeight <= listHeight ? 0 : directories.size() - maxVisibleItems;
             scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
         }
     }
@@ -333,8 +335,9 @@ public class DirectoryPickerScreen extends Screen {
         int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
         int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;
         int contentHeight = directories.size() * ITEM_HEIGHT;
-        // Use ceiling to ensure we can scroll to show the last item
-        int maxScroll = Math.max(0, (contentHeight - listHeight + ITEM_HEIGHT - 1) / ITEM_HEIGHT);
+        int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
+        // maxScroll = how many items are hidden when scrolled to bottom
+        int maxScroll = contentHeight <= listHeight ? 0 : directories.size() - maxVisibleItems;
 
         scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int)verticalAmount));
 

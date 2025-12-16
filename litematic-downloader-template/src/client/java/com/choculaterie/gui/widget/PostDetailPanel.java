@@ -91,6 +91,9 @@ public class PostDetailPanel implements Drawable, Element {
     private boolean isLoadingFiles = false;
     private String downloadStatus = "";
 
+    // Image viewer modal
+    private ImageViewerWidget imageViewer;
+
     public PostDetailPanel(int x, int y, int width, int height) {
         this.x = x;
         this.y = y;
@@ -116,42 +119,57 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     /**
-     * Calculate display width for current image, respecting original aspect ratio
-     * Only uses full width if the image actually needs it
+     * Get the fixed width of the image container (always the same regardless of image aspect ratio)
      */
     private int getDisplayImageWidth() {
-        int maxWidth = width - PADDING * 2 - 10; // Available width (10 for scrollbar)
-
-        if (originalImageWidth <= 0 || originalImageHeight <= 0) {
-            // No image loaded yet, use default square
-            return Math.min(MAX_IMAGE_SIZE, maxWidth);
-        }
-
-        // Calculate what width we'd need to display at max height
-        int widthAtMaxHeight = (int) ((float) originalImageWidth / originalImageHeight * MAX_IMAGE_SIZE);
-
-        // Use the smaller of: original width, calculated width at max height, or max available width
-        int desiredWidth = Math.min(originalImageWidth, Math.min(widthAtMaxHeight, maxWidth));
-
-        return Math.max(MIN_IMAGE_SIZE, desiredWidth);
+        // Full width minus scrollbar
+        return width - 10; // 10 for scrollbar
     }
 
     /**
-     * Calculate display height for current image, respecting original aspect ratio
+     * Get the fixed height of the image container (always the same regardless of image aspect ratio)
      */
     private int getDisplayImageHeight() {
-        int displayWidth = getDisplayImageWidth();
+        return MAX_IMAGE_SIZE;
+    }
 
+    /**
+     * Calculate actual image width within the container, respecting original aspect ratio
+     */
+    private int getActualImageWidth() {
         if (originalImageWidth <= 0 || originalImageHeight <= 0) {
-            // No image loaded yet, use default square
-            return Math.min(MAX_IMAGE_SIZE, displayWidth);
+            return getDisplayImageWidth();
         }
 
-        // Calculate height based on aspect ratio
-        int calculatedHeight = (int) ((float) originalImageHeight / originalImageWidth * displayWidth);
+        int containerWidth = getDisplayImageWidth();
+        int containerHeight = getDisplayImageHeight();
 
-        // Cap at max height
-        return Math.min(MAX_IMAGE_SIZE, Math.max(MIN_IMAGE_SIZE, calculatedHeight));
+        // Calculate what width we'd need to display at container height
+        int widthAtContainerHeight = (int) ((float) originalImageWidth / originalImageHeight * containerHeight);
+
+        // If it fits in container width, use calculated width, otherwise scale to fit width
+        if (widthAtContainerHeight <= containerWidth) {
+            return Math.min(originalImageWidth, widthAtContainerHeight);
+        } else {
+            return Math.min(originalImageWidth, containerWidth);
+        }
+    }
+
+    /**
+     * Calculate actual image height within the container, respecting original aspect ratio
+     */
+    private int getActualImageHeight() {
+        if (originalImageWidth <= 0 || originalImageHeight <= 0) {
+            return getDisplayImageHeight();
+        }
+
+        int containerHeight = getDisplayImageHeight();
+
+        // Calculate what height we'd need to display at actual width
+        int actualWidth = getActualImageWidth();
+        int calculatedHeight = (int) ((float) originalImageHeight / originalImageWidth * actualWidth);
+
+        return Math.min(originalImageHeight, Math.min(containerHeight, calculatedHeight));
     }
 
     /**
@@ -819,44 +837,54 @@ public class PostDetailPanel implements Drawable, Element {
         int currentY = contentStartY + PADDING - (int) scrollOffset;
         contentHeight = 0;
 
-        // Calculate responsive image dimensions (respecting aspect ratio)
-        int imageWidth = getDisplayImageWidth();
-        int imageHeight = getDisplayImageHeight();
+        // Get fixed container dimensions (always the same size)
+        int containerWidth = getDisplayImageWidth();
+        int containerHeight = getDisplayImageHeight();
 
-        // Draw image area (centered horizontally)
-        int imageX = x + (width - imageWidth) / 2;
-        int imageY = currentY;
+        // Get actual image dimensions (respecting aspect ratio, centered within container)
+        int actualImageWidth = getActualImageWidth();
+        int actualImageHeight = getActualImageHeight();
+
+        // Calculate container position (full width starting at left edge)
+        int containerX = x + 1; // +1 for left border
+        int containerY = currentY;
+
+        // Calculate actual image position (centered within container)
+        int imageX = containerX + (containerWidth - actualImageWidth) / 2;
+        int imageY = containerY + (containerHeight - actualImageHeight) / 2;
 
         if (isLoadingImage) {
-            // Draw loading spinner centered in image area using reusable instance
-            context.fill(imageX, imageY, imageX + imageWidth, imageY + imageHeight, 0xFF333333);
-            // Update spinner position to center it in the image area
+            // Draw loading background for entire container
+            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, 0xFF333333);
+            // Update spinner position to center it in the container
             imageLoadingSpinner.setPosition(
-                imageX + imageWidth / 2 - imageLoadingSpinner.getWidth() / 2,
-                imageY + imageHeight / 2 - imageLoadingSpinner.getHeight() / 2
+                containerX + containerWidth / 2 - imageLoadingSpinner.getWidth() / 2,
+                containerY + containerHeight / 2 - imageLoadingSpinner.getHeight() / 2
             );
             imageLoadingSpinner.render(context, mouseX, mouseY, delta);
         } else if (currentImageTexture != null) {
-            // Draw image using RenderPipelines.GUI_TEXTURED (stretch to fill)
+            // Draw container background
+            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, 0xFF1A1A1A);
+            // Draw image centered within container using RenderPipelines.GUI_TEXTURED
             context.drawTexture(
                 RenderPipelines.GUI_TEXTURED,
                 currentImageTexture,
                 imageX, imageY,
                 0, 0,
-                imageWidth, imageHeight,
-                imageWidth, imageHeight
+                actualImageWidth, actualImageHeight,
+                actualImageWidth, actualImageHeight
             );
         } else {
-            // Draw placeholder
-            context.fill(imageX, imageY, imageX + imageWidth, imageY + imageHeight, 0xFF333333);
+            // Draw placeholder for entire container
+            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, 0xFF333333);
             String noImg = isCompactMode() ? "..." : "No image";
             int tw = client.textRenderer.getWidth(noImg);
             context.drawTextWithShadow(client.textRenderer, noImg,
-                imageX + (imageWidth - tw) / 2, imageY + imageHeight / 2 - 4, SUBTITLE_COLOR);
+                containerX + (containerWidth - tw) / 2, containerY + containerHeight / 2 - 4, SUBTITLE_COLOR);
         }
 
-        currentY += imageHeight + PADDING;
-        contentHeight += imageHeight + PADDING;
+        currentY += containerHeight + PADDING;
+        contentHeight += containerHeight + PADDING;
 
         // Draw image navigation if multiple images
         if (imageUrls != null && imageUrls.length > 1) {
@@ -994,6 +1022,25 @@ public class PostDetailPanel implements Drawable, Element {
                 scrollBar.render(context, mouseX, mouseY, delta);
             }
         }
+
+        // Note: Image viewer is rendered separately via renderImageViewer() to ensure it's on top
+    }
+
+    /**
+     * Check if the image viewer modal is currently open
+     */
+    public boolean hasImageViewerOpen() {
+        return imageViewer != null;
+    }
+
+    /**
+     * Render the image viewer modal on top of everything else
+     * This should be called after all other UI elements are rendered
+     */
+    public void renderImageViewer(DrawContext context, int mouseX, int mouseY, float delta) {
+        if (imageViewer != null) {
+            imageViewer.render(context, mouseX, mouseY, delta);
+        }
     }
 
     private void drawWrappedText(DrawContext context, String text, int textX, int textY, int maxWidth, int color) {
@@ -1072,6 +1119,11 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Check image viewer first (it's a full-screen modal)
+        if (imageViewer != null) {
+            return imageViewer.mouseClicked(mouseX, mouseY, button);
+        }
+
         // Check dropdown first (it can be outside panel bounds when open)
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
             boolean handled = schematicDropdown.mouseClicked(mouseX, mouseY, button);
@@ -1102,6 +1154,33 @@ public class PostDetailPanel implements Drawable, Element {
         if (scrollBar != null && scrollBar.mouseClicked(mouseX, mouseY, button)) {
             System.out.println("[PostDetailPanel] Scrollbar handled the click");
             return true;
+        }
+
+        // Check if clicking on the image to open fullscreen viewer
+        if (button == 0 && currentImageTexture != null && !isLoadingImage && postInfo != null) {
+            // Calculate image bounds (accounting for scroll)
+            int downloadBtnSize = 20;
+            int contentStartY = y + downloadBtnSize;
+            int currentY = contentStartY + PADDING - (int) scrollOffset;
+
+            int containerWidth = getDisplayImageWidth();
+            int containerHeight = getDisplayImageHeight();
+            int actualImageWidth = getActualImageWidth();
+            int actualImageHeight = getActualImageHeight();
+
+            int containerX = x + 1;
+            int containerY = currentY;
+            int imageX = containerX + (containerWidth - actualImageWidth) / 2;
+            int imageY = containerY + (containerHeight - actualImageHeight) / 2;
+
+            // Check if mouse is over the image
+            if (mouseX >= imageX && mouseX < imageX + actualImageWidth &&
+                mouseY >= imageY && mouseY < imageY + actualImageHeight &&
+                mouseY >= contentStartY && mouseY < y + height) { // Also check scissor bounds
+                // Open fullscreen image viewer
+                openImageViewer();
+                return true;
+            }
         }
 
         // Check image navigation buttons
@@ -1156,6 +1235,66 @@ public class PostDetailPanel implements Drawable, Element {
         }
     }
 
+    /**
+     * Open fullscreen image viewer with carousel support
+     */
+    private void openImageViewer() {
+        if (currentImageTexture != null && client != null && client.getWindow() != null) {
+            int screenWidth = client.getWindow().getScaledWidth();
+            int screenHeight = client.getWindow().getScaledHeight();
+
+            // Determine total images for carousel
+            int totalImages = (imageUrls != null) ? imageUrls.length : 1;
+
+            imageViewer = new ImageViewerWidget(
+                client,
+                currentImageTexture,
+                originalImageWidth,
+                originalImageHeight,
+                currentImageIndex,
+                totalImages,
+                this::previousImageInViewer,
+                this::nextImageInViewer,
+                this::closeImageViewer
+            );
+            imageViewer.updateLayout(screenWidth, screenHeight);
+        }
+    }
+
+    /**
+     * Navigate to previous image in the viewer and reload it
+     */
+    private void previousImageInViewer() {
+        if (imageUrls != null && imageUrls.length > 1) {
+            currentImageIndex = (currentImageIndex - 1 + imageUrls.length) % imageUrls.length;
+            loadImage(imageUrls[currentImageIndex]);
+            // Reopen viewer with updated image
+            closeImageViewer();
+            openImageViewer();
+        }
+    }
+
+    /**
+     * Navigate to next image in the viewer and reload it
+     */
+    private void nextImageInViewer() {
+        if (imageUrls != null && imageUrls.length > 1) {
+            currentImageIndex = (currentImageIndex + 1) % imageUrls.length;
+            loadImage(imageUrls[currentImageIndex]);
+            // Reopen viewer with updated image
+            closeImageViewer();
+            openImageViewer();
+        }
+    }
+
+    /**
+     * Close fullscreen image viewer
+     */
+    private void closeImageViewer() {
+        imageViewer = null;
+    }
+
+
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         // Forward to scrollbar if it's being dragged
         if (scrollBar != null && (scrollBar.isDragging() || scrollBar.mouseDragged(mouseX, mouseY, button, deltaX, deltaY))) {
@@ -1168,6 +1307,11 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        // Check image viewer first
+        if (imageViewer != null) {
+            return imageViewer.mouseReleased(mouseX, mouseY, button);
+        }
+
         // Forward to scrollbar
         if (scrollBar != null && scrollBar.mouseReleased(mouseX, mouseY, button)) {
             return true;
@@ -1176,6 +1320,11 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        // Block all scrolling when image viewer is open
+        if (imageViewer != null) {
+            return true;
+        }
+
         // Check dropdown first
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
             if (schematicDropdown.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
@@ -1192,6 +1341,11 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // Check image viewer first (ESC closes it)
+        if (imageViewer != null) {
+            return imageViewer.keyPressed(keyCode, scanCode, modifiers);
+        }
+
         // Arrow key navigation for images
         if (imageUrls != null && imageUrls.length > 1) {
             if (keyCode == 263) { // Left arrow

@@ -449,11 +449,14 @@ public class LitematicDownloaderScreen extends Screen {
         // Fill the entire screen with dark grey background
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
+        // Check if image viewer is open - if so, block all hover effects
+        boolean imageViewerOpen = detailPanel != null && detailPanel.hasImageViewerOpen();
+
         // Check if mouse is over the banner - if so, block hover for elements underneath
         boolean mouseOverBanner = modMessageBanner != null && modMessageBanner.isVisible()
                 && modMessageBanner.isMouseOver(mouseX, mouseY);
-        int effectiveMouseX = mouseOverBanner ? -1 : mouseX;
-        int effectiveMouseY = mouseOverBanner ? -1 : mouseY;
+        int effectiveMouseX = (mouseOverBanner || imageViewerOpen) ? -1 : mouseX;
+        int effectiveMouseY = (mouseOverBanner || imageViewerOpen) ? -1 : mouseY;
 
         super.render(context, effectiveMouseX, effectiveMouseY, delta);
 
@@ -543,6 +546,11 @@ public class LitematicDownloaderScreen extends Screen {
             modMessageBanner.render(context, mouseX, mouseY, delta);
         }
 
+        // Render image viewer modal on top of absolutely everything (except toasts)
+        if (detailPanel != null && detailPanel.hasImageViewerOpen()) {
+            detailPanel.renderImageViewer(context, mouseX, mouseY, delta);
+        }
+
         // Render toasts on top of everything
         if (toastManager != null) {
             toastManager.render(context, delta, mouseX, mouseY);
@@ -555,6 +563,11 @@ public class LitematicDownloaderScreen extends Screen {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+
+        // Check if image viewer is open - if so, only handle image viewer clicks
+        if (detailPanel != null && detailPanel.hasImageViewerOpen()) {
+            return detailPanel.mouseClicked(mouseX, mouseY, button);
+        }
 
         // Check toast clicks first (copy button and close button)
         if (button == 0 && toastManager != null) {
@@ -686,6 +699,18 @@ public class LitematicDownloaderScreen extends Screen {
     @Override
     public boolean shouldPause() {
         return false;
+    }
+
+    @Override
+    public boolean shouldCloseOnEsc() {
+        // Don't close screen on ESC if image viewer is open
+        // (the viewer will handle ESC itself)
+        if (detailPanel != null && detailPanel.hasImageViewerOpen()) {
+            // Close the image viewer instead
+            detailPanel.keyPressed(256, 0, 0); // 256 = GLFW_KEY_ESCAPE
+            return false;
+        }
+        return super.shouldCloseOnEsc();
     }
 
     @Override
