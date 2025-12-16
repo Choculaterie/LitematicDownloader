@@ -40,13 +40,19 @@ public class ConfirmPopup implements Drawable, Element {
     private final int visibleMessageHeight; // Height of visible area (capped)
     private ScrollBar scrollBar;
     private double scrollOffset = 0;
+    private final String confirmButtonText;
 
     public ConfirmPopup(Screen parent, String title, String message, Runnable onConfirm, Runnable onCancel) {
+        this(parent, title, message, onConfirm, onCancel, "Delete");
+    }
+
+    public ConfirmPopup(Screen parent, String title, String message, Runnable onConfirm, Runnable onCancel, String confirmButtonText) {
         this.parent = parent;
         this.title = title;
         this.message = message;
         this.onConfirm = onConfirm;
         this.onCancel = onCancel;
+        this.confirmButtonText = confirmButtonText;
 
         MinecraftClient client = MinecraftClient.getInstance();
 
@@ -144,7 +150,7 @@ public class ConfirmPopup implements Drawable, Element {
                 buttonY,
                 buttonWidth,
                 BUTTON_HEIGHT,
-                net.minecraft.text.Text.literal("Delete"),
+                net.minecraft.text.Text.literal(confirmButtonText),
                 button -> onConfirm.run()
         );
     }

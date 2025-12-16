@@ -1,6 +1,7 @@
 package com.choculaterie.gui;
 
 import com.choculaterie.config.DownloadSettings;
+import com.choculaterie.gui.widget.ConfirmPopup;
 import com.choculaterie.gui.widget.CustomButton;
 import com.choculaterie.gui.widget.CustomTextField;
 import com.choculaterie.gui.widget.ToastManager;
@@ -31,6 +32,7 @@ public class SettingsPage extends Screen {
     private ToastManager toastManager;
     private String pendingToastMessage;
     private boolean pendingToastSuccess;
+    private ConfirmPopup activePopup;
 
     public SettingsPage(Screen parentScreen) {
         super(Text.literal("Settings"));
@@ -195,12 +197,47 @@ public class SettingsPage extends Screen {
         if (downloadPathField != null) {
             String newPath = downloadPathField.getText();
             if (newPath != null && !newPath.isEmpty()) {
-                DownloadSettings.getInstance().setDownloadPath(newPath);
-                System.out.println("Download path saved: " + newPath);
-                if (toastManager != null) {
-                    toastManager.showSuccess("Download path saved!");
+                // Check if the directory exists
+                String absolutePath = DownloadSettings.getInstance().getGameDirectory() + File.separator + newPath;
+                File directory = new File(absolutePath);
+
+                if (!directory.exists()) {
+                    // Show confirmation popup to create the folder
+                    activePopup = new ConfirmPopup(
+                        this,
+                        "Create Folder?",
+                        "The folder '" + newPath + "' does not exist.\n\nDo you want to create it?",
+                        () -> {
+                            // User confirmed - create the folder and save
+                            boolean created = directory.mkdirs();
+                            if (created) {
+                                completeSave(newPath);
+                            } else {
+                                if (toastManager != null) {
+                                    toastManager.showError("Failed to create folder!");
+                                }
+                            }
+                            activePopup = null;
+                        },
+                        () -> {
+                            // User cancelled
+                            activePopup = null;
+                        },
+                        "Create"  // Custom confirm button text
+                    );
+                } else {
+                    // Directory exists, save directly
+                    completeSave(newPath);
                 }
             }
+        }
+    }
+
+    private void completeSave(String newPath) {
+        DownloadSettings.getInstance().setDownloadPath(newPath);
+        System.out.println("Download path saved: " + newPath);
+        if (toastManager != null) {
+            toastManager.showSuccess("Download path saved!");
         }
     }
 
@@ -315,6 +352,11 @@ public class SettingsPage extends Screen {
         if (toastManager != null) {
             toastManager.render(context, delta, mouseX, mouseY);
         }
+
+        // Render popup on top of everything else
+        if (activePopup != null) {
+            activePopup.render(context, mouseX, mouseY, delta);
+        }
     }
 
     @Override
@@ -322,6 +364,11 @@ public class SettingsPage extends Screen {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+
+        // Handle popup first if active
+        if (activePopup != null) {
+            return activePopup.mouseClicked(mouseX, mouseY, button);
+        }
 
         // Handle download path text field click
         if (button == 0 && downloadPathField != null) {
