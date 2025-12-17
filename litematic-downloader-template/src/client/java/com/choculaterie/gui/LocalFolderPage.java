@@ -55,6 +55,9 @@ public class LocalFolderPage extends Screen {
     // Quick share button tracking
     private final List<QuickShareButton> quickShareButtons = new ArrayList<>();
     private int uploadingIndex = -1; // Index of file currently being uploaded (-1 = none)
+    private int copiedIndex = -1; // Index of file that was just copied (-1 = none)
+    private long copiedTimestamp = 0; // Timestamp when link was copied
+    private static final long COPIED_DISPLAY_DURATION = 2000; // Show "copied" for 2 seconds
     private ToastManager toastManager;
 
     // Breadcrumb segments for click detection
@@ -402,6 +405,9 @@ public class LocalFolderPage extends Screen {
                                     toastManager.showSuccess("Link copied to clipboard!");
                                 }
                                 System.out.println("Quick share URL copied: " + shortUrl);
+                                // Set copied state
+                                copiedIndex = entryIndex;
+                                copiedTimestamp = System.currentTimeMillis();
                             } else {
                                 // Fallback to AWT clipboard
                                 StringSelection selection = new StringSelection(shortUrl);
@@ -410,6 +416,9 @@ public class LocalFolderPage extends Screen {
                                     toastManager.showSuccess("Link copied to clipboard!");
                                 }
                                 System.out.println("Quick share URL copied (AWT): " + shortUrl);
+                                // Set copied state
+                                copiedIndex = entryIndex;
+                                copiedTimestamp = System.currentTimeMillis();
                             }
                         } catch (Exception e) {
                             if (toastManager != null) {
@@ -1557,6 +1566,15 @@ public class LocalFolderPage extends Screen {
                                        mouseX >= buttonX && mouseX < buttonX + buttonWidth &&
                                        mouseY >= buttonY && mouseY < buttonY + buttonHeight;
 
+                // Check if this file is in "copied" state (within display duration)
+                boolean isCopied = i == copiedIndex &&
+                                  (System.currentTimeMillis() - copiedTimestamp) < COPIED_DISPLAY_DURATION;
+
+                // Reset copied state if duration has passed
+                if (i == copiedIndex && !isCopied) {
+                    copiedIndex = -1;
+                }
+
                 // Determine button appearance based on state
                 String buttonText;
                 int buttonBgColor;
@@ -1565,6 +1583,9 @@ public class LocalFolderPage extends Screen {
                 if (i == uploadingIndex) {
                     buttonText = "Uploading...";
                     buttonBgColor = 0xFF555555;
+                } else if (isCopied) {
+                    buttonText = "✓ Copied";
+                    buttonBgColor = 0xFF44AA44; // Green to indicate success
                 } else if (buttonHovered) {
                     buttonText = "📤 Share";
                     buttonBgColor = 0xFF4488FF;
