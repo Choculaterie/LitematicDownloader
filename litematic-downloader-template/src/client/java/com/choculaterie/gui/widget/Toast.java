@@ -2,6 +2,7 @@ package com.choculaterie.gui.widget;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 /**
@@ -66,11 +67,11 @@ public class Toast {
         this.client = client;
 
         // Create close button (X) in top right - always present
-        closeButton = new CustomButton(0, 0, 16, 16, Text.literal("×"), btn -> {});
+        closeButton = new CustomButton(0, 0, 16, 16, Text.of("×"), btn -> {});
 
         if (hasCopyButton) {
             // Create copy button positioned at bottom right of toast - make it 18px tall for better centering
-            copyButton = new CustomButton(0, 0, 50, 18, Text.literal("Copy"), btn -> {});
+            copyButton = new CustomButton(0, 0, 50, 18, Text.of("Copy"), btn -> {});
         }
     }
 

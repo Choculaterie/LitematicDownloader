@@ -6,6 +6,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ public class SortFilterPanel implements Drawable, Element {
     private static final int LABEL_COLOR = 0xFFAAAAAA;
     private static final int SECTION_BG_COLOR = 0xFF3A3A3A;
     private static final int PADDING = 10;
+    private static final int BUTTON_HEIGHT = 20;
 
     private int x;
     private int y;
@@ -77,7 +79,7 @@ public class SortFilterPanel implements Drawable, Element {
 
         // Initialize text field
         this.tagTextField = new CustomTextField(client, x + PADDING, y + 100, width - PADDING * 2 - 10, 18, Text.empty());
-        this.tagTextField.setPlaceholder(Text.literal("Enter tag..."));
+        this.tagTextField.setPlaceholder(Text.of("Enter tag..."));
         this.tagTextField.setText(tagFilter);
 
         // Initialize buttons
@@ -113,21 +115,30 @@ public class SortFilterPanel implements Drawable, Element {
 
         applyButton = new CustomButton(
                 x + PADDING,
-                buttonY,
+                y + height - BUTTON_HEIGHT - PADDING,
                 buttonWidth,
-                buttonHeight,
-                Text.literal(width < 150 ? "✓" : "Apply"),
-                btn -> {} // Click is handled in mouseClicked
+                BUTTON_HEIGHT,
+                Text.of(width < 150 ? "✓" : "Apply"),
+                button -> applySettings()
         );
 
         resetButton = new CustomButton(
-                x + PADDING * 2 + buttonWidth,
-                buttonY,
+                x + PADDING + buttonWidth + PADDING,
+                y + height - BUTTON_HEIGHT - PADDING,
                 buttonWidth,
-                buttonHeight,
-                Text.literal(width < 150 ? "↺" : "Reset"),
-                btn -> {} // Click is handled in mouseClicked
+                BUTTON_HEIGHT,
+                Text.of(width < 150 ? "↺" : "Reset"),
+                button -> resetSettings()
         );
+    }
+
+    private void applySettings() {
+        // Pull latest text from field before saving
+        if (tagTextField != null) {
+            tagFilter = tagTextField.getText();
+        }
+        saveSettings();
+        notifySettingsChanged();
     }
 
     public void setOnSettingsChanged(Consumer<SortFilterPanel> callback) {

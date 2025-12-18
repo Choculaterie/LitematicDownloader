@@ -6,6 +6,7 @@ import com.choculaterie.gui.widget.ScrollBar;
 import com.choculaterie.gui.widget.ToastManager;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 import java.io.File;
@@ -34,7 +35,7 @@ public class DirectoryPickerScreen extends Screen {
     private ToastManager toastManager;
 
     public DirectoryPickerScreen(Screen parentScreen, String startPath, Consumer<String> onPathSelected) {
-        super(Text.literal("Select Directory"));
+        super(Text.of("Select Directory"));
         this.parentScreen = parentScreen;
         this.onPathSelected = onPathSelected;
 
@@ -83,7 +84,7 @@ public class DirectoryPickerScreen extends Screen {
                 PADDING,
                 BUTTON_HEIGHT,
                 BUTTON_HEIGHT,
-                Text.literal("←"),
+                Text.of("←"),
                 button -> close()
         );
         this.addDrawableChild(backButton);
@@ -94,7 +95,7 @@ public class DirectoryPickerScreen extends Screen {
                 PADDING,
                 upButtonWidth,
                 BUTTON_HEIGHT,
-                Text.literal(upLabel),
+                Text.of(upLabel),
                 button -> goUpDirectory()
         );
         this.addDrawableChild(upButton);
@@ -105,7 +106,7 @@ public class DirectoryPickerScreen extends Screen {
                 this.height - PADDING - BUTTON_HEIGHT - PADDING,
                 selectButtonWidth,
                 BUTTON_HEIGHT,
-                Text.literal(selectLabel),
+                Text.of(selectLabel),
                 button -> selectCurrentDirectory()
         );
         this.addDrawableChild(selectButton);

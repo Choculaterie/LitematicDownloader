@@ -1,6 +1,5 @@
 package com.choculaterie.gui.widget;
 
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
@@ -23,7 +22,7 @@ public class ToggleButton extends ButtonWidget {
     private final Consumer<Boolean> onToggle;
 
     public ToggleButton(int x, int y, boolean initialState, Consumer<Boolean> onToggle) {
-        super(x, y, TOGGLE_WIDTH, TOGGLE_HEIGHT, Text.empty(), button -> {
+        super(x, y, TOGGLE_WIDTH, TOGGLE_HEIGHT, net.minecraft.text.Text.of(" "), button -> {
             ToggleButton toggle = (ToggleButton) button;
             toggle.toggled = !toggle.toggled;
             if (toggle.onToggle != null) {
@@ -43,7 +42,8 @@ public class ToggleButton extends ButtonWidget {
     }
 
     @Override
-    public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+    protected void drawIcon(DrawContext context, int mouseX, int mouseY, float delta) {
+        // ButtonWidget's base render draws the vanilla background; we paint our toggle on top.
         boolean isHovered = mouseX >= this.getX() && mouseY >= this.getY() &&
                 mouseX < this.getX() + this.getWidth() && mouseY < this.getY() + this.getHeight();
 
@@ -53,22 +53,22 @@ public class ToggleButton extends ButtonWidget {
             trackColor = toggled ? 0xFF5FBF63 : 0xFF5A5A5A;
         }
 
-        // Draw track background (rounded appearance via multiple rectangles)
         int trackY = this.getY() + 3;
         int trackHeight = this.getHeight() - 6;
+
+        // Track
         context.fill(this.getX() + 2, trackY, this.getX() + this.getWidth() - 2, trackY + trackHeight, trackColor);
 
-        // Draw border
+        // Border
         context.fill(this.getX(), trackY, this.getX() + this.getWidth(), trackY + 1, BORDER_COLOR); // Top
         context.fill(this.getX(), trackY + trackHeight - 1, this.getX() + this.getWidth(), trackY + trackHeight, BORDER_COLOR); // Bottom
         context.fill(this.getX(), trackY, this.getX() + 1, trackY + trackHeight, BORDER_COLOR); // Left
         context.fill(this.getX() + this.getWidth() - 1, trackY, this.getX() + this.getWidth(), trackY + trackHeight, BORDER_COLOR); // Right
 
-        // Draw knob
+        // Knob
         int knobSize = trackHeight - 4;
         int knobX = toggled ? (this.getX() + this.getWidth() - knobSize - 4) : (this.getX() + 4);
         int knobY = trackY + 2;
         context.fill(knobX, knobY, knobX + knobSize, knobY + knobSize, KNOB_COLOR);
     }
 }
-

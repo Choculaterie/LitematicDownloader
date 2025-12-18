@@ -10,6 +10,7 @@ import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.text.Text;
@@ -205,7 +206,7 @@ public class PostDetailPanel implements Drawable, Element {
         // Create or update previous button
         if (prevImageButton == null) {
             prevImageButton = new CustomButton(prevBtnX, imageNavY, btnWidth, btnHeight,
-                net.minecraft.text.Text.literal("<"), btn -> previousImage());
+                    Text.of("<"), btn -> previousImage());
         } else {
             prevImageButton.setX(prevBtnX);
             prevImageButton.setY(imageNavY);
@@ -215,7 +216,7 @@ public class PostDetailPanel implements Drawable, Element {
         // Create or update next button
         if (nextImageButton == null) {
             nextImageButton = new CustomButton(nextBtnX, imageNavY, btnWidth, btnHeight,
-                net.minecraft.text.Text.literal(">"), btn -> nextImage());
+                    Text.of(">"), btn -> nextImage());
         } else {
             nextImageButton.setX(nextBtnX);
             nextImageButton.setY(imageNavY);
@@ -818,9 +819,12 @@ public class PostDetailPanel implements Drawable, Element {
 
         if (downloadButton == null) {
             downloadButton = new CustomButton(
-                downloadBtnX, downloadBtnY, downloadBtnSize, downloadBtnSize,
-                Text.literal("⬇️"),
-                btn -> onDownloadButtonClick()
+                    downloadBtnX,
+                    downloadBtnY,
+                    downloadBtnSize,
+                    downloadBtnSize,
+                    Text.of("⬇️"),
+                    button -> onDownloadButtonClick()
             );
             downloadButton.setRenderAsDownloadIcon(true);
         } else {

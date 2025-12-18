@@ -372,7 +372,7 @@ public class PostListWidget extends ClickableWidget {
 
         @Override
         protected void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
-            builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE, Text.literal("Post entry"));
+            builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE, Text.of("Post entry"));
         }
     }
 }

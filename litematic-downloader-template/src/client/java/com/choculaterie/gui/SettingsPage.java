@@ -8,6 +8,7 @@ import com.choculaterie.gui.widget.ToastManager;
 import com.choculaterie.gui.widget.ToggleButton;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 import javax.swing.*;
@@ -35,7 +36,7 @@ public class SettingsPage extends Screen {
     private ConfirmPopup activePopup;
 
     public SettingsPage(Screen parentScreen) {
-        super(Text.literal("Settings"));
+        super(Text.of("Settings"));
         this.parentScreen = parentScreen;
     }
 
@@ -61,7 +62,7 @@ public class SettingsPage extends Screen {
                 PADDING,
                 BUTTON_HEIGHT,
                 BUTTON_HEIGHT,
-                Text.literal("←"),
+                Text.of("←"),
                 button -> goBack()
         );
         this.addDrawableChild(backButton);
@@ -87,10 +88,10 @@ public class SettingsPage extends Screen {
                     contentY + LABEL_HEIGHT,
                     fieldWidth,
                     TEXT_FIELD_HEIGHT,
-                    Text.literal("Download Path")
+                    Text.of("Download Path")
             );
             downloadPathField.setText(DownloadSettings.getInstance().getDownloadPath());
-            downloadPathField.setPlaceholder(Text.literal("Enter download path..."));
+            downloadPathField.setPlaceholder(Text.of("Enter download path..."));
             // Don't add as drawable child - CustomTextField handles its own input via GLFW
             // Adding it would cause double character input
         }
@@ -101,7 +102,7 @@ public class SettingsPage extends Screen {
                 contentY + LABEL_HEIGHT,
                 browseButtonWidth,
                 TEXT_FIELD_HEIGHT,
-                Text.literal(browseLabel),
+                Text.of(browseLabel),
                 button -> openFileDialog()
         );
         this.addDrawableChild(browseButton);
@@ -112,7 +113,7 @@ public class SettingsPage extends Screen {
                 contentY + LABEL_HEIGHT,
                 setButtonSize,
                 setButtonSize,
-                Text.literal("✓"),
+                Text.of("✓"),
                 button -> saveDownloadPath()
         );
         setPathButton.visible = false; // Hidden by default

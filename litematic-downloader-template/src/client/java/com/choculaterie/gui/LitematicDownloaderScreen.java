@@ -16,6 +16,7 @@ import com.choculaterie.network.MinemevNetworkManager;
 import com.choculaterie.network.ChoculaterieNetworkManager;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 public class LitematicDownloaderScreen extends Screen {
@@ -48,7 +49,7 @@ public class LitematicDownloaderScreen extends Screen {
     private boolean initialized = false; // Track if first init has been done
 
     public LitematicDownloaderScreen() {
-        super(Text.literal("Litematic Downloader"));
+        super(Text.of("Litematic Downloader"));
     }
 
     @Override
@@ -90,9 +91,9 @@ public class LitematicDownloaderScreen extends Screen {
                     PADDING,
                     searchBarWidth,
                     SEARCH_BAR_HEIGHT,
-                    Text.literal("Search")
+                    Text.of("Search")
             );
-            searchField.setPlaceholder(Text.literal(isCompact ? "Search..." : "Search schematics..."));
+            searchField.setPlaceholder(Text.of(isCompact ? "Search..." : "Search schematics..."));
             searchField.setOnEnterPressed(this::performSearch);
             searchField.setOnClearPressed(this::performSearch);
             // Restore previous search text on resize
@@ -108,7 +109,7 @@ public class LitematicDownloaderScreen extends Screen {
                 PADDING,
                 searchButtonWidth,
                 SEARCH_BAR_HEIGHT,
-                Text.literal(searchLabel),
+                Text.of(searchLabel),
                 button -> performSearch()
         );
         this.addDrawableChild(searchButton);
@@ -168,7 +169,7 @@ public class LitematicDownloaderScreen extends Screen {
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,
-                Text.literal("📁"),
+                Text.of("📁"),
                 button -> openFolderPage()
         );
         // Don't add to children - we'll render it manually on top
@@ -179,7 +180,7 @@ public class LitematicDownloaderScreen extends Screen {
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,
-                Text.literal("⚙"),
+                Text.of("⚙"),
                 button -> toggleFilterPanel()
         );
         // Don't add to children - we'll render it manually on top
@@ -191,7 +192,7 @@ public class LitematicDownloaderScreen extends Screen {
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,
-                Text.literal("X"),
+                Text.of("X"),
                 button -> this.close()
         );
         closeButton.setRenderAsXIcon(true); // Use X icon instead of text
@@ -205,7 +206,7 @@ public class LitematicDownloaderScreen extends Screen {
                 bottomY,
                 paginationButtonWidth,
                 BUTTON_HEIGHT,
-                Text.literal(prevLabel),
+                Text.of(prevLabel),
                 button -> previousPage()
         );
         prevPageButton.active = false;
@@ -216,7 +217,7 @@ public class LitematicDownloaderScreen extends Screen {
                 bottomY,
                 paginationButtonWidth,
                 BUTTON_HEIGHT,
-                Text.literal(nextLabel),
+                Text.of(nextLabel),
                 button -> nextPage()
         );
         nextPageButton.active = false;

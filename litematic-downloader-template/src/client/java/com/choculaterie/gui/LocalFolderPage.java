@@ -10,6 +10,7 @@ import com.choculaterie.gui.widget.ToastManager;
 import com.choculaterie.network.ChoculaterieNetworkManager;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 
@@ -167,7 +168,7 @@ public class LocalFolderPage extends Screen {
     }
 
     public LocalFolderPage(Screen parentScreen) {
-        super(Text.literal("Local Folder"));
+        super(Text.of("Local Folder"));
         this.parentScreen = parentScreen;
 
         // Start at the configured download directory
@@ -254,14 +255,14 @@ public class LocalFolderPage extends Screen {
         // Back button (top left)
         this.addDrawableChild(new CustomButton(
                 currentX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
-                Text.literal("←"), button -> goBack()
+                Text.of("←"), button -> goBack()
         ));
         currentX += BUTTON_HEIGHT + PADDING;
 
         // New Folder button (next to Back button)
         this.addDrawableChild(new CustomButton(
                 currentX, PADDING, newFolderWidth, BUTTON_HEIGHT,
-                Text.literal(newFolderLabel), button -> openNewFolderPopup()
+                Text.of(newFolderLabel), button -> openNewFolderPopup()
         ));
         currentX += newFolderWidth + PADDING;
 
@@ -271,7 +272,7 @@ public class LocalFolderPage extends Screen {
                 PADDING,
                 renameWidth,
                 BUTTON_HEIGHT,
-                Text.literal(renameLabel),
+                Text.of(renameLabel),
                 button -> openRenamePopup()
         );
         renameButton.active = false; // Disabled until something is selected
@@ -284,7 +285,7 @@ public class LocalFolderPage extends Screen {
                 PADDING,
                 deleteWidth,
                 BUTTON_HEIGHT,
-                Text.literal(deleteLabel),
+                Text.of(deleteLabel),
                 button -> handleDeleteClick()
         );
         deleteButton.active = false; // Disabled until something is selected
@@ -294,7 +295,7 @@ public class LocalFolderPage extends Screen {
         // Open in File Explorer button (next to Delete button)
         this.addDrawableChild(new CustomButton(
                 currentX, PADDING, openFolderWidth, BUTTON_HEIGHT,
-                Text.literal(openFolderLabel), button -> openInFileExplorer()
+                Text.of(openFolderLabel), button -> openInFileExplorer()
         ));
         currentX += openFolderWidth + PADDING;
 
@@ -302,14 +303,14 @@ public class LocalFolderPage extends Screen {
         int settingsX = this.width - PADDING - BUTTON_HEIGHT;
         this.addDrawableChild(new CustomButton(
                 settingsX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
-                Text.literal("⚙"), button -> openSettings()
+                Text.of("⚙"), button -> openSettings()
         ));
 
         // Search field (same row, between Open Folder and Settings button)
         int searchWidth = settingsX - currentX - PADDING;
         if (this.client != null && searchWidth > 30) {
-            searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT, Text.literal("Search"));
-            searchField.setPlaceholder(Text.literal("Search..."));
+            searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT, Text.of("Search"));
+            searchField.setPlaceholder(Text.of("Search..."));
             searchField.setOnChanged(this::onSearchChanged);
             searchField.setOnClearPressed(this::onSearchCleared);
             // Restore previous search text on resize

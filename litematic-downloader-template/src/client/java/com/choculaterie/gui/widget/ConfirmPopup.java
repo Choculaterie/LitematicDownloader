@@ -5,6 +5,8 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -141,16 +143,16 @@ public class ConfirmPopup implements Drawable, Element {
                 buttonY,
                 buttonWidth,
                 BUTTON_HEIGHT,
-                net.minecraft.text.Text.literal("Cancel"),
+                Text.of("Cancel"),
                 button -> onCancel.run()
         );
 
         confirmButton = new CustomButton(
-                x + PADDING * 2 + buttonWidth,
+                x + POPUP_WIDTH - PADDING - buttonWidth,
                 buttonY,
                 buttonWidth,
                 BUTTON_HEIGHT,
-                net.minecraft.text.Text.literal(confirmButtonText),
+                Text.of(confirmButtonText),
                 button -> onConfirm.run()
         );
     }

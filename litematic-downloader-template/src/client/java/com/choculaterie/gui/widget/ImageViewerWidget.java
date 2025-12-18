@@ -3,6 +3,7 @@ package com.choculaterie.gui.widget;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
@@ -63,7 +64,7 @@ public class ImageViewerWidget {
 
         if (closeButton == null) {
             closeButton = new CustomButton(closeX, closeY, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE,
-                Text.literal("×"), btn -> onClose.run());
+                    Text.of("×"), btn -> onClose.run());
             closeButton.setRenderAsXIcon(true);
         } else {
             closeButton.setX(closeX);
@@ -84,7 +85,7 @@ public class ImageViewerWidget {
             int prevX = indicatorX - NAV_BUTTON_WIDTH - NAV_BUTTON_SPACING;
             if (prevButton == null) {
                 prevButton = new CustomButton(prevX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT,
-                    Text.literal("<"), btn -> onPrevious.run());
+                        Text.of("<"), btn -> onPrevious.run());
             } else {
                 prevButton.setX(prevX);
                 prevButton.setY(navY);
@@ -96,7 +97,7 @@ public class ImageViewerWidget {
             int nextX = indicatorX + indicatorWidth + NAV_BUTTON_SPACING;
             if (nextButton == null) {
                 nextButton = new CustomButton(nextX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT,
-                    Text.literal(">"), btn -> onNext.run());
+                        Text.of(">"), btn -> onNext.run());
             } else {
                 nextButton.setX(nextX);
                 nextButton.setY(navY);

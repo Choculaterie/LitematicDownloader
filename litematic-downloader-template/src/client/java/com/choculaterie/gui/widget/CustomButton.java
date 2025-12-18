@@ -1,9 +1,9 @@
 package com.choculaterie.gui.widget;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.text.Text;
 
 /**
  * Custom styled button for the Litematic Downloader UI
@@ -18,7 +18,7 @@ public class CustomButton extends ButtonWidget {
     private boolean renderAsXIcon = false;
     private boolean renderAsDownloadIcon = false;
 
-    public CustomButton(int x, int y, int width, int height, Text message, PressAction onPress) {
+    public CustomButton(int x, int y, int width, int height, net.minecraft.text.Text message, PressAction onPress) {
         super(x, y, width, height, message, onPress, DEFAULT_NARRATION_SUPPLIER);
     }
 
@@ -31,22 +31,17 @@ public class CustomButton extends ButtonWidget {
     }
 
     @Override
-    public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+    protected void drawIcon(DrawContext context, int mouseX, int mouseY, float delta) {
         boolean isHovered = mouseX >= this.getX() && mouseY >= this.getY() &&
                 mouseX < this.getX() + this.getWidth() && mouseY < this.getY() + this.getHeight();
 
         int color;
-        int textColor;
-
         if (!this.active) {
             color = BUTTON_DISABLED_COLOR;
-            textColor = TEXT_DISABLED_COLOR;
         } else if (isHovered) {
             color = BUTTON_HOVER_COLOR;
-            textColor = TEXT_COLOR;
         } else {
             color = BUTTON_COLOR;
-            textColor = TEXT_COLOR;
         }
 
         // Draw button background
@@ -63,34 +58,34 @@ public class CustomButton extends ButtonWidget {
         context.fill(this.getX() + this.getWidth() - 1, this.getY(),
                 this.getX() + this.getWidth(), this.getY() + this.getHeight(), 0xFF555555); // Right
 
+        TextRenderer tr = MinecraftClient.getInstance().textRenderer;
+        int textColor = this.active ? TEXT_COLOR : TEXT_DISABLED_COLOR;
+
         // Check if this is the settings icon (⚙) - keep it at original position
         String messageText = this.getMessage().getString();
         boolean isSettingsIcon = messageText.equals("⚙");
         int yOffset = isSettingsIcon ? 0 : 1;
 
         if (renderAsXIcon) {
-            // Draw X symbol (same as SimpleTextField clear button)
             context.drawCenteredTextWithShadow(
-                    MinecraftClient.getInstance().textRenderer,
-                    Text.literal("✕"),
+                    tr,
+                    "✕",
                     this.getX() + this.getWidth() / 2,
                     this.getY() + (this.getHeight() - 8) / 2 + yOffset,
                     textColor
             );
         } else if (renderAsDownloadIcon) {
-            // Draw 💾 emoji
             context.drawCenteredTextWithShadow(
-                    MinecraftClient.getInstance().textRenderer,
-                    Text.literal("💾"),
+                    tr,
+                    "💾",
                     this.getX() + this.getWidth() / 2,
                     this.getY() + (this.getHeight() - 8) / 2 + yOffset,
                     textColor
             );
         } else {
-            // Draw centered text
             context.drawCenteredTextWithShadow(
-                    MinecraftClient.getInstance().textRenderer,
-                    this.getMessage(),
+                    tr,
+                    this.getMessage().getString(),
                     this.getX() + this.getWidth() / 2,
                     this.getY() + (this.getHeight() - 8) / 2 + yOffset,
                     textColor

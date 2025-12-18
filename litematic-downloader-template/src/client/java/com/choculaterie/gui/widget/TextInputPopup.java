@@ -5,6 +5,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
@@ -66,9 +67,9 @@ public class TextInputPopup implements Drawable, Element {
                 fieldY,
                 POPUP_WIDTH - PADDING * 2,
                 20,
-                Text.literal("")
+                Text.of("")
         );
-        textField.setPlaceholder(Text.literal("Enter name..."));
+        textField.setPlaceholder(Text.of("Enter name..."));
         textField.setFocused(true);
         textField.setOnChanged(() -> errorMessage = ""); // Clear error when typing
         textField.setOnEnterPressed(this::handleConfirm);
@@ -82,7 +83,7 @@ public class TextInputPopup implements Drawable, Element {
                 buttonY,
                 buttonWidth,
                 BUTTON_HEIGHT,
-                net.minecraft.text.Text.literal("Cancel"),
+                Text.of("Cancel"),
                 button -> onCancel.run()
         );
 
@@ -91,7 +92,7 @@ public class TextInputPopup implements Drawable, Element {
                 buttonY,
                 buttonWidth,
                 BUTTON_HEIGHT,
-                net.minecraft.text.Text.literal(confirmButtonText),
+                Text.of(confirmButtonText),
                 button -> handleConfirm()
         );
     }
@@ -293,4 +294,3 @@ public class TextInputPopup implements Drawable, Element {
         return textField != null && textField.isFocused();
     }
 }
-
