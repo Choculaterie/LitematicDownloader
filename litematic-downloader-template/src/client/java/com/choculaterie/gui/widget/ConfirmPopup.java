@@ -192,29 +192,36 @@ public class ConfirmPopup implements Drawable, Element {
                 0xFFFFFFFF
         );
 
-        // Draw wrapped message with scissor for scrolling
+        // Draw wrapped message with validated scissor for scrolling
         int messageAreaY = y + PADDING + LINE_HEIGHT + PADDING;
         int messageAreaHeight = visibleMessageHeight;
 
-        // Enable scissor to clip content
-        context.enableScissor(x + PADDING, messageAreaY, x + POPUP_WIDTH - PADDING, messageAreaY + messageAreaHeight);
+        // Enable scissor with bounds validation to clip content
+        int scissorX = Math.max(x + PADDING, 0);
+        int scissorY = Math.max(messageAreaY, 0);
+        int scissorWidth = Math.max(0, Math.min(x + POPUP_WIDTH - PADDING - scissorX, context.getScaledWindowWidth() - scissorX));
+        int scissorHeight = Math.max(0, Math.min(messageAreaHeight, context.getScaledWindowHeight() - scissorY));
 
-        int messageY = messageAreaY - (int)scrollOffset;
-        for (String line : wrappedMessage) {
-            // Only render lines that are visible
-            if (messageY + LINE_HEIGHT >= messageAreaY && messageY < messageAreaY + messageAreaHeight) {
-                context.drawTextWithShadow(
-                        client.textRenderer,
-                        line,
-                        x + PADDING,
-                        messageY,
-                        0xFFCCCCCC
-                );
+        if (scissorWidth > 0 && scissorHeight > 0) {
+            context.enableScissor(scissorX, scissorY, scissorX + scissorWidth, scissorY + scissorHeight);
+
+            int messageY = messageAreaY - (int)scrollOffset;
+            for (String line : wrappedMessage) {
+                // Only render lines that are visible within scissor bounds
+                if (messageY + LINE_HEIGHT >= scissorY && messageY < scissorY + scissorHeight) {
+                    context.drawTextWithShadow(
+                            client.textRenderer,
+                            line,
+                            x + PADDING,
+                            messageY,
+                            0xFFCCCCCC
+                    );
+                }
+                messageY += LINE_HEIGHT;
             }
-            messageY += LINE_HEIGHT;
-        }
 
-        context.disableScissor();
+            context.disableScissor();
+        }
 
         // Render scrollbar if needed
         if (scrollBar != null && client.getWindow() != null) {

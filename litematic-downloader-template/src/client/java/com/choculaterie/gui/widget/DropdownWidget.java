@@ -43,6 +43,11 @@ public class DropdownWidget implements Drawable, Element {
     private int lastScrollBarY = -1;
     private int lastScrollBarHeight = -1;
 
+    // Callback interface for popup state changes
+    public interface OnPopupStateChangeListener {
+        void onPopupStateChanged(boolean isActive);
+    }
+
     public DropdownWidget(int x, int y, int width, Consumer<DropdownItem> onSelect) {
         this.client = MinecraftClient.getInstance();
         this.x = x;
@@ -122,14 +127,21 @@ public class DropdownWidget implements Drawable, Element {
         context.fill(x, y, x + 1, y + height, BORDER_COLOR); // Left
         context.fill(x + renderWidth - 1, y, x + renderWidth, y + height, BORDER_COLOR); // Right
 
-        // Enable scissor for scrolling - start right after outer top border
+        // Enable scissor for scrolling with bounds validation
         int contentY = y + 1;
         // Calculate visible item area height (excluding status message area if present)
         int itemCount = Math.min(items.size(), MAX_VISIBLE_ITEMS);
         int visibleItemsHeight = itemCount * ITEM_HEIGHT;
         int visibleHeight = visibleItemsHeight; // Only scroll the items area
 
-        context.enableScissor(x, contentY, x + renderWidth, contentY + visibleHeight);
+        // Validate scissor bounds
+        int scissorX = Math.max(x, 0);
+        int scissorY = Math.max(contentY, 0);
+        int scissorWidth = Math.max(0, Math.min(renderWidth, context.getScaledWindowWidth() - scissorX));
+        int scissorHeight = Math.max(0, Math.min(visibleHeight, context.getScaledWindowHeight() - scissorY));
+
+        if (scissorWidth > 0 && scissorHeight > 0) {
+            context.enableScissor(scissorX, scissorY, scissorX + scissorWidth, scissorY + scissorHeight);
 
         // Draw items
         hoveredIndex = -1;
@@ -173,7 +185,7 @@ public class DropdownWidget implements Drawable, Element {
                 hoveredIndex = i;
             }
 
-            // Draw item text
+            // Draw item text with bounds checking
             String displayText = item.getDisplayText();
             int textX = itemX + PADDING + 2;
             int textY = itemY + (ITEM_HEIGHT - client.textRenderer.fontHeight) / 2;
@@ -184,10 +196,14 @@ public class DropdownWidget implements Drawable, Element {
                 displayText = client.textRenderer.trimToWidth(displayText, maxTextWidth - 10) + "...";
             }
 
-            context.drawText(client.textRenderer, displayText, textX, textY, TEXT_COLOR, false);
+            // Ensure text is within scissor bounds before drawing
+            if (textY >= scissorY && textY + client.textRenderer.fontHeight <= scissorY + scissorHeight) {
+                context.drawText(client.textRenderer, displayText, textX, textY, TEXT_COLOR, false);
+            }
         }
 
         context.disableScissor();
+        }
 
         // Draw status message if present (at the bottom, after all visible items)
         if (!statusMessage.isEmpty()) {

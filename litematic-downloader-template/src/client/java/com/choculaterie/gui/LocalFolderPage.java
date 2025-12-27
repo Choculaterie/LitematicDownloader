@@ -1449,13 +1449,17 @@ public class LocalFolderPage extends Screen {
         // Draw list background (end before scrollbar)
         context.fill(PADDING, listY, listRightEdge, listY + listHeight, 0xFF151515);
 
-        // Enable scissor to clip content outside the list area
-        context.enableScissor(PADDING, listY, listRightEdge, listY + listHeight);
+        // Only render list content if no popups are active to prevent text appearing above popup backgrounds
+        boolean shouldRenderListContent = !popupActive;
 
-        // Draw entries
-        quickShareButtons.clear(); // Reset button positions each frame
+        if (shouldRenderListContent) {
+            // Enable scissor to clip content outside the list area
+            context.enableScissor(PADDING, listY, listRightEdge, listY + listHeight);
 
-        for (int i = scrollOffset; i < Math.min(entries.size(), scrollOffset + maxVisibleItems); i++) {
+            // Draw entries
+            quickShareButtons.clear(); // Reset button positions each frame
+
+            for (int i = scrollOffset; i < Math.min(entries.size(), scrollOffset + maxVisibleItems); i++) {
             FileEntry entry = entries.get(i);
             int itemY = listY + (i - scrollOffset) * ITEM_HEIGHT;
 
@@ -1589,10 +1593,13 @@ public class LocalFolderPage extends Screen {
                 int btnTextY = buttonY + (buttonHeight - 8) / 2;
                 context.drawTextWithShadow(this.textRenderer, buttonText, btnTextX, btnTextY, buttonTextColor);
             }
+            }
         }
 
-        // Disable scissor after rendering entries
-        context.disableScissor();
+        // Disable scissor after rendering entries (only if content was rendered)
+        if (shouldRenderListContent) {
+            context.disableScissor();
+        }
 
         // Render scrollbar widget with drag support
         if (scrollBar != null && scrollBar.isVisible() && this.client != null) {

@@ -218,10 +218,17 @@ public class CustomTextField extends TextFieldWidget {
             int cursorPos = this.getCursor();
             String beforeCursor = text.substring(0, Math.min(cursorPos, text.length()));
 
-            // Draw text (with scissor to clip if too long)
-            context.enableScissor(textX, this.getY(), textX + maxTextWidth, this.getY() + this.getHeight());
-            context.drawTextWithShadow(client.textRenderer, text, textX, textY, color);
-            context.disableScissor();
+            // Draw text with validated scissor bounds to clip if too long
+            int scissorX = Math.max(textX, 0);
+            int scissorY = Math.max(this.getY(), 0);
+            int scissorWidth = Math.max(0, Math.min(maxTextWidth, context.getScaledWindowWidth() - scissorX));
+            int scissorHeight = Math.max(0, Math.min(this.getHeight(), context.getScaledWindowHeight() - scissorY));
+
+            if (scissorWidth > 0 && scissorHeight > 0) {
+                context.enableScissor(scissorX, scissorY, scissorX + scissorWidth, scissorY + scissorHeight);
+                context.drawTextWithShadow(client.textRenderer, text, textX, textY, color);
+                context.disableScissor();
+            }
 
             // Draw cursor if focused
             if (this.isFocused() && this.isActive()) {

@@ -19,6 +19,7 @@ public class PostListWidget extends ClickableWidget {
     private double scrollAmount = 0;
     private final OnPostClickListener onPostClick;
     private ScrollBar scrollBar;
+    private boolean popupsActive = false; // Flag to indicate if popups are active
 
     public interface OnPostClickListener {
         void onPostClick(MinemevPostInfo post);
@@ -112,27 +113,40 @@ public class PostListWidget extends ClickableWidget {
 
     @Override
     public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Enable scissor for clipping
-        context.enableScissor(getX(), getY(), getX() + width, getY() + height);
+        // Don't render list content if popups are active to prevent text appearing above popup backgrounds
+        boolean shouldRenderContent = !popupsActive;
 
-        int offsetY = (int) scrollAmount;
-        int currentY = 0;
+        if (shouldRenderContent) {
+            // Enable scissor for clipping with bounds validation
+            int scissorX = Math.max(getX(), 0);
+            int scissorY = Math.max(getY(), 0);
+            int scissorWidth = Math.max(0, Math.min(width, context.getScaledWindowWidth() - scissorX));
+            int scissorHeight = Math.max(0, Math.min(height, context.getScaledWindowHeight() - scissorY));
 
-        for (int i = 0; i < entries.size(); i++) {
-            PostEntryButton entry = entries.get(i);
-            int entryY = getY() + currentY - offsetY;
+            if (scissorWidth > 0 && scissorHeight > 0) {
+                context.enableScissor(scissorX, scissorY, scissorX + scissorWidth, scissorY + scissorHeight);
 
-            if (entryY + entry.getRowHeight() >= getY() && entryY < getY() + height) {
-                entry.updateBounds(getX(), entryY, Math.max(0, width - SCROLLBAR_PADDING));
-                entry.render(context, mouseX, mouseY, delta);
+                int offsetY = (int) scrollAmount;
+                int currentY = 0;
+
+                for (int i = 0; i < entries.size(); i++) {
+                    PostEntryButton entry = entries.get(i);
+                    int entryY = getY() + currentY - offsetY;
+
+                    // Only render entries that are visible within scissor bounds
+                    if (entryY + entry.getRowHeight() >= scissorY && entryY < scissorY + scissorHeight) {
+                        entry.updateBounds(getX(), entryY, Math.max(0, width - SCROLLBAR_PADDING));
+                        entry.render(context, mouseX, mouseY, delta);
+                    }
+
+                    currentY += entry.getRowHeight() + ENTRY_SPACING;
+                }
+
+                context.disableScissor();
             }
-
-            currentY += entry.getRowHeight() + ENTRY_SPACING;
         }
 
-        context.disableScissor();
-
-        // Render scrollbar with direct mouse handling
+        // Always render scrollbar (even when popups are active) to maintain functionality
         MinecraftClient client = MinecraftClient.getInstance();
         if (client != null && client.getWindow() != null) {
             long windowHandle = client.getWindow().getHandle();
@@ -241,6 +255,13 @@ public class PostListWidget extends ClickableWidget {
     @Override
     protected void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
         // Add narration for accessibility
+    }
+
+    /**
+     * Set whether popups are currently active to prevent text rendering above them
+     */
+    public void setPopupsActive(boolean popupsActive) {
+        this.popupsActive = popupsActive;
     }
 
     private static final class PostEntryButton extends ClickableWidget {

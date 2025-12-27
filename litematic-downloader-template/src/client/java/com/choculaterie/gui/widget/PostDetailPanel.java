@@ -50,6 +50,11 @@ public class PostDetailPanel implements Drawable, Element {
     private static final int MIN_IMAGE_SIZE = 80;
     private static final int PADDING = 10;
 
+    // Callback interface for notifying about popup state changes
+    public interface OnPopupStateChangeListener {
+        void onPopupStateChanged(boolean isActive);
+    }
+
     private int x;
     private int y;
     private int width;
@@ -89,6 +94,9 @@ public class PostDetailPanel implements Drawable, Element {
     private MinemevFileInfo[] availableFiles;
     private boolean isLoadingFiles = false;
     private String downloadStatus = "";
+
+    // Popup state callback
+    private OnPopupStateChangeListener popupStateChangeListener;
 
     public PostDetailPanel(int x, int y, int width, int height) {
         this.x = x;
@@ -419,7 +427,7 @@ public class PostDetailPanel implements Drawable, Element {
             client.execute(() -> {
                 client.getTextureManager().registerTexture(
                     texId,
-                    new NativeImageBackedTexture(finalImage)
+                    new NativeImageBackedTexture(() -> "litematicdownloader/dynamic/" + uniqueId, finalImage)
                 );
                 imageCache.put(imageUrl, texId);
             });
@@ -512,8 +520,13 @@ public class PostDetailPanel implements Drawable, Element {
         this.isLoadingFiles = false;
         this.downloadStatus = "";
         if (schematicDropdown != null) {
+            boolean wasOpen = schematicDropdown.isOpen();
             schematicDropdown.close();
             schematicDropdown.setStatusMessage("");
+            // Notify that popup is now closed if it was open
+            if (wasOpen) {
+                notifyPopupStateChanged(false);
+            }
         }
     }
 
@@ -523,6 +536,8 @@ public class PostDetailPanel implements Drawable, Element {
         // Close dropdown if it's open
         if (schematicDropdown.isOpen()) {
             schematicDropdown.close();
+            // Notify that popup is now closed
+            notifyPopupStateChanged(false);
             return;
         }
 
@@ -606,6 +621,8 @@ public class PostDetailPanel implements Drawable, Element {
         }
 
         schematicDropdown.open();
+        // Notify that popup is now active
+        notifyPopupStateChanged(true);
     }
 
     private void onSchematicSelected(DropdownWidget.DropdownItem item) {
@@ -784,11 +801,15 @@ public class PostDetailPanel implements Drawable, Element {
         context.fill(x, y, x + 1, y + height, 0xFF555555);
 
         if (postInfo == null) {
-            // Draw placeholder text
+            // Draw placeholder text - ensure it's within bounds
             String text = "Select a schematic to view details";
             int textWidth = client.textRenderer.getWidth(text);
-            context.drawTextWithShadow(client.textRenderer, text,
-                x + (width - textWidth) / 2, y + height / 2 - 4, SUBTITLE_COLOR);
+            int textX = x + (width - textWidth) / 2;
+            int textY = y + height / 2 - 4;
+            // Ensure text is within panel bounds
+            if (textX >= x && textX + textWidth <= x + width && textY >= y && textY <= y + height) {
+                context.drawTextWithShadow(client.textRenderer, text, textX, textY, SUBTITLE_COLOR);
+            }
             return;
         }
 
@@ -813,162 +834,164 @@ public class PostDetailPanel implements Drawable, Element {
 
         // Enable scissor for scrolling (start below the download button)
         int contentStartY = y + downloadBtnSize;
-        context.enableScissor(x + 1, contentStartY, x + width, y + height);
+        // Ensure scissor bounds are valid and don't extend beyond panel
+        int scissorX = Math.max(x + 1, 0);
+        int scissorY = Math.max(contentStartY, 0);
+        int scissorWidth = Math.max(0, Math.min(x + width - scissorX, context.getScaledWindowWidth() - scissorX));
+        int scissorHeight = Math.max(0, Math.min(y + height - scissorY, context.getScaledWindowHeight() - scissorY));
 
-        int currentY = contentStartY + PADDING - (int) scrollOffset;
-        contentHeight = 0;
+        if (scissorWidth > 0 && scissorHeight > 0) {
+            context.enableScissor(scissorX, scissorY, scissorX + scissorWidth, scissorY + scissorHeight);
 
-        // Calculate responsive image dimensions (respecting aspect ratio)
-        int imageWidth = getDisplayImageWidth();
-        int imageHeight = getDisplayImageHeight();
+            int currentY = contentStartY + PADDING - (int) scrollOffset;
+            contentHeight = 0;
 
-        // Draw image area (centered horizontally)
-        int imageX = x + (width - imageWidth) / 2;
-        int imageY = currentY;
+            // Calculate responsive image dimensions (respecting aspect ratio)
+            int imageWidth = getDisplayImageWidth();
+            int imageHeight = getDisplayImageHeight();
 
-        if (isLoadingImage) {
-            // Draw loading spinner centered in image area using reusable instance
-            context.fill(imageX, imageY, imageX + imageWidth, imageY + imageHeight, 0xFF333333);
-            // Update spinner position to center it in the image area
-            imageLoadingSpinner.setPosition(
-                imageX + imageWidth / 2 - imageLoadingSpinner.getWidth() / 2,
-                imageY + imageHeight / 2 - imageLoadingSpinner.getHeight() / 2
-            );
-        } else if (currentImageTexture != null) {
-            // Draw image (stretch to fill)
-            context.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, currentImageTexture,
-                imageX, imageY, 0.0f, 0.0f, imageWidth, imageHeight, imageWidth, imageHeight);
-        } else {
-            // Draw placeholder
-            context.fill(imageX, imageY, imageX + imageWidth, imageY + imageHeight, 0xFF333333);
-            String noImg = isCompactMode() ? "..." : "No image";
-            int tw = client.textRenderer.getWidth(noImg);
-            context.drawTextWithShadow(client.textRenderer, noImg,
-                imageX + (imageWidth - tw) / 2, imageY + imageHeight / 2 - 4, SUBTITLE_COLOR);
-        }
+            // Draw image area (centered horizontally)
+            int imageX = x + (width - imageWidth) / 2;
+            int imageY = currentY;
 
-        currentY += imageHeight + PADDING;
-        contentHeight += imageHeight + PADDING;
-
-        // Draw image navigation if multiple images
-        if (imageUrls != null && imageUrls.length > 1) {
-            String indicator = String.format("%d / %d", currentImageIndex + 1, imageUrls.length);
-            int indicatorWidth = client.textRenderer.getWidth(indicator);
-            int indicatorX = x + (width - indicatorWidth) / 2;
-            int btnY = currentY;
-
-            // Update carousel button positions
-            updateCarouselButtons(btnY);
-
-            // Render navigation buttons using CustomButton widgets
-            if (prevImageButton != null) {
-                prevImageButton.render(context, renderMouseX, renderMouseY, delta);
+            if (isLoadingImage) {
+                // Draw loading spinner centered in image area using reusable instance
+                context.fill(imageX, imageY, imageX + imageWidth, imageY + imageHeight, 0xFF333333);
+                // Update spinner position to center it in the image area
+                imageLoadingSpinner.setPosition(
+                    imageX + imageWidth / 2 - imageLoadingSpinner.getWidth() / 2,
+                    imageY + imageHeight / 2 - imageLoadingSpinner.getHeight() / 2
+                );
+            } else if (currentImageTexture != null) {
+                // Draw image (stretch to fill)
+                context.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, currentImageTexture,
+                    imageX, imageY, 0.0f, 0.0f, imageWidth, imageHeight, imageWidth, imageHeight);
+            } else {
+                // Draw placeholder
+                context.fill(imageX, imageY, imageX + imageWidth, imageY + imageHeight, 0xFF333333);
+                String noImg = isCompactMode() ? "..." : "No image";
+                int tw = client.textRenderer.getWidth(noImg);
+                context.drawTextWithShadow(client.textRenderer, noImg,
+                    imageX + (imageWidth - tw) / 2, imageY + imageHeight / 2 - 4, SUBTITLE_COLOR);
             }
 
-            // Index indicator
-            context.drawTextWithShadow(client.textRenderer, indicator, indicatorX, btnY + 4, SUBTITLE_COLOR);
+            currentY += imageHeight + PADDING;
+            contentHeight += imageHeight + PADDING;
 
-            // Render next button
-            if (nextImageButton != null) {
-                nextImageButton.render(context, renderMouseX, renderMouseY, delta);
-            }
+            // Draw image navigation if multiple images
+            if (imageUrls != null && imageUrls.length > 1) {
+                String indicator = String.format("%d / %d", currentImageIndex + 1, imageUrls.length);
+                int indicatorWidth = client.textRenderer.getWidth(indicator);
+                int indicatorX = x + (width - indicatorWidth) / 2;
+                int btnY = currentY;
 
-            currentY += 16 + PADDING;
-            contentHeight += 16 + PADDING;
-        }
+                // Update carousel button positions
+                updateCarouselButtons(btnY);
 
-        // Draw title
-        String title = postInfo.getTitle() != null ? postInfo.getTitle() : "Untitled";
-        drawWrappedText(context, title, x + PADDING, currentY, width - PADDING * 2, TITLE_COLOR);
-        int titleHeight = getWrappedTextHeight(title, width - PADDING * 2);
-        currentY += titleHeight + 8;
-        contentHeight += titleHeight + 8;
-
-        // Draw author
-        String author = "By " + (postInfo.getAuthor() != null ? postInfo.getAuthor() : "Unknown");
-        context.drawTextWithShadow(client.textRenderer, author, x + PADDING, currentY, SUBTITLE_COLOR);
-        currentY += 12;
-        contentHeight += 12;
-
-        // Draw downloads
-        String downloads = "Downloads: " + postInfo.getDownloads();
-        context.drawTextWithShadow(client.textRenderer, downloads, x + PADDING, currentY, SUBTITLE_COLOR);
-        currentY += 16;
-        contentHeight += 16;
-
-
-        // Draw tags
-        String[] tags = postInfo.getTags();
-        if (tags != null && tags.length > 0) {
-            context.drawTextWithShadow(client.textRenderer, "Tags:", x + PADDING, currentY, SUBTITLE_COLOR);
-            currentY += 12;
-            contentHeight += 12;
-
-            int tagX = x + PADDING;
-            for (String tag : tags) {
-                int tagWidth = client.textRenderer.getWidth(tag) + 8;
-                if (tagX + tagWidth > x + width - PADDING) {
-                    tagX = x + PADDING;
-                    currentY += 14;
-                    contentHeight += 14;
+                // Render navigation buttons using CustomButton widgets
+                if (prevImageButton != null) {
+                    prevImageButton.render(context, renderMouseX, renderMouseY, delta);
                 }
-                context.fill(tagX, currentY, tagX + tagWidth, currentY + 12, TAG_BG_COLOR);
-                context.drawTextWithShadow(client.textRenderer, tag, tagX + 4, currentY + 2, TAG_TEXT_COLOR);
-                tagX += tagWidth + 4;
-            }
-            currentY += 16;
-            contentHeight += 16;
-        }
 
-        // Draw versions
-        String[] versions = postInfo.getVersions();
-        if (versions != null && versions.length > 0) {
-            context.drawTextWithShadow(client.textRenderer, "Versions:", x + PADDING, currentY, SUBTITLE_COLOR);
+                // Index indicator - ensure it's within scissor bounds
+                context.drawTextWithShadow(client.textRenderer, indicator, indicatorX, btnY + 4, SUBTITLE_COLOR);
+
+                // Render next button
+                if (nextImageButton != null) {
+                    nextImageButton.render(context, renderMouseX, renderMouseY, delta);
+                }
+
+                currentY += 16 + PADDING;
+                contentHeight += 16 + PADDING;
+            }
+
+            // Draw title
+            String title = postInfo.getTitle() != null ? postInfo.getTitle() : "Untitled";
+            drawWrappedText(context, title, x + PADDING, currentY, width - PADDING * 2, TITLE_COLOR);
+            int titleHeight = getWrappedTextHeight(title, width - PADDING * 2);
+            currentY += titleHeight + 8;
+            contentHeight += titleHeight + 8;
+
+            // Draw author
+            String author = "By " + (postInfo.getAuthor() != null ? postInfo.getAuthor() : "Unknown");
+            context.drawTextWithShadow(client.textRenderer, author, x + PADDING, currentY, SUBTITLE_COLOR);
             currentY += 12;
             contentHeight += 12;
 
-            StringBuilder versionText = new StringBuilder();
-            for (int i = 0; i < Math.min(5, versions.length); i++) {
-                if (i > 0) versionText.append(", ");
-                versionText.append(versions[i]);
-            }
-            if (versions.length > 5) {
-                versionText.append("... (+").append(versions.length - 5).append(" more)");
-            }
-            context.drawTextWithShadow(client.textRenderer, versionText.toString(),
-                x + PADDING, currentY, TAG_TEXT_COLOR);
+            // Draw downloads
+            String downloads = "Downloads: " + postInfo.getDownloads();
+            context.drawTextWithShadow(client.textRenderer, downloads, x + PADDING, currentY, SUBTITLE_COLOR);
             currentY += 16;
             contentHeight += 16;
+
+            // Draw tags
+            String[] tags = postInfo.getTags();
+            if (tags != null && tags.length > 0) {
+                context.drawTextWithShadow(client.textRenderer, "Tags:", x + PADDING, currentY, SUBTITLE_COLOR);
+                currentY += 12;
+                contentHeight += 12;
+
+                int tagX = x + PADDING;
+                for (String tag : tags) {
+                    int tagWidth = client.textRenderer.getWidth(tag) + 8;
+                    if (tagX + tagWidth > x + width - PADDING) {
+                        tagX = x + PADDING;
+                        currentY += 14;
+                        contentHeight += 14;
+                    }
+                    context.fill(tagX, currentY, tagX + tagWidth, currentY + 12, TAG_BG_COLOR);
+                    context.drawTextWithShadow(client.textRenderer, tag, tagX + 4, currentY + 2, TAG_TEXT_COLOR);
+                    tagX += tagWidth + 4;
+                }
+                currentY += 16;
+                contentHeight += 16;
+            }
+
+            // Draw versions
+            String[] versions = postInfo.getVersions();
+            if (versions != null && versions.length > 0) {
+                context.drawTextWithShadow(client.textRenderer, "Versions:", x + PADDING, currentY, SUBTITLE_COLOR);
+                currentY += 12;
+                contentHeight += 12;
+
+                StringBuilder versionText = new StringBuilder();
+                for (int i = 0; i < Math.min(5, versions.length); i++) {
+                    if (i > 0) versionText.append(", ");
+                    versionText.append(versions[i]);
+                }
+                if (versions.length > 5) {
+                    versionText.append("... (+").append(versions.length - 5).append(" more)");
+                }
+                context.drawTextWithShadow(client.textRenderer, versionText.toString(),
+                    x + PADDING, currentY, TAG_TEXT_COLOR);
+                currentY += 16;
+                contentHeight += 16;
+            }
+
+            // Draw description if detail loaded
+            if (postDetail != null && postDetail.getDescription() != null && !postDetail.getDescription().isEmpty()) {
+                currentY += 8;
+                contentHeight += 8;
+                context.drawTextWithShadow(client.textRenderer, "Description:", x + PADDING, currentY, SUBTITLE_COLOR);
+                currentY += 12;
+                contentHeight += 12;
+
+                String desc = postDetail.getDescription();
+                drawWrappedText(context, desc, x + PADDING, currentY, width - PADDING * 2, TAG_TEXT_COLOR);
+                int descHeight = getWrappedTextHeight(desc, width - PADDING * 2);
+                contentHeight += descHeight;
+            } else if (isLoadingDetails) {
+                currentY += 8;
+                context.drawTextWithShadow(client.textRenderer, "Loading details...", x + PADDING, currentY, SUBTITLE_COLOR);
+                contentHeight += 20;
+            }
+
+            contentHeight += PADDING * 2;
+
+            context.disableScissor();
         }
 
-        // Draw description if detail loaded
-        if (postDetail != null && postDetail.getDescription() != null && !postDetail.getDescription().isEmpty()) {
-            currentY += 8;
-            contentHeight += 8;
-            context.drawTextWithShadow(client.textRenderer, "Description:", x + PADDING, currentY, SUBTITLE_COLOR);
-            currentY += 12;
-            contentHeight += 12;
-
-            String desc = postDetail.getDescription();
-            drawWrappedText(context, desc, x + PADDING, currentY, width - PADDING * 2, TAG_TEXT_COLOR);
-            int descHeight = getWrappedTextHeight(desc, width - PADDING * 2);
-            contentHeight += descHeight;
-        } else if (isLoadingDetails) {
-            currentY += 8;
-            context.drawTextWithShadow(client.textRenderer, "Loading details...", x + PADDING, currentY, SUBTITLE_COLOR);
-            contentHeight += 20;
-        }
-
-        contentHeight += PADDING * 2;
-
-        context.disableScissor();
-
-        // Render dropdown on top of everything (after scissor is disabled)
-        if (schematicDropdown != null && schematicDropdown.isOpen()) {
-            schematicDropdown.render(context, mouseX, mouseY, delta);
-        }
-
-        // Update and render scrollbar if content is scrollable
+        // Update and render scrollbar if content is scrollable (BEFORE dropdown)
         if (contentHeight > height) {
             scrollBar.setScrollData(contentHeight, height);
             scrollBar.setScrollPercentage(scrollOffset / Math.max(1, contentHeight - height));
@@ -985,6 +1008,11 @@ public class PostDetailPanel implements Drawable, Element {
                 // Fallback to regular render
                 scrollBar.render(context, mouseX, mouseY, delta);
             }
+        }
+
+        // Render dropdown on top of everything (LAST to ensure it's above all content)
+        if (schematicDropdown != null && schematicDropdown.isOpen()) {
+            schematicDropdown.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -1066,10 +1094,19 @@ public class PostDetailPanel implements Drawable, Element {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // Check dropdown first (it can be outside panel bounds when open)
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
+            boolean wasOpen = schematicDropdown.isOpen();
             boolean handled = schematicDropdown.mouseClicked(mouseX, mouseY, button);
+
+            // Check if dropdown was closed by the click (clicking outside)
+            boolean isStillOpen = schematicDropdown.isOpen();
+            if (wasOpen && !isStillOpen) {
+                // Dropdown was closed, notify popup state change
+                notifyPopupStateChanged(false);
+            }
+
             // If clicked outside dropdown, it will close itself
             // Also block all clicks if mouse is over dropdown
-            return handled || schematicDropdown.isOpen() || schematicDropdown.isMouseOver(mouseX, mouseY);
+            return handled || isStillOpen || schematicDropdown.isMouseOver(mouseX, mouseY);
         }
 
         if (mouseX < x || mouseX >= x + width || mouseY < y || mouseY >= y + height) {
@@ -1132,6 +1169,22 @@ public class PostDetailPanel implements Drawable, Element {
         }
 
         return true;
+    }
+
+    /**
+     * Set callback listener for popup state changes
+     */
+    public void setOnPopupStateChangeListener(OnPopupStateChangeListener listener) {
+        this.popupStateChangeListener = listener;
+    }
+
+    /**
+     * Notify callback about popup state change
+     */
+    private void notifyPopupStateChanged(boolean isActive) {
+        if (popupStateChangeListener != null) {
+            popupStateChangeListener.onPopupStateChanged(isActive);
+        }
     }
 
     private void previousImage() {

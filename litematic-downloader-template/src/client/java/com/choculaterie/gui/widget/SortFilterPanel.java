@@ -240,33 +240,40 @@ public class SortFilterPanel implements Drawable, Element {
         String title = isCompact ? "Filters" : "Sort & Filter";
         context.drawTextWithShadow(client.textRenderer, title, x + PADDING, y + PADDING, TITLE_COLOR);
 
-        // Enable scissor for scrolling content
+        // Enable scissor for scrolling content with bounds validation
         int contentStartY = y + 30;
-        context.enableScissor(x + 1, contentStartY, x + width - 12, y + height - 40);
+        int scissorX = Math.max(x + 1, 0);
+        int scissorY = Math.max(contentStartY, 0);
+        int scissorWidth = Math.max(0, Math.min(x + width - 12 - scissorX, context.getScaledWindowWidth() - scissorX));
+        int scissorHeight = Math.max(0, Math.min(y + height - 40 - scissorY, context.getScaledWindowHeight() - scissorY));
 
-        int currentY = contentStartY - (int) scrollOffset;
-        contentHeight = 0;
+        if (scissorWidth > 0 && scissorHeight > 0) {
+            context.enableScissor(scissorX, scissorY, scissorX + scissorWidth, scissorY + scissorHeight);
 
-        // ===== SORT SECTION =====
-        currentY = renderSortSection(context, mouseX, mouseY, currentY, isCompact);
+            int currentY = contentStartY - (int) scrollOffset;
+            contentHeight = 0;
 
-        // ===== PAGINATION SECTION =====
-        currentY = renderPaginationSection(context, mouseX, mouseY, currentY, isCompact);
+            // ===== SORT SECTION =====
+            currentY = renderSortSection(context, mouseX, mouseY, currentY, isCompact);
 
-        // ===== TAG FILTER SECTION =====
-        currentY = renderTagSection(context, mouseX, mouseY, currentY, isCompact);
+            // ===== PAGINATION SECTION =====
+            currentY = renderPaginationSection(context, mouseX, mouseY, currentY, isCompact);
 
-        // ===== VENDOR SECTION =====
-        currentY = renderVendorSection(context, mouseX, mouseY, currentY, isCompact);
+            // ===== TAG FILTER SECTION =====
+            currentY = renderTagSection(context, mouseX, mouseY, currentY, isCompact);
 
-        context.disableScissor();
+            // ===== VENDOR SECTION =====
+            currentY = renderVendorSection(context, mouseX, mouseY, currentY, isCompact);
 
-        // Update scrollbar
+            context.disableScissor();
+        }
+
+        // Update and render scrollbar (before potential overlays)
         int visibleHeight = height - 70;
         scrollBar.setScrollData(contentHeight, visibleHeight);
         scrollBar.render(context, mouseX, mouseY, delta);
 
-        // Draw Apply and Reset buttons at bottom
+        // Draw Apply and Reset buttons at bottom (last to ensure they're on top)
         renderBottomButtons(context, mouseX, mouseY, delta);
     }
 

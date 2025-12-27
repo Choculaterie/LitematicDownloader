@@ -143,6 +143,12 @@ public class LitematicDownloaderScreen extends Screen {
                     rightPanelWidth - PADDING,
                     this.height - PADDING * 2
             );
+            // Set popup state listener to notify PostListWidget
+            detailPanel.setOnPopupStateChangeListener(isActive -> {
+                if (postList != null) {
+                    postList.setPopupsActive(isActive);
+                }
+            });
         } else {
             detailPanel.setDimensions(
                     leftPanelWidth,
