@@ -1,24 +1,13 @@
 package com.choculaterie.models;
 
-/**
- * Response from the quick share upload API
- */
-public class QuickShareResponse {
-    private final String shortUrl;
+import org.jspecify.annotations.NonNull;
 
-    public QuickShareResponse(String shortUrl) {
-        this.shortUrl = shortUrl;
-    }
+public record QuickShareResponse(String shortUrl) {
 
-    public String getShortUrl() {
-        return shortUrl;
-    }
 
-    @Override
-    public String toString() {
-        return "QuickShareResponse{" +
-                "shortUrl='" + shortUrl + '\'' +
-                '}';
-    }
+	@Override
+	public @NonNull String toString() {
+		return "QuickShareResponse{shortUrl='" + shortUrl + "'}";
+	}
 }
 

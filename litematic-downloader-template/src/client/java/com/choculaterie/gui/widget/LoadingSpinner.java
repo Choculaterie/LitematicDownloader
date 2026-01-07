@@ -3,89 +3,83 @@ package com.choculaterie.gui.widget;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 
-/**
- * Reusable loading spinner widget - displays blocks in a circle with sequential fade effect
- */
 public class LoadingSpinner implements Drawable {
-    private static final int SPINNER_SIZE = 32;
-    private static final int BLOCK_SIZE = 3; // Reduced from 4 to ~0.8 (20% of original), using 1 for visibility
-    private static final int NUM_BLOCKS = 8;
-    private static final float FADE_SPEED = 0.03f; // Much slower - reduced from 0.15f
+	private static final int SPINNER_SIZE = 32;
+	private static final int BLOCK_SIZE = 3;
+	private static final int NUM_BLOCKS = 8;
+	private static final float FADE_SPEED = 0.03f;
+	private static final float FULL_OPACITY = 1.0f;
+	private static final float MEDIUM_OPACITY = 0.5f;
+	private static final float DIM_OPACITY = 0.15f;
+	private static final float CLOSE_DISTANCE = 0.5f;
+	private static final float TRAIL_DISTANCE = 1.5f;
+	private static final float TRAIL_FADE = 0.3f;
+	private static final int WHITE_COLOR = 0x00FFFFFF;
 
-    private int x;
-    private int y;
-    private float animationTime = 0.0f;
+	private int x;
+	private int y;
+	private float animationTime = 0.0f;
 
-    public LoadingSpinner(int x, int y) {
-        this.x = x;
-        this.y = y;
-    }
-    
-    /**
-     * Update the spinner's position for the next render
-     */
-    public void setPosition(int x, int y) {
-        this.x = x;
-        this.y = y;
-    }
+	public LoadingSpinner(int x, int y) {
+		this.x = x;
+		this.y = y;
+	}
 
-    @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Update animation time
-        animationTime += FADE_SPEED;
-        if (animationTime >= NUM_BLOCKS) {
-            animationTime -= NUM_BLOCKS;
-        }
+	public void setPosition(int x, int y) {
+		this.x = x;
+		this.y = y;
+	}
 
-        // Draw blocks in a circle
-        int centerX = x + SPINNER_SIZE / 2;
-        int centerY = y + SPINNER_SIZE / 2;
-        int radius = SPINNER_SIZE / 2 - BLOCK_SIZE;
+	@Override
+	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+		animationTime += FADE_SPEED;
+		if (animationTime >= NUM_BLOCKS) {
+			animationTime -= NUM_BLOCKS;
+		}
 
-        for (int i = 0; i < NUM_BLOCKS; i++) {
-            // Calculate block position (stationary circle)
-            float angle = (i * 360.0f / NUM_BLOCKS);
-            double angleRad = Math.toRadians(angle);
-            int blockX = (int) (centerX + Math.cos(angleRad) * radius) - BLOCK_SIZE / 2;
-            int blockY = (int) (centerY + Math.sin(angleRad) * radius) - BLOCK_SIZE / 2;
+		int centerX = x + SPINNER_SIZE / 2;
+		int centerY = y + SPINNER_SIZE / 2;
+		int radius = SPINNER_SIZE / 2 - BLOCK_SIZE;
 
-            // Calculate opacity based on distance from the current animated position
-            float distance = Math.abs(animationTime - i);
+		for (int i = 0; i < NUM_BLOCKS; i++) {
+			float angle = (i * 360.0f / NUM_BLOCKS);
+			double angleRad = Math.toRadians(angle);
+			int blockX = (int) (centerX + Math.cos(angleRad) * radius) - BLOCK_SIZE / 2;
+			int blockY = (int) (centerY + Math.sin(angleRad) * radius) - BLOCK_SIZE / 2;
 
-            // Handle wrap-around distance
-            if (distance > NUM_BLOCKS / 2.0f) {
-                distance = NUM_BLOCKS - distance;
-            }
+			float distance = calculateDistance(i);
+			float opacity = calculateOpacity(distance);
 
-            // Only the closest block is fully lit, with a short trail
-            float opacity;
-            if (distance < 0.5f) {
-                // Current block - fully lit
-                opacity = 1.0f;
-            } else if (distance < 1.5f) {
-                // Trailing block - medium brightness
-                opacity = 0.5f - (distance - 0.5f) * 0.3f;
-            } else {
-                // All other blocks - dim
-                opacity = 0.15f;
-            }
+			int alpha = (int) (opacity * 255);
+			int color = (alpha << 24) | WHITE_COLOR;
 
-            opacity = Math.max(0.15f, Math.min(1.0f, opacity));
+			context.fill(blockX, blockY, blockX + BLOCK_SIZE, blockY + BLOCK_SIZE, color);
+		}
+	}
 
-            // Calculate color with opacity
-            int alpha = (int) (opacity * 255);
-            int color = (alpha << 24) | 0x00FFFFFF; // White with varying alpha
+	public int getWidth() {
+		return SPINNER_SIZE;
+	}
 
-            // Draw the block
-            context.fill(blockX, blockY, blockX + BLOCK_SIZE, blockY + BLOCK_SIZE, color);
-        }
-    }
+	public int getHeight() {
+		return SPINNER_SIZE;
+	}
 
-    public int getWidth() {
-        return SPINNER_SIZE;
-    }
+	private float calculateDistance(int blockIndex) {
+		float distance = Math.abs(animationTime - blockIndex);
+		if (distance > NUM_BLOCKS / 2.0f) {
+			distance = NUM_BLOCKS - distance;
+		}
+		return distance;
+	}
 
-    public int getHeight() {
-        return SPINNER_SIZE;
-    }
+	private float calculateOpacity(float distance) {
+		if (distance < CLOSE_DISTANCE) {
+			return FULL_OPACITY;
+		} else if (distance < TRAIL_DISTANCE) {
+			return MEDIUM_OPACITY - (distance - CLOSE_DISTANCE) * TRAIL_FADE;
+		} else {
+			return DIM_OPACITY;
+		}
+	}
 }

@@ -1,18 +1,13 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.gui.theme.UITheme;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import org.lwjgl.glfw.GLFW;
 
-/**
- * Reusable scrollbar component for scrollable content
- */
 public class ScrollBar implements Drawable {
-    private static final int SCROLLBAR_WIDTH = 6;
-    private static final int SCROLLBAR_COLOR = 0xFF555555;
-    private static final int SCROLLBAR_HANDLE_COLOR = 0xFF888888;
-    private static final int SCROLLBAR_HANDLE_HOVER_COLOR = 0xFFAAAAAA;
-    
+    private static final int MIN_HANDLE_HEIGHT = 20;
+
     private final int x;
     private final int y;
     private final int height;
@@ -52,55 +47,60 @@ public class ScrollBar implements Drawable {
         return isDragging;
     }
 
-    /**
-     * Update and render the scrollbar, handling mouse input directly
-     * @return true if the scroll position changed due to dragging
-     */
+    private double getHandleHeight() {
+        return Math.max(MIN_HANDLE_HEIGHT, (visibleHeight / contentHeight) * height);
+    }
+
+    private double getMaxHandleY() {
+        return height - getHandleHeight();
+    }
+
+    private double getHandleY() {
+        return y + (scrollPercentage * getMaxHandleY());
+    }
+
+    private boolean isMouseOverHandle(int mouseX, int mouseY) {
+        double handleHeight = getHandleHeight();
+        double handleY = getHandleY();
+        return mouseX >= x && mouseX < x + UITheme.Dimensions.SCROLLBAR_WIDTH &&
+               mouseY >= handleY && mouseY < handleY + handleHeight;
+    }
+
+    private boolean isMouseOverTrack(int mouseX, int mouseY) {
+        return mouseX >= x && mouseX < x + UITheme.Dimensions.SCROLLBAR_WIDTH &&
+               mouseY >= y && mouseY < y + height;
+    }
+
     public boolean updateAndRender(DrawContext context, int mouseX, int mouseY, float delta, long windowHandle) {
         if (!isVisible()) return false;
 
-        // Check mouse button state directly
         boolean isMouseDown = GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
 
-        // Calculate handle size and position
-        double handleHeight = Math.max(20, (visibleHeight / contentHeight) * height);
-        double maxHandleY = height - handleHeight;
-        double handleY = y + (scrollPercentage * maxHandleY);
+        double handleHeight = getHandleHeight();
+        double maxHandleY = getMaxHandleY();
 
-        // Check if mouse is over handle
-        isHovered = mouseX >= x && mouseX < x + SCROLLBAR_WIDTH &&
-                    mouseY >= handleY && mouseY < handleY + handleHeight;
-
-        // Check if mouse is over the track (but not handle)
-        boolean isOverTrack = mouseX >= x && mouseX < x + SCROLLBAR_WIDTH &&
-                              mouseY >= y && mouseY < y + height;
-
+        isHovered = isMouseOverHandle(mouseX, mouseY);
+        boolean isOverTrack = isMouseOverTrack(mouseX, mouseY);
         boolean scrollChanged = false;
 
-        // Handle mouse press start (mouse just pressed this frame)
         if (isMouseDown && !wasMouseDown) {
             if (isHovered) {
-                // Clicked on handle - start dragging
                 isDragging = true;
                 dragStartY = mouseY;
                 dragStartScroll = scrollPercentage;
             } else if (isOverTrack) {
-                // Clicked on track - jump to that position
-                // Center the handle at the click position
                 double clickPositionInTrack = mouseY - y - (handleHeight / 2);
                 double newPercentage = Math.max(0.0, Math.min(1.0, clickPositionInTrack / maxHandleY));
                 if (newPercentage != scrollPercentage) {
                     scrollPercentage = newPercentage;
                     scrollChanged = true;
                 }
-                // Start dragging from this new position
                 isDragging = true;
                 dragStartY = mouseY;
                 dragStartScroll = scrollPercentage;
             }
         }
 
-        // Handle dragging
         if (isDragging && isMouseDown) {
             double deltaYMouse = mouseY - dragStartY;
             double deltaScroll = deltaYMouse / maxHandleY;
@@ -111,63 +111,43 @@ public class ScrollBar implements Drawable {
             }
         }
 
-        // Handle mouse release
         if (!isMouseDown && isDragging) {
             isDragging = false;
         }
 
         wasMouseDown = isMouseDown;
 
-        // Draw scrollbar track
-        context.fill(x, y, x + SCROLLBAR_WIDTH, y + height, SCROLLBAR_COLOR);
-
-        // Recalculate handle position after potential scroll change
-        handleY = y + (scrollPercentage * maxHandleY);
-
-        // Draw handle
-        int handleColor = (isHovered || isDragging) ? SCROLLBAR_HANDLE_HOVER_COLOR : SCROLLBAR_HANDLE_COLOR;
-        context.fill(x, (int)handleY, x + SCROLLBAR_WIDTH, (int)(handleY + handleHeight), handleColor);
+        drawScrollBar(context, handleHeight);
 
         return scrollChanged;
     }
 
+    private void drawScrollBar(DrawContext context, double handleHeight) {
+        context.fill(x, y, x + UITheme.Dimensions.SCROLLBAR_WIDTH, y + height, UITheme.Colors.SCROLLBAR_BG);
+
+        double handleY = getHandleY();
+        int handleColor = (isHovered || isDragging) ? UITheme.Colors.SCROLLBAR_THUMB_HOVER : UITheme.Colors.SCROLLBAR_THUMB;
+        context.fill(x, (int)handleY, x + UITheme.Dimensions.SCROLLBAR_WIDTH, (int)(handleY + handleHeight), handleColor);
+    }
+
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Legacy render method - use updateAndRender instead for mouse handling
         if (!isVisible()) return;
-        
-        // Draw scrollbar track
-        context.fill(x, y, x + SCROLLBAR_WIDTH, y + height, SCROLLBAR_COLOR);
-        
-        // Calculate handle size and position
-        double handleHeight = Math.max(20, (visibleHeight / contentHeight) * height);
-        double maxHandleY = height - handleHeight;
-        double handleY = y + (scrollPercentage * maxHandleY);
-        
-        // Check if mouse is over handle
-        isHovered = mouseX >= x && mouseX < x + SCROLLBAR_WIDTH &&
-                    mouseY >= handleY && mouseY < handleY + handleHeight;
-        
-        // Draw handle
-        int handleColor = (isHovered || isDragging) ? SCROLLBAR_HANDLE_HOVER_COLOR : SCROLLBAR_HANDLE_COLOR;
-        context.fill(x, (int)handleY, x + SCROLLBAR_WIDTH, (int)(handleY + handleHeight), handleColor);
+
+        isHovered = isMouseOverHandle(mouseX, mouseY);
+        drawScrollBar(context, getHandleHeight());
     }
-    
+
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!isVisible() || button != 0) return false;
-        
-        double handleHeight = Math.max(20, (visibleHeight / contentHeight) * height);
-        double maxHandleY = height - handleHeight;
-        double handleY = y + (scrollPercentage * maxHandleY);
-        
-        if (mouseX >= x && mouseX < x + SCROLLBAR_WIDTH &&
-            mouseY >= handleY && mouseY < handleY + handleHeight) {
+
+        if (isMouseOverHandle((int)mouseX, (int)mouseY)) {
             isDragging = true;
             dragStartY = mouseY;
             dragStartScroll = scrollPercentage;
             return true;
         }
-        
+
         return false;
     }
     
@@ -181,18 +161,15 @@ public class ScrollBar implements Drawable {
     
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         if (!isDragging) return false;
-        
-        double handleHeight = Math.max(20, (visibleHeight / contentHeight) * height);
-        double maxHandleY = height - handleHeight;
-        
+
         double deltaYMouse = mouseY - dragStartY;
-        double deltaScroll = deltaYMouse / maxHandleY;
-        
+        double deltaScroll = deltaYMouse / getMaxHandleY();
+
         setScrollPercentage(dragStartScroll + deltaScroll);
         return true;
     }
-    
+
     public int getWidth() {
-        return SCROLLBAR_WIDTH;
+        return UITheme.Dimensions.SCROLLBAR_WIDTH;
     }
 }

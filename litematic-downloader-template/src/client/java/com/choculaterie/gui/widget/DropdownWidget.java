@@ -1,5 +1,6 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.gui.theme.UITheme;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
@@ -9,23 +10,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * Dropdown widget for displaying selectable items
- */
 public class DropdownWidget implements Drawable, Element {
     private static final int ITEM_HEIGHT = 24;
-    private static final int PADDING = 4;
     private static final int MAX_VISIBLE_ITEMS = 6;
-    private static final int BG_COLOR = 0xE0252525;
-    private static final int SCROLLBAR_WIDTH = 8;
-    private static final int SCROLLBAR_PADDING = 2;
-    private static final int SCROLLBAR_SIDE_SPACING = 2; // Space on left and right of scrollbar
-    // Match CustomButton colors
-    private static final int ITEM_COLOR = 0xFF3A3A3A;
-    private static final int ITEM_HOVER_COLOR = 0xFF4A4A4A;
-    private static final int BORDER_COLOR = 0xFF555555;
-    private static final int TEXT_COLOR = 0xFFFFFFFF;
-    private static final int ERROR_TEXT_COLOR = 0xFFFF4444; // Red color for errors
+    private static final int SCROLLBAR_SIDE_SPACING = 2;
 
     private final MinecraftClient client;
     private int x;
@@ -51,7 +39,7 @@ public class DropdownWidget implements Drawable, Element {
         this.items = new ArrayList<>();
         this.onSelect = onSelect;
         this.isOpen = false;
-        this.scrollBar = new ScrollBar(x + width - 10, y + 1, 100); // Will be updated in render
+        this.scrollBar = new ScrollBar(x + width - 10, y + 1, 100);
     }
 
     public void setStatusMessage(String message) {
@@ -65,7 +53,6 @@ public class DropdownWidget implements Drawable, Element {
     public void setPosition(int x, int y) {
         this.x = x;
         this.y = y;
-        // ScrollBar position will be updated in render
     }
 
     public void setItems(List<DropdownItem> items) {
@@ -97,12 +84,23 @@ public class DropdownWidget implements Drawable, Element {
     private int getDropdownHeight() {
         if (!isOpen || items.isEmpty()) return 0;
         int itemCount = Math.min(items.size(), MAX_VISIBLE_ITEMS);
-        int baseHeight = itemCount * ITEM_HEIGHT + 2; // +2 for top and bottom borders
-        // Add space for status message if present
+        int baseHeight = itemCount * ITEM_HEIGHT + UITheme.Dimensions.BORDER_WIDTH * 2;
         if (!statusMessage.isEmpty()) {
             baseHeight += ITEM_HEIGHT;
         }
         return baseHeight;
+    }
+
+    private int getRenderWidth() {
+        return width + 1;
+    }
+
+    private int getItemRightEdge(boolean hasScrollbar) {
+        int renderWidth = getRenderWidth();
+        if (hasScrollbar) {
+            return x + renderWidth - UITheme.Dimensions.SCROLLBAR_WIDTH - SCROLLBAR_SIDE_SPACING - 1;
+        }
+        return x + renderWidth - 1;
     }
 
     @Override
@@ -110,168 +108,163 @@ public class DropdownWidget implements Drawable, Element {
         if (!isOpen || items.isEmpty()) return;
 
         int height = getDropdownHeight();
-        // Increase width by 1px to the right
-        int renderWidth = width + 1;
+        int renderWidth = getRenderWidth();
 
-        // Draw background
-        context.fill(x, y, x + renderWidth, y + height, BG_COLOR);
+        drawBackground(context, height, renderWidth);
+        drawBorder(context, height, renderWidth);
+        renderItems(context, mouseX, mouseY, renderWidth);
+        renderStatusMessage(context, renderWidth);
+        renderScrollbar(context, mouseX, mouseY, delta);
+    }
 
-        // Draw border
-        context.fill(x, y, x + renderWidth, y + 1, BORDER_COLOR); // Top
-        context.fill(x, y + height - 1, x + renderWidth, y + height, BORDER_COLOR); // Bottom
-        context.fill(x, y, x + 1, y + height, BORDER_COLOR); // Left
-        context.fill(x + renderWidth - 1, y, x + renderWidth, y + height, BORDER_COLOR); // Right
+    private void drawBackground(DrawContext context, int height, int renderWidth) {
+        context.fill(x, y, x + renderWidth, y + height, UITheme.Colors.PANEL_BG_SECONDARY);
+    }
 
-        // Enable scissor for scrolling - start right after outer top border
-        int contentY = y + 1;
-        // Calculate visible item area height (excluding status message area if present)
+    private void drawBorder(DrawContext context, int height, int renderWidth) {
+        int borderColor = UITheme.Colors.BUTTON_BORDER;
+        int borderWidth = UITheme.Dimensions.BORDER_WIDTH;
+
+        context.fill(x, y, x + renderWidth, y + borderWidth, borderColor);
+        context.fill(x, y + height - borderWidth, x + renderWidth, y + height, borderColor);
+        context.fill(x, y, x + borderWidth, y + height, borderColor);
+        context.fill(x + renderWidth - borderWidth, y, x + renderWidth, y + height, borderColor);
+    }
+
+    private void renderItems(DrawContext context, int mouseX, int mouseY, int renderWidth) {
+        int contentY = y + UITheme.Dimensions.BORDER_WIDTH;
         int itemCount = Math.min(items.size(), MAX_VISIBLE_ITEMS);
         int visibleItemsHeight = itemCount * ITEM_HEIGHT;
-        int visibleHeight = visibleItemsHeight; // Only scroll the items area
 
-        context.enableScissor(x, contentY, x + renderWidth, contentY + visibleHeight);
+        context.enableScissor(x, contentY, x + renderWidth, contentY + visibleItemsHeight);
 
-        // Draw items
         hoveredIndex = -1;
-
-        // Calculate item right edge (stop before scrollbar if visible)
         boolean hasScrollbar = items.size() > MAX_VISIBLE_ITEMS;
-        int itemRightEdge;
-        if (hasScrollbar) {
-            // With scrollbar: leave space for scrollbar + spacing + 1px shorter
-            itemRightEdge = x + renderWidth - SCROLLBAR_WIDTH - SCROLLBAR_SIDE_SPACING - 1;
-        } else {
-            // No scrollbar: extend to right border (just account for the 1px border)
-            itemRightEdge = x + renderWidth - 1;
-        }
+        int itemRightEdge = getItemRightEdge(hasScrollbar);
 
         for (int i = 0; i < items.size(); i++) {
             int itemY = contentY + i * ITEM_HEIGHT - (int) scrollOffset;
 
-            // Skip items outside visible area
-            if (itemY + ITEM_HEIGHT < contentY || itemY > contentY + visibleHeight) {
+            if (itemY + ITEM_HEIGHT < contentY || itemY > contentY + visibleItemsHeight) {
                 continue;
             }
 
-            DropdownItem item = items.get(i);
-            boolean isHovered = mouseX >= x && mouseX < itemRightEdge &&
-                              mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
-
-            // Draw item background with CustomButton style - align with outer border, stop before scrollbar
-            int itemBgColor = isHovered ? ITEM_HOVER_COLOR : ITEM_COLOR;
-            int itemX = x + 1; // Start right after left border
-            int itemWidth = itemRightEdge - itemX; // Width up to scrollbar or right edge
-
-            context.fill(itemX, itemY, itemX + itemWidth, itemY + ITEM_HEIGHT, itemBgColor);
-
-            // Draw bottom border only if not the last item (to separate items)
-            if (i < items.size() - 1) {
-                context.fill(itemX, itemY + ITEM_HEIGHT - 1, itemX + itemWidth, itemY + ITEM_HEIGHT, BORDER_COLOR);
-            }
-
-            if (isHovered) {
-                hoveredIndex = i;
-            }
-
-            // Draw item text
-            String displayText = item.getDisplayText();
-            int textX = itemX + PADDING + 2;
-            int textY = itemY + (ITEM_HEIGHT - client.textRenderer.fontHeight) / 2;
-
-            // Truncate text if too long - account for scrollbar space
-            int maxTextWidth = itemWidth - PADDING * 2 - 4;
-            if (client.textRenderer.getWidth(displayText) > maxTextWidth) {
-                displayText = client.textRenderer.trimToWidth(displayText, maxTextWidth - 10) + "...";
-            }
-
-            context.drawText(client.textRenderer, displayText, textX, textY, TEXT_COLOR, false);
+            renderSingleItem(context, mouseX, mouseY, i, itemY, itemRightEdge);
         }
 
         context.disableScissor();
+    }
 
-        // Draw status message if present (at the bottom, after all visible items)
-        if (!statusMessage.isEmpty()) {
-            // Position status message right after the visible items area
-            int statusY = contentY + visibleItemsHeight;
-            int statusX = x + 1; // Align with left border
-            int statusWidth = renderWidth - 2; // Full width minus borders
+    private void renderSingleItem(DrawContext context, int mouseX, int mouseY, int index, int itemY, int itemRightEdge) {
+        DropdownItem item = items.get(index);
+        boolean isHovered = mouseX >= x && mouseX < itemRightEdge &&
+                          mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
 
-            // Draw separator line (top border of status area)
-            context.fill(statusX, statusY, statusX + statusWidth, statusY + 1, BORDER_COLOR);
+        int itemBgColor = isHovered ? UITheme.Colors.BUTTON_BG_HOVER : UITheme.Colors.BUTTON_BG;
+        int itemX = x + UITheme.Dimensions.BORDER_WIDTH;
+        int itemWidth = itemRightEdge - itemX;
 
-            // Draw status message with wrapping support
-            int maxStatusWidth = statusWidth - PADDING * 2;
-            String displayStatus = statusMessage;
+        context.fill(itemX, itemY, itemX + itemWidth, itemY + ITEM_HEIGHT, itemBgColor);
 
-            // Check if message needs truncation/wrapping
-            int statusTextWidth = client.textRenderer.getWidth(statusMessage);
-            if (statusTextWidth > maxStatusWidth) {
-                // Truncate with ellipsis if too long
-                displayStatus = client.textRenderer.trimToWidth(statusMessage, maxStatusWidth - client.textRenderer.getWidth("...")) + "...";
-            }
-
-            // Determine color based on message content - red for errors, green for success
-            int statusColor;
-            String lowerMessage = statusMessage.toLowerCase();
-            if (lowerMessage.contains("error") ||
-                lowerMessage.contains("failed") ||
-                lowerMessage.contains("fail") ||
-                lowerMessage.startsWith("✗") ||
-                lowerMessage.contains("could not") ||
-                lowerMessage.contains("cannot") ||
-                lowerMessage.contains("unable")) {
-                statusColor = ERROR_TEXT_COLOR; // Red for errors
-            } else if (lowerMessage.contains("success") ||
-                       lowerMessage.contains("complete") ||
-                       lowerMessage.contains("downloaded") ||
-                       lowerMessage.startsWith("✓")) {
-                statusColor = 0xFF88FF88; // Green for success
-            } else {
-                statusColor = 0xFFFFFFFF; // White for info
-            }
-
-            // Draw centered
-            int finalStatusWidth = client.textRenderer.getWidth(displayStatus);
-            int statusTextX = x + (renderWidth - finalStatusWidth) / 2;
-            int statusTextY = statusY + 1 + (ITEM_HEIGHT - client.textRenderer.fontHeight) / 2;
-            context.drawText(client.textRenderer, displayStatus, statusTextX, statusTextY, statusColor, false);
+        if (index < items.size() - 1) {
+            context.fill(itemX, itemY + ITEM_HEIGHT - UITheme.Dimensions.BORDER_WIDTH,
+                        itemX + itemWidth, itemY + ITEM_HEIGHT, UITheme.Colors.BUTTON_BORDER);
         }
 
-        // Update and render scrollbar if needed
-        if (items.size() > MAX_VISIBLE_ITEMS) {
-            // Position scrollbar closer to the right edge
-            int scrollbarX = x + renderWidth - SCROLLBAR_WIDTH - 1; // 1px from right edge
-            int scrollbarY = y + 1;
+        if (isHovered) {
+            hoveredIndex = index;
+        }
 
-            // Only recreate scrollbar if position or height changed
-            if (scrollBar == null ||
-                lastScrollBarX != scrollbarX ||
-                lastScrollBarY != scrollbarY ||
-                lastScrollBarHeight != visibleItemsHeight) {
+        renderItemText(context, item, itemX, itemY, itemWidth);
+    }
 
-                scrollBar = new ScrollBar(scrollbarX, scrollbarY, visibleItemsHeight);
-                lastScrollBarX = scrollbarX;
-                lastScrollBarY = scrollbarY;
-                lastScrollBarHeight = visibleItemsHeight;
-            }
+    private void renderItemText(DrawContext context, DropdownItem item, int itemX, int itemY, int itemWidth) {
+        String displayText = item.getDisplayText();
+        int textX = itemX + UITheme.Dimensions.PADDING + 2;
+        int textY = itemY + (ITEM_HEIGHT - client.textRenderer.fontHeight) / 2;
 
-            // Set scroll data
-            int contentHeight = items.size() * ITEM_HEIGHT;
-            scrollBar.setScrollData(contentHeight, visibleItemsHeight);
+        int maxTextWidth = itemWidth - UITheme.Dimensions.PADDING * 2 - 4;
+        if (client.textRenderer.getWidth(displayText) > maxTextWidth) {
+            displayText = client.textRenderer.trimToWidth(displayText, maxTextWidth - 10) + "...";
+        }
 
-            // Set current scroll position
-            if (maxScrollOffset > 0) {
-                scrollBar.setScrollPercentage(scrollOffset / maxScrollOffset);
-            }
+        context.drawText(client.textRenderer, displayText, textX, textY, UITheme.Colors.TEXT_PRIMARY, false);
+    }
 
-            // Render scrollbar with drag support
-            if (client.getWindow() != null) {
-                boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, client.getWindow().getHandle());
+    private void renderStatusMessage(DrawContext context, int renderWidth) {
+        if (statusMessage.isEmpty()) return;
 
-                // Update scroll offset from scrollbar
-                if (scrollChanged || scrollBar.isDragging()) {
-                    scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScrollOffset);
-                }
+        int itemCount = Math.min(items.size(), MAX_VISIBLE_ITEMS);
+        int contentY = y + UITheme.Dimensions.BORDER_WIDTH;
+        int visibleItemsHeight = itemCount * ITEM_HEIGHT;
+        int statusY = contentY + visibleItemsHeight;
+        int statusX = x + UITheme.Dimensions.BORDER_WIDTH;
+        int statusWidth = renderWidth - UITheme.Dimensions.BORDER_WIDTH * 2;
+
+        context.fill(statusX, statusY, statusX + statusWidth, statusY + UITheme.Dimensions.BORDER_WIDTH, UITheme.Colors.BUTTON_BORDER);
+
+        int maxStatusWidth = statusWidth - UITheme.Dimensions.PADDING * 2;
+        String displayStatus = statusMessage;
+
+        if (client.textRenderer.getWidth(statusMessage) > maxStatusWidth) {
+            displayStatus = client.textRenderer.trimToWidth(statusMessage, maxStatusWidth - client.textRenderer.getWidth("...")) + "...";
+        }
+
+        int statusColor = getStatusColor();
+        int finalStatusWidth = client.textRenderer.getWidth(displayStatus);
+        int statusTextX = x + (renderWidth - finalStatusWidth) / 2;
+        int statusTextY = statusY + UITheme.Dimensions.BORDER_WIDTH + (ITEM_HEIGHT - client.textRenderer.fontHeight) / 2;
+
+        context.drawText(client.textRenderer, displayStatus, statusTextX, statusTextY, statusColor, false);
+    }
+
+    private int getStatusColor() {
+        String lowerMessage = statusMessage.toLowerCase();
+
+        if (lowerMessage.contains("error") || lowerMessage.contains("failed") ||
+            lowerMessage.contains("fail") || lowerMessage.startsWith("✗") ||
+            lowerMessage.contains("could not") || lowerMessage.contains("cannot") ||
+            lowerMessage.contains("unable")) {
+            return UITheme.Colors.ERROR_TEXT;
+        }
+
+        if (lowerMessage.contains("success") || lowerMessage.contains("complete") ||
+            lowerMessage.contains("downloaded") || lowerMessage.startsWith("✓")) {
+            return UITheme.Colors.SUCCESS_BG;
+        }
+
+        return UITheme.Colors.TEXT_PRIMARY;
+    }
+
+    private void renderScrollbar(DrawContext context, int mouseX, int mouseY, float delta) {
+        if (items.size() <= MAX_VISIBLE_ITEMS) return;
+
+        int renderWidth = getRenderWidth();
+        int itemCount = Math.min(items.size(), MAX_VISIBLE_ITEMS);
+        int visibleItemsHeight = itemCount * ITEM_HEIGHT;
+        int scrollbarX = x + renderWidth - UITheme.Dimensions.SCROLLBAR_WIDTH - 1;
+        int scrollbarY = y + UITheme.Dimensions.BORDER_WIDTH;
+
+        if (scrollBar == null || lastScrollBarX != scrollbarX ||
+            lastScrollBarY != scrollbarY || lastScrollBarHeight != visibleItemsHeight) {
+            scrollBar = new ScrollBar(scrollbarX, scrollbarY, visibleItemsHeight);
+            lastScrollBarX = scrollbarX;
+            lastScrollBarY = scrollbarY;
+            lastScrollBarHeight = visibleItemsHeight;
+        }
+
+        int contentHeight = items.size() * ITEM_HEIGHT;
+        scrollBar.setScrollData(contentHeight, visibleItemsHeight);
+
+        if (maxScrollOffset > 0) {
+            scrollBar.setScrollPercentage(scrollOffset / maxScrollOffset);
+        }
+
+        if (client.getWindow() != null) {
+            boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, client.getWindow().getHandle());
+
+            if (scrollChanged || scrollBar.isDragging()) {
+                scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScrollOffset);
             }
         }
     }
@@ -280,14 +273,11 @@ public class DropdownWidget implements Drawable, Element {
         if (!isOpen || items.isEmpty()) return false;
 
         int height = getDropdownHeight();
-        int renderWidth = width + 1;
+        int renderWidth = getRenderWidth();
 
-        // Check if click is within dropdown bounds
         if (mouseX >= x && mouseX < x + renderWidth && mouseY >= y && mouseY < y + height) {
-            // Check if clicking on status message area (don't select anything)
-            int statusAreaStart = y + (Math.min(items.size(), MAX_VISIBLE_ITEMS) * ITEM_HEIGHT) + 1;
+            int statusAreaStart = y + (Math.min(items.size(), MAX_VISIBLE_ITEMS) * ITEM_HEIGHT) + UITheme.Dimensions.BORDER_WIDTH;
             if (!statusMessage.isEmpty() && mouseY >= statusAreaStart) {
-                // Clicked on status area, don't do anything
                 return true;
             }
 
@@ -296,11 +286,9 @@ public class DropdownWidget implements Drawable, Element {
                 if (onSelect != null) {
                     onSelect.accept(selectedItem);
                 }
-                // Don't close - keep dropdown open to show download status
                 return true;
             }
         } else {
-            // Click outside dropdown, close it
             close();
             return false;
         }
@@ -317,40 +305,28 @@ public class DropdownWidget implements Drawable, Element {
         return isOpen;
     }
 
-    /**
-     * Check if mouse is hovering over the dropdown (to block events to elements below)
-     */
     public boolean isMouseOver(double mouseX, double mouseY) {
         if (!isOpen || items.isEmpty()) return false;
 
         int height = getDropdownHeight();
-        int renderWidth = width + 1;
+        int renderWidth = getRenderWidth();
         return mouseX >= x && mouseX < x + renderWidth &&
                mouseY >= y && mouseY < y + height;
     }
 
-    /**
-     * Handle scroll wheel to scroll dropdown content
-     */
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         if (!isOpen || items.isEmpty()) return false;
 
-        // Only handle scroll if mouse is over dropdown
         if (!isMouseOver(mouseX, mouseY)) return false;
 
-        // Only scroll if there are more items than visible
-        if (items.size() <= MAX_VISIBLE_ITEMS) return true; // Still block the event
+        if (items.size() <= MAX_VISIBLE_ITEMS) return true;
 
-        // Scroll by one item height per scroll notch
         double scrollAmount = -verticalAmount * ITEM_HEIGHT;
         scrollOffset = Math.max(0, Math.min(maxScrollOffset, scrollOffset + scrollAmount));
 
-        return true; // Block scroll from propagating to elements below
+        return true;
     }
 
-    /**
-     * Represents an item in the dropdown
-     */
     public static class DropdownItem {
         private final String displayText;
         private final Object data;

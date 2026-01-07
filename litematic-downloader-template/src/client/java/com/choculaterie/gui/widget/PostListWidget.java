@@ -1,5 +1,6 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.models.MinemevPostInfo;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -9,12 +10,10 @@ import net.minecraft.text.Text;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Scrollable list widget for displaying posts
- */
 public class PostListWidget extends ClickableWidget {
     private static final int ENTRY_SPACING = 2;
-    private static final int SCROLLBAR_PADDING = 10;
+    private static final int SCROLL_SPEED = 20;
+
     private final List<PostEntryButton> entries;
     private double scrollAmount = 0;
     private final OnPostClickListener onPostClick;
@@ -28,7 +27,7 @@ public class PostListWidget extends ClickableWidget {
         super(x, y, width, height, Text.empty());
         this.entries = new ArrayList<>();
         this.onPostClick = onPostClick;
-        this.scrollBar = new ScrollBar(x + width - 8, y, height);
+        this.scrollBar = new ScrollBar(x + width - UITheme.Dimensions.SCROLLBAR_WIDTH, y, height);
     }
 
     public void setDimensions(int x, int y, int width, int height) {
@@ -36,8 +35,7 @@ public class PostListWidget extends ClickableWidget {
         this.setY(y);
         this.width = width;
         this.height = height;
-        this.scrollBar = new ScrollBar(x + width - 8, y, height);
-        // Rebuild entries with new width, preserving scroll position
+        this.scrollBar = new ScrollBar(x + width - UITheme.Dimensions.SCROLLBAR_WIDTH, y, height);
         double savedScroll = this.scrollAmount;
         rebuildEntries();
         this.scrollAmount = savedScroll;
@@ -69,7 +67,7 @@ public class PostListWidget extends ClickableWidget {
 
         int currentY = 0;
         for (MinemevPostInfo post : posts) {
-            int rowWidth = Math.max(0, width - SCROLLBAR_PADDING);
+            int rowWidth = Math.max(0, width - UITheme.Dimensions.PADDING);
             Runnable clickAction = () -> {
                 if (onPostClick != null) {
                     onPostClick.onPostClick(post);
@@ -112,18 +110,17 @@ public class PostListWidget extends ClickableWidget {
 
     @Override
     public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Enable scissor for clipping
         context.enableScissor(getX(), getY(), getX() + width, getY() + height);
 
         int offsetY = (int) scrollAmount;
         int currentY = 0;
+        int entryWidth = getEntryWidth();
 
-        for (int i = 0; i < entries.size(); i++) {
-            PostEntryButton entry = entries.get(i);
+        for (PostEntryButton entry : entries) {
             int entryY = getY() + currentY - offsetY;
 
-            if (entryY + entry.getRowHeight() >= getY() && entryY < getY() + height) {
-                entry.updateBounds(getX(), entryY, Math.max(0, width - SCROLLBAR_PADDING));
+            if (isEntryVisible(entryY, entry.getRowHeight())) {
+                entry.updateBounds(getX(), entryY, entryWidth);
                 entry.render(context, mouseX, mouseY, delta);
             }
 
@@ -132,17 +129,14 @@ public class PostListWidget extends ClickableWidget {
 
         context.disableScissor();
 
-        // Render scrollbar with direct mouse handling
         MinecraftClient client = MinecraftClient.getInstance();
         if (client != null && client.getWindow() != null) {
             long windowHandle = client.getWindow().getHandle();
             if (scrollBar.updateAndRender(context, mouseX, mouseY, delta, windowHandle)) {
-                // Scroll position changed, update scroll amount
                 double maxScroll = getMaxScroll();
                 scrollAmount = scrollBar.getScrollPercentage() * maxScroll;
             }
         } else {
-            // Fallback to regular render
             scrollBar.render(context, mouseX, mouseY, delta);
         }
     }
@@ -153,28 +147,21 @@ public class PostListWidget extends ClickableWidget {
         double mouseY = click.y();
         int button = click.button();
 
-        System.out.println("[PostListWidget] mouseClicked called - mouseX: " + mouseX + ", mouseY: " + mouseY + ", button: " + button + ", doubled: " + doubled);
-
-        // Check scrollbar first
         if (scrollBar.mouseClicked(mouseX, mouseY, button)) {
-            System.out.println("[PostListWidget] Scrollbar handled the click");
             return true;
         }
 
-        // Check if click is within list bounds
-        if (button == 0 && mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height) {
+        if (button == 0 && isMouseOver(mouseX, mouseY)) {
             int offsetY = (int) scrollAmount;
             int currentY = 0;
+            int entryWidth = getEntryWidth();
 
-            for (int i = 0; i < entries.size(); i++) {
-                PostEntryButton entry = entries.get(i);
+            for (PostEntryButton entry : entries) {
                 int entryY = getY() + currentY - offsetY;
 
-                // Check if entry is visible and clicked
-                if (entryY + entry.getRowHeight() >= getY() && entryY < getY() + height) {
-                    entry.updateBounds(getX(), entryY, Math.max(0, width - SCROLLBAR_PADDING));
+                if (isEntryVisible(entryY, entry.getRowHeight())) {
+                    entry.updateBounds(getX(), entryY, entryWidth);
                     if (entry.handlePress(mouseX, mouseY, button)) {
-                        System.out.println("[PostListWidget] Entry " + i + " handled the click and triggered callback!");
                         return true;
                     }
                 }
@@ -183,85 +170,44 @@ public class PostListWidget extends ClickableWidget {
             }
         }
 
-        System.out.println("[PostListWidget] Click not handled by any entry");
         return super.mouseClicked(click, doubled);
     }
 
-    protected void onPress() {
-        // ClickableWidget calls this when the widget is clicked
-        System.out.println("[PostListWidget] onPress() called!");
-
-        // Get the current mouse position
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.mouse == null) return;
-
-        double mouseX = client.mouse.getX() * (double)client.getWindow().getScaledWidth() / (double)client.getWindow().getWidth();
-        double mouseY = client.mouse.getY() * (double)client.getWindow().getScaledHeight() / (double)client.getWindow().getHeight();
-
-        System.out.println("[PostListWidget] Mouse position: " + mouseX + ", " + mouseY);
-        System.out.println("[PostListWidget] Widget bounds: " + getX() + ", " + getY() + ", " + (getX() + width) + ", " + (getY() + height));
-
-        // Check scrollbar first
-        if (scrollBar.mouseClicked(mouseX, mouseY, 0)) {
-            System.out.println("[PostListWidget] Scrollbar handled the click");
-            return;
-        }
-
-        // Check if click is within list bounds
-        if (mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height) {
-            int offsetY = (int) scrollAmount;
-            int currentY = 0;
-
-            for (int i = 0; i < entries.size(); i++) {
-                PostEntryButton entry = entries.get(i);
-                int entryY = getY() + currentY - offsetY;
-
-                // Check if entry is visible and clicked
-                if (entryY + entry.getRowHeight() >= getY() && entryY < getY() + height) {
-                    entry.updateBounds(getX(), entryY, Math.max(0, width - SCROLLBAR_PADDING));
-                    if (entry.handlePress(mouseX, mouseY, 0)) {
-                        System.out.println("[PostListWidget] Entry " + i + " handled the click and triggered callback!");
-                        return;
-                    }
-                }
-
-                currentY += entry.getRowHeight() + ENTRY_SPACING;
-            }
-        }
-
-        System.out.println("[PostListWidget] Click not handled by any entry");
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return mouseX >= getX() && mouseX < getX() + width &&
+               mouseY >= getY() && mouseY < getY() + height;
     }
 
     protected void onDrag(double mouseX, double mouseY, double deltaX, double deltaY) {
-        // Handle dragging for scrollbar
         if (scrollBar.isDragging() || scrollBar.mouseDragged(mouseX, mouseY, 0, deltaX, deltaY)) {
             scrollBar.mouseDragged(mouseX, mouseY, 0, deltaX, deltaY);
-            // Update scroll amount based on scrollbar
             double maxScroll = getMaxScroll();
             scrollAmount = scrollBar.getScrollPercentage() * maxScroll;
         }
     }
 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        // Always check scrollbar for release, even if mouse moved outside
         if (scrollBar.isDragging()) {
             return scrollBar.mouseReleased(mouseX, mouseY, button);
         }
 
-        // Forward to entries
-        if (mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height) {
+        if (isMouseOver(mouseX, mouseY)) {
             int offsetY = (int) scrollAmount;
+            int currentY = 0;
+            int entryWidth = getEntryWidth();
 
-            for (int i = 0; i < entries.size(); i++) {
-                PostEntryButton entry = entries.get(i);
-                int entryY = getY() + (i * (entry.getRowHeight() + ENTRY_SPACING)) - offsetY;
+            for (PostEntryButton entry : entries) {
+                int entryY = getY() + currentY - offsetY;
 
-                if (entryY + entry.getRowHeight() >= getY() && entryY < getY() + height) {
-                    entry.updateBounds(getX(), entryY, Math.max(0, width - SCROLLBAR_PADDING));
+                if (isEntryVisible(entryY, entry.getRowHeight())) {
+                    entry.updateBounds(getX(), entryY, entryWidth);
                     if (entry.handleRelease(mouseX, mouseY, button)) {
                         return true;
                     }
                 }
+
+                currentY += entry.getRowHeight() + ENTRY_SPACING;
             }
         }
 
@@ -269,10 +215,8 @@ public class PostListWidget extends ClickableWidget {
     }
 
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-        // Always forward drag events to scrollbar if it's being dragged
         if (scrollBar.isDragging() || scrollBar.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
             scrollBar.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
-            // Update scroll amount based on scrollbar
             double maxScroll = getMaxScroll();
             scrollAmount = scrollBar.getScrollPercentage() * maxScroll;
             return true;
@@ -282,9 +226,9 @@ public class PostListWidget extends ClickableWidget {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height) {
+        if (isMouseOver(mouseX, mouseY)) {
             double maxScroll = getMaxScroll();
-            scrollAmount = Math.max(0, Math.min(maxScroll, scrollAmount - verticalAmount * 20));
+            scrollAmount = Math.max(0, Math.min(maxScroll, scrollAmount - verticalAmount * SCROLL_SPEED));
             updateScrollBar();
             return true;
         }
@@ -295,9 +239,16 @@ public class PostListWidget extends ClickableWidget {
         return Math.max(0, getTotalContentHeight() - height);
     }
 
+    private boolean isEntryVisible(int entryY, int entryHeight) {
+        return entryY + entryHeight >= getY() && entryY < getY() + height;
+    }
+
+    private int getEntryWidth() {
+        return Math.max(0, width - UITheme.Dimensions.PADDING);
+    }
+
     @Override
     protected void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
-        // Add narration for accessibility
     }
 
     private static final class PostEntryButton extends ClickableWidget {
@@ -307,7 +258,7 @@ public class PostListWidget extends ClickableWidget {
         private boolean pressed;
 
         private PostEntryButton(PostEntryWidget visual, Runnable clickAction) {
-            super(visual.getX(), visual.y, visual.getWidth(), visual.getHeight(), Text.empty());
+            super(visual.getX(), visual.getY(), visual.getWidth(), visual.getHeight(), Text.empty());
             this.visual = visual;
             this.post = visual.getPost();
             this.clickAction = clickAction;
@@ -376,5 +327,4 @@ public class PostListWidget extends ClickableWidget {
         }
     }
 }
-
 

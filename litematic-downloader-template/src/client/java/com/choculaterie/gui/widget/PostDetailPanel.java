@@ -1,5 +1,6 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.models.MinemevFileInfo;
 import com.choculaterie.models.MinemevPostDetailInfo;
@@ -10,7 +11,6 @@ import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.text.Text;
@@ -39,18 +39,16 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Panel widget for displaying post details and images on the right side
- */
+
 public class PostDetailPanel implements Drawable, Element {
-    private static final int PANEL_BG_COLOR = 0xFF252525;
-    private static final int TITLE_COLOR = 0xFFFFFFFF;
-    private static final int SUBTITLE_COLOR = 0xFFAAAAAA;
-    private static final int TAG_BG_COLOR = 0xFF3A3A3A;
-    private static final int TAG_TEXT_COLOR = 0xFFCCCCCC;
+    
+    
+    
+    private static final int TAG_BG_COLOR = UITheme.Colors.BUTTON_BG;
+    
     private static final int MAX_IMAGE_SIZE = 200;
     private static final int MIN_IMAGE_SIZE = 80;
-    private static final int PADDING = 10;
+    
 
     private int x;
     private int y;
@@ -75,24 +73,19 @@ public class PostDetailPanel implements Drawable, Element {
     private double scrollOffset = 0;
     private int contentHeight = 0;
 
-    // Reusable spinner instance
     private final LoadingSpinner imageLoadingSpinner;
 
-    // Carousel navigation buttons
     private CustomButton prevImageButton;
     private CustomButton nextImageButton;
 
-    // Scrollbar for content
     private ScrollBar scrollBar;
 
-    // Download functionality
     private CustomButton downloadButton;
     private DropdownWidget schematicDropdown;
     private MinemevFileInfo[] availableFiles;
     private boolean isLoadingFiles = false;
     private String downloadStatus = "";
 
-    // Image viewer modal
     private ImageViewerWidget imageViewer;
 
     public PostDetailPanel(int x, int y, int width, int height) {
@@ -101,10 +94,10 @@ public class PostDetailPanel implements Drawable, Element {
         this.width = width;
         this.height = height;
         this.client = MinecraftClient.getInstance();
-        this.imageLoadingSpinner = new LoadingSpinner(0, 0); // Position will be updated in render
-        int scrollBarYOffset = 30; // Adjust this value to move scrollbar down
+        this.imageLoadingSpinner = new LoadingSpinner(0, 0);
+        int scrollBarYOffset = 30;
         this.scrollBar = new ScrollBar(x + width - 8, y + scrollBarYOffset, height - scrollBarYOffset);
-        this.schematicDropdown = new DropdownWidget(x, y, width - PADDING * 2, this::onSchematicSelected);
+        this.schematicDropdown = new DropdownWidget(x, y, width - UITheme.Dimensions.PADDING * 2, this::onSchematicSelected);
     }
 
     public void setDimensions(int x, int y, int width, int height) {
@@ -112,31 +105,30 @@ public class PostDetailPanel implements Drawable, Element {
         this.y = y;
         this.width = width;
         this.height = height;
-        int scrollBarYOffset = 30; // Adjust this value to move scrollbar down
+        int scrollBarYOffset = 30;
         this.scrollBar = new ScrollBar(x + width - 8, y + scrollBarYOffset, height - scrollBarYOffset);
         if (schematicDropdown != null) {
-            schematicDropdown.setPosition(x + PADDING, y + PADDING);
+            schematicDropdown.setPosition(x, y);
+            if (schematicDropdown.isOpen()) {
+                schematicDropdown.close();
+            }
         }
     }
 
-    /**
-     * Get the fixed width of the image container (always the same regardless of image aspect ratio)
-     */
-    private int getDisplayImageWidth() {
-        // Full width minus scrollbar
-        return width - 10; // 10 for scrollbar
+    public void closeDropdown() {
+        if (schematicDropdown != null && schematicDropdown.isOpen()) {
+            schematicDropdown.close();
+        }
     }
 
-    /**
-     * Get the fixed height of the image container (always the same regardless of image aspect ratio)
-     */
+    private int getDisplayImageWidth() {
+        return width - 10;
+    }
+
     private int getDisplayImageHeight() {
         return MAX_IMAGE_SIZE;
     }
 
-    /**
-     * Calculate actual image width within the container, respecting original aspect ratio
-     */
     private int getActualImageWidth() {
         if (originalImageWidth <= 0 || originalImageHeight <= 0) {
             return getDisplayImageWidth();
@@ -145,10 +137,8 @@ public class PostDetailPanel implements Drawable, Element {
         int containerWidth = getDisplayImageWidth();
         int containerHeight = getDisplayImageHeight();
 
-        // Calculate what width we'd need to display at container height
         int widthAtContainerHeight = (int) ((float) originalImageWidth / originalImageHeight * containerHeight);
 
-        // If it fits in container width, use calculated width, otherwise scale to fit width
         if (widthAtContainerHeight <= containerWidth) {
             return Math.min(originalImageWidth, widthAtContainerHeight);
         } else {
@@ -156,9 +146,6 @@ public class PostDetailPanel implements Drawable, Element {
         }
     }
 
-    /**
-     * Calculate actual image height within the container, respecting original aspect ratio
-     */
     private int getActualImageHeight() {
         if (originalImageWidth <= 0 || originalImageHeight <= 0) {
             return getDisplayImageHeight();
@@ -166,23 +153,16 @@ public class PostDetailPanel implements Drawable, Element {
 
         int containerHeight = getDisplayImageHeight();
 
-        // Calculate what height we'd need to display at actual width
         int actualWidth = getActualImageWidth();
         int calculatedHeight = (int) ((float) originalImageHeight / originalImageWidth * actualWidth);
 
         return Math.min(originalImageHeight, Math.min(containerHeight, calculatedHeight));
     }
 
-    /**
-     * Check if panel is in compact mode (small width)
-     */
     private boolean isCompactMode() {
         return width < 200;
     }
 
-    /**
-     * Update carousel button positions based on current layout
-     */
     private void updateCarouselButtons(int imageNavY) {
         if (imageUrls == null || imageUrls.length <= 1) {
             prevImageButton = null;
@@ -190,7 +170,6 @@ public class PostDetailPanel implements Drawable, Element {
             return;
         }
 
-        // Responsive button sizes
         boolean compact = isCompactMode();
         int btnWidth = compact ? 18 : 25;
         int btnHeight = compact ? 14 : 16;
@@ -203,7 +182,6 @@ public class PostDetailPanel implements Drawable, Element {
         int prevBtnX = indicatorX - btnWidth - btnSpacing;
         int nextBtnX = indicatorX + indicatorWidth + btnSpacing;
 
-        // Create or update previous button
         if (prevImageButton == null) {
             prevImageButton = new CustomButton(prevBtnX, imageNavY, btnWidth, btnHeight,
                     Text.of("<"), btn -> previousImage());
@@ -213,7 +191,6 @@ public class PostDetailPanel implements Drawable, Element {
             prevImageButton.setWidth(btnWidth);
         }
 
-        // Create or update next button
         if (nextImageButton == null) {
             nextImageButton = new CustomButton(nextBtnX, imageNavY, btnWidth, btnHeight,
                     Text.of(">"), btn -> nextImage());
@@ -226,7 +203,7 @@ public class PostDetailPanel implements Drawable, Element {
 
     public void setPost(MinemevPostInfo post) {
         System.out.println("[PostDetailPanel] setPost called!");
-        System.out.println("[PostDetailPanel] Post: " + (post != null ? post.getTitle() : "null"));
+        System.out.println("[PostDetailPanel] Post: " + (post != null ? post.title() : "null"));
 
         if (post == null) {
             System.out.println("[PostDetailPanel] Post is null, clearing panel");
@@ -234,17 +211,15 @@ public class PostDetailPanel implements Drawable, Element {
             return;
         }
 
-        // Skip if the same post is already loaded (avoid reload on resize)
-        if (this.postInfo != null && post.getUuid() != null && post.getUuid().equals(this.postInfo.getUuid())) {
+        if (this.postInfo != null && post.uuid() != null && post.uuid().equals(this.postInfo.uuid())) {
             System.out.println("[PostDetailPanel] Same post already loaded, skipping reload");
             return;
         }
 
-        System.out.println("[PostDetailPanel] Setting post: " + post.getTitle());
-        System.out.println("[PostDetailPanel] UUID: " + post.getUuid());
-        System.out.println("[PostDetailPanel] Vendor: " + post.getVendor());
+        System.out.println("[PostDetailPanel] Setting post: " + post.title());
+        System.out.println("[PostDetailPanel] UUID: " + post.uuid());
+        System.out.println("[PostDetailPanel] Vendor: " + post.vendor());
 
-        // Clear download state when switching to a new post
         clearDownloadState();
 
         this.postInfo = post;
@@ -258,11 +233,9 @@ public class PostDetailPanel implements Drawable, Element {
 
         System.out.println("[PostDetailPanel] Post info set, loading details...");
 
-        // Load post details
-        String vendor = post.getVendor() != null ? post.getVendor() : "minemev";
-        String uuid = post.getUuid();
+        String vendor = post.vendor() != null ? post.vendor() : "minemev";
+        String uuid = post.uuid();
 
-        // Strip vendor prefix if present (e.g., "minemev/uuid" -> "uuid")
         if (uuid != null && uuid.contains("/")) {
             String[] parts = uuid.split("/", 2);
             if (parts.length == 2) {
@@ -285,15 +258,14 @@ public class PostDetailPanel implements Drawable, Element {
                 return null;
             });
 
-        // Start loading images from postInfo if available
-        if (post.getImages() != null && post.getImages().length > 0) {
-            System.out.println("[PostDetailPanel] Found " + post.getImages().length + " images");
-            this.imageUrls = post.getImages();
+        if (post.images() != null && post.images().length > 0) {
+            System.out.println("[PostDetailPanel] Found " + post.images().length + " images");
+            this.imageUrls = post.images();
             loadImage(imageUrls[0]);
-        } else if (post.getThumbnailUrl() != null && !post.getThumbnailUrl().isEmpty()) {
+        } else if (post.thumbnailUrl() != null && !post.thumbnailUrl().isEmpty()) {
             System.out.println("[PostDetailPanel] Using thumbnail URL");
-            this.imageUrls = new String[]{post.getThumbnailUrl()};
-            loadImage(post.getThumbnailUrl());
+            this.imageUrls = new String[]{post.thumbnailUrl()};
+            loadImage(post.thumbnailUrl());
         } else {
             System.out.println("[PostDetailPanel] No images available");
             this.imageUrls = new String[0];
@@ -306,15 +278,12 @@ public class PostDetailPanel implements Drawable, Element {
                 this.postDetail = detail;
                 this.isLoadingDetails = false;
 
-                // Update images from detail if available
                 if (detail.getImages() != null && detail.getImages().length > 0) {
                     this.imageUrls = detail.getImages();
                     if (currentImageIndex >= imageUrls.length) {
                         currentImageIndex = 0;
                     }
-                    // Preload all images
                     preloadImages(imageUrls);
-                    // Load current image if not already loaded
                     if (currentImageTexture == null && imageUrls.length > 0) {
                         loadImage(imageUrls[currentImageIndex]);
                     }
@@ -340,10 +309,8 @@ public class PostDetailPanel implements Drawable, Element {
     private void loadImage(String imageUrl) {
         if (imageUrl == null || imageUrl.isEmpty()) return;
 
-        // Check cache first
         if (imageCache.containsKey(imageUrl)) {
             currentImageTexture = imageCache.get(imageUrl);
-            // Also retrieve cached dimensions
             int[] dims = imageDimensionsCache.get(imageUrl);
             if (dims != null) {
                 originalImageWidth = dims[0];
@@ -363,7 +330,6 @@ public class PostDetailPanel implements Drawable, Element {
                     client.execute(() -> {
                         if (imageUrl.equals(loadingImageUrl)) {
                             currentImageTexture = texId;
-                            // Set dimensions from cache
                             int[] dims = imageDimensionsCache.get(imageUrl);
                             if (dims != null) {
                                 originalImageWidth = dims[0];
@@ -385,7 +351,6 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     private Identifier loadImageSync(String imageUrl) throws Exception {
-        // Check cache
         if (imageCache.containsKey(imageUrl)) {
             return imageCache.get(imageUrl);
         }
@@ -413,7 +378,6 @@ public class PostDetailPanel implements Drawable, Element {
 
         NativeImage nativeImage = NativeImage.read(new ByteArrayInputStream(pngBytes));
 
-        // Validate dimensions
         int imgWidth = nativeImage.getWidth();
         int imgHeight = nativeImage.getHeight();
 
@@ -427,10 +391,8 @@ public class PostDetailPanel implements Drawable, Element {
             throw new Exception("Image too large");
         }
 
-        // Cache the original image dimensions
         imageDimensionsCache.put(imageUrl, new int[]{imgWidth, imgHeight});
 
-        // Register texture on main thread
         final NativeImage finalImage = nativeImage;
         final String uniqueId = UUID.randomUUID().toString().replace("-", "");
         final Identifier texId = Identifier.of("litematicdownloader", "textures/dynamic/" + uniqueId);
@@ -445,7 +407,6 @@ public class PostDetailPanel implements Drawable, Element {
             });
         }
 
-        // Wait a bit for texture registration
         Thread.sleep(50);
 
         return texId;
@@ -468,7 +429,6 @@ public class PostDetailPanel implements Drawable, Element {
     private byte[] convertImageToPng(byte[] imageData) throws Exception {
         BufferedImage bufferedImage = null;
 
-        // Try with ImageInputStream for auto-detection
         try (ImageInputStream iis = ImageIO.createImageInputStream(new ByteArrayInputStream(imageData))) {
             Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
             if (readers.hasNext()) {
@@ -481,10 +441,8 @@ public class PostDetailPanel implements Drawable, Element {
                 }
             }
         } catch (Exception e) {
-            // Try fallback
         }
 
-        // Fallback: direct read
         if (bufferedImage == null) {
             bufferedImage = ImageIO.read(new ByteArrayInputStream(imageData));
         }
@@ -493,7 +451,6 @@ public class PostDetailPanel implements Drawable, Element {
             throw new Exception("Failed to decode image");
         }
 
-        // Convert to compatible type if needed
         if (bufferedImage.getType() != BufferedImage.TYPE_INT_RGB &&
             bufferedImage.getType() != BufferedImage.TYPE_INT_ARGB) {
             BufferedImage converted = new BufferedImage(
@@ -507,7 +464,6 @@ public class PostDetailPanel implements Drawable, Element {
             bufferedImage = converted;
         }
 
-        // Write as PNG
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(bufferedImage, "PNG", baos);
         return baos.toByteArray();
@@ -540,26 +496,22 @@ public class PostDetailPanel implements Drawable, Element {
     private void onDownloadButtonClick() {
         if (postInfo == null || isLoadingFiles) return;
 
-        // Close dropdown if it's open
         if (schematicDropdown.isOpen()) {
             schematicDropdown.close();
             return;
         }
 
-        // If files already loaded, show dropdown
         if (availableFiles != null && availableFiles.length > 0) {
             showSchematicDropdown();
             return;
         }
 
-        // Load files from API
         isLoadingFiles = true;
         downloadStatus = "";
 
-        String vendor = postInfo.getVendor() != null ? postInfo.getVendor() : "minemev";
-        String uuid = postInfo.getUuid();
+        String vendor = postInfo.vendor() != null ? postInfo.vendor() : "minemev";
+        String uuid = postInfo.uuid();
 
-        // Strip vendor prefix if present
         if (uuid != null && uuid.contains("/")) {
             String[] parts = uuid.split("/", 2);
             if (parts.length == 2) {
@@ -586,7 +538,6 @@ public class PostDetailPanel implements Drawable, Element {
                 if (client != null) {
                     client.execute(() -> {
                         isLoadingFiles = false;
-                        // Provide more specific error message
                         String errorMsg = throwable.getMessage();
                         if (errorMsg != null && errorMsg.contains("UnknownHost")) {
                             downloadStatus = "✗ Error: No internet connection";
@@ -615,9 +566,8 @@ public class PostDetailPanel implements Drawable, Element {
         }
 
         schematicDropdown.setItems(items);
-        schematicDropdown.setStatusMessage(downloadStatus); // Show current status in dropdown
+        schematicDropdown.setStatusMessage(downloadStatus);
 
-        // Position dropdown below the download button
         if (downloadButton != null) {
             schematicDropdown.setPosition(
                 downloadButton.getX(),
@@ -632,7 +582,6 @@ public class PostDetailPanel implements Drawable, Element {
         if (item == null || !(item.getData() instanceof MinemevFileInfo)) return;
 
         MinemevFileInfo file = (MinemevFileInfo) item.getData();
-        // Don't close dropdown - keep it open to show download status
         downloadSchematic(file);
     }
 
@@ -644,7 +593,6 @@ public class PostDetailPanel implements Drawable, Element {
 
         new Thread(() -> {
             try {
-                // Get download URL
                 String downloadUrl = file.getDownloadUrl();
                 if (downloadUrl == null || downloadUrl.isEmpty()) {
                     client.execute(() -> {
@@ -660,10 +608,8 @@ public class PostDetailPanel implements Drawable, Element {
                 System.out.println("[Download] Starting download from: " + downloadUrl);
                 System.out.println("[Download] File: " + file.getDefaultFileName());
 
-                // Encode spaces in URL (spaces are not valid in URIs)
                 String encodedUrl = downloadUrl.replace(" ", "%20");
 
-                // Download file - enable redirect following for 302 responses
                 HttpClient httpClient = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(30))
                     .followRedirects(HttpClient.Redirect.ALWAYS)
@@ -710,7 +656,6 @@ public class PostDetailPanel implements Drawable, Element {
                     return;
                 }
 
-                // Save to schematics folder (using configured path)
                 Path schematicsPath = Paths.get(DownloadSettings.getInstance().getAbsoluteDownloadPath());
                 File schematicsDir = schematicsPath.toFile();
                 if (!schematicsDir.exists()) {
@@ -726,7 +671,6 @@ public class PostDetailPanel implements Drawable, Element {
 
                 File outputFile = new File(schematicsDir, fileName);
 
-                // If file exists, add number suffix
                 int counter = 1;
                 while (outputFile.exists()) {
                     String baseName = fileName.substring(0, fileName.lastIndexOf(".litematic"));
@@ -750,7 +694,6 @@ public class PostDetailPanel implements Drawable, Element {
 
             } catch (Exception e) {
                 client.execute(() -> {
-                    // Provide more specific error messages
                     String errorMsg;
                     if (e instanceof java.net.UnknownHostException) {
                         errorMsg = "✗ Error: No internet connection";
@@ -789,7 +732,6 @@ public class PostDetailPanel implements Drawable, Element {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Block hover effects on elements below if dropdown is open and mouse is over it
         int renderMouseX = mouseX;
         int renderMouseY = mouseY;
         if (schematicDropdown != null && schematicDropdown.isOpen() && schematicDropdown.isMouseOver(mouseX, mouseY)) {
@@ -797,22 +739,18 @@ public class PostDetailPanel implements Drawable, Element {
             renderMouseY = -1;
         }
 
-        // Draw panel background
-        context.fill(x, y, x + width, y + height, PANEL_BG_COLOR);
+        context.fill(x, y, x + width, y + height, UITheme.Colors.PANEL_BG_SECONDARY);
 
-        // Draw left border
-        context.fill(x, y, x + 1, y + height, 0xFF555555);
+        context.fill(x, y, x + 1, y + height, UITheme.Colors.BUTTON_BORDER);
 
         if (postInfo == null) {
-            // Draw placeholder text
             String text = "Select a schematic to view details";
             int textWidth = client.textRenderer.getWidth(text);
             context.drawTextWithShadow(client.textRenderer, text,
-                x + (width - textWidth) / 2, y + height / 2 - 4, SUBTITLE_COLOR);
+                x + (width - textWidth) / 2, y + height / 2 - 4, UITheme.Colors.TEXT_SUBTITLE);
             return;
         }
 
-        // Draw download button in complete top left corner with no padding
         int downloadBtnSize = 20;
         int downloadBtnX = x;
         int downloadBtnY = y;
@@ -834,42 +772,33 @@ public class PostDetailPanel implements Drawable, Element {
         }
         downloadButton.render(context, renderMouseX, renderMouseY, delta);
 
-        // Enable scissor for scrolling (start below the download button)
         int contentStartY = y + downloadBtnSize;
         context.enableScissor(x + 1, contentStartY, x + width, y + height);
 
-        int currentY = contentStartY + PADDING - (int) scrollOffset;
+        int currentY = contentStartY + UITheme.Dimensions.PADDING - (int) scrollOffset;
         contentHeight = 0;
 
-        // Get fixed container dimensions (always the same size)
         int containerWidth = getDisplayImageWidth();
         int containerHeight = getDisplayImageHeight();
 
-        // Get actual image dimensions (respecting aspect ratio, centered within container)
         int actualImageWidth = getActualImageWidth();
         int actualImageHeight = getActualImageHeight();
 
-        // Calculate container position (full width starting at left edge)
-        int containerX = x + 1; // +1 for left border
+        int containerX = x + 1;
         int containerY = currentY;
 
-        // Calculate actual image position (centered within container)
         int imageX = containerX + (containerWidth - actualImageWidth) / 2;
         int imageY = containerY + (containerHeight - actualImageHeight) / 2;
 
         if (isLoadingImage) {
-            // Draw loading background for entire container
-            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, 0xFF333333);
-            // Update spinner position to center it in the container
+            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, UITheme.Colors.CONTAINER_BG);
             imageLoadingSpinner.setPosition(
                 containerX + containerWidth / 2 - imageLoadingSpinner.getWidth() / 2,
                 containerY + containerHeight / 2 - imageLoadingSpinner.getHeight() / 2
             );
             imageLoadingSpinner.render(context, mouseX, mouseY, delta);
         } else if (currentImageTexture != null) {
-            // Draw container background
-            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, 0xFF1A1A1A);
-            // Draw image centered within container using RenderPipelines.GUI_TEXTURED
+            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, UITheme.Colors.PANEL_BG);
             context.drawTexture(
                 RenderPipelines.GUI_TEXTURED,
                 currentImageTexture,
@@ -879,91 +808,79 @@ public class PostDetailPanel implements Drawable, Element {
                 actualImageWidth, actualImageHeight
             );
         } else {
-            // Draw placeholder for entire container
-            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, 0xFF333333);
+            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, UITheme.Colors.CONTAINER_BG);
             String noImg = isCompactMode() ? "..." : "No image";
             int tw = client.textRenderer.getWidth(noImg);
             context.drawTextWithShadow(client.textRenderer, noImg,
-                containerX + (containerWidth - tw) / 2, containerY + containerHeight / 2 - 4, SUBTITLE_COLOR);
+                containerX + (containerWidth - tw) / 2, containerY + containerHeight / 2 - 4, UITheme.Colors.TEXT_SUBTITLE);
         }
 
-        currentY += containerHeight + PADDING;
-        contentHeight += containerHeight + PADDING;
+        currentY += containerHeight + UITheme.Dimensions.PADDING;
+        contentHeight += containerHeight + UITheme.Dimensions.PADDING;
 
-        // Draw image navigation if multiple images
         if (imageUrls != null && imageUrls.length > 1) {
             String indicator = String.format("%d / %d", currentImageIndex + 1, imageUrls.length);
             int indicatorWidth = client.textRenderer.getWidth(indicator);
             int indicatorX = x + (width - indicatorWidth) / 2;
             int btnY = currentY;
 
-            // Update carousel button positions
             updateCarouselButtons(btnY);
 
-            // Render navigation buttons using CustomButton widgets
             if (prevImageButton != null) {
                 prevImageButton.render(context, renderMouseX, renderMouseY, delta);
             }
 
-            // Index indicator
-            context.drawTextWithShadow(client.textRenderer, indicator, indicatorX, btnY + 4, SUBTITLE_COLOR);
+            context.drawTextWithShadow(client.textRenderer, indicator, indicatorX, btnY + 4, UITheme.Colors.TEXT_SUBTITLE);
 
-            // Render next button
             if (nextImageButton != null) {
                 nextImageButton.render(context, renderMouseX, renderMouseY, delta);
             }
 
-            currentY += 16 + PADDING;
-            contentHeight += 16 + PADDING;
+            currentY += 16 + UITheme.Dimensions.PADDING;
+            contentHeight += 16 + UITheme.Dimensions.PADDING;
         }
 
-        // Draw title
-        String title = postInfo.getTitle() != null ? postInfo.getTitle() : "Untitled";
-        drawWrappedText(context, title, x + PADDING, currentY, width - PADDING * 2, TITLE_COLOR);
-        int titleHeight = getWrappedTextHeight(title, width - PADDING * 2);
+        String title = postInfo.title() != null ? postInfo.title() : "Untitled";
+        drawWrappedText(context, title, x + UITheme.Dimensions.PADDING, currentY, width - UITheme.Dimensions.PADDING * 2, UITheme.Colors.TEXT_PRIMARY);
+        int titleHeight = getWrappedTextHeight(title, width - UITheme.Dimensions.PADDING * 2);
         currentY += titleHeight + 8;
         contentHeight += titleHeight + 8;
 
-        // Draw author
-        String author = "By " + (postInfo.getAuthor() != null ? postInfo.getAuthor() : "Unknown");
-        context.drawTextWithShadow(client.textRenderer, author, x + PADDING, currentY, SUBTITLE_COLOR);
+        String author = "By " + (postInfo.author() != null ? postInfo.author() : "Unknown");
+        context.drawTextWithShadow(client.textRenderer, author, x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 12;
         contentHeight += 12;
 
-        // Draw downloads
-        String downloads = "Downloads: " + postInfo.getDownloads();
-        context.drawTextWithShadow(client.textRenderer, downloads, x + PADDING, currentY, SUBTITLE_COLOR);
+        String downloads = "Downloads: " + postInfo.downloads();
+        context.drawTextWithShadow(client.textRenderer, downloads, x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 16;
         contentHeight += 16;
 
-
-        // Draw tags
-        String[] tags = postInfo.getTags();
+        String[] tags = postInfo.tags();
         if (tags != null && tags.length > 0) {
-            context.drawTextWithShadow(client.textRenderer, "Tags:", x + PADDING, currentY, SUBTITLE_COLOR);
+            context.drawTextWithShadow(client.textRenderer, "Tags:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
             currentY += 12;
             contentHeight += 12;
 
-            int tagX = x + PADDING;
+            int tagX = x + UITheme.Dimensions.PADDING;
             for (String tag : tags) {
                 int tagWidth = client.textRenderer.getWidth(tag) + 8;
-                if (tagX + tagWidth > x + width - PADDING) {
-                    tagX = x + PADDING;
+                if (tagX + tagWidth > x + width - UITheme.Dimensions.PADDING) {
+                    tagX = x + UITheme.Dimensions.PADDING;
                     currentY += 14;
                     contentHeight += 14;
                 }
                 context.fill(tagX, currentY, tagX + tagWidth, currentY + 12, TAG_BG_COLOR);
-                context.drawTextWithShadow(client.textRenderer, tag, tagX + 4, currentY + 2, TAG_TEXT_COLOR);
+                context.drawTextWithShadow(client.textRenderer, tag, tagX + 4, currentY + 2, UITheme.Colors.TEXT_TAG);
                 tagX += tagWidth + 4;
             }
             currentY += 16;
             contentHeight += 16;
         }
 
-        // Draw versions
-        String[] versions = postInfo.getVersions();
+        String[] versions = postInfo.versions();
         if (versions != null && versions.length > 0) {
-            context.drawTextWithShadow(client.textRenderer, "Versions:", x + PADDING, currentY, SUBTITLE_COLOR);
+            context.drawTextWithShadow(client.textRenderer, "Versions:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
             currentY += 12;
             contentHeight += 12;
 
@@ -976,71 +893,57 @@ public class PostDetailPanel implements Drawable, Element {
                 versionText.append("... (+").append(versions.length - 5).append(" more)");
             }
             context.drawTextWithShadow(client.textRenderer, versionText.toString(),
-                x + PADDING, currentY, TAG_TEXT_COLOR);
+                x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_TAG);
             currentY += 16;
             contentHeight += 16;
         }
 
-        // Draw description if detail loaded
         if (postDetail != null && postDetail.getDescription() != null && !postDetail.getDescription().isEmpty()) {
             currentY += 8;
             contentHeight += 8;
-            context.drawTextWithShadow(client.textRenderer, "Description:", x + PADDING, currentY, SUBTITLE_COLOR);
+            context.drawTextWithShadow(client.textRenderer, "Description:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
             currentY += 12;
             contentHeight += 12;
 
             String desc = postDetail.getDescription();
-            drawWrappedText(context, desc, x + PADDING, currentY, width - PADDING * 2, TAG_TEXT_COLOR);
-            int descHeight = getWrappedTextHeight(desc, width - PADDING * 2);
+            drawWrappedText(context, desc, x + UITheme.Dimensions.PADDING, currentY, width - UITheme.Dimensions.PADDING * 2, UITheme.Colors.TEXT_TAG);
+            int descHeight = getWrappedTextHeight(desc, width - UITheme.Dimensions.PADDING * 2);
             contentHeight += descHeight;
         } else if (isLoadingDetails) {
             currentY += 8;
-            context.drawTextWithShadow(client.textRenderer, "Loading details...", x + PADDING, currentY, SUBTITLE_COLOR);
+            context.drawTextWithShadow(client.textRenderer, "Loading details...", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
             contentHeight += 20;
         }
 
-        contentHeight += PADDING * 2;
+        contentHeight += UITheme.Dimensions.PADDING * 2;
 
         context.disableScissor();
 
-        // Render dropdown on top of everything (after scissor is disabled)
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
             schematicDropdown.render(context, mouseX, mouseY, delta);
         }
 
-        // Update and render scrollbar if content is scrollable
         if (contentHeight > height) {
             scrollBar.setScrollData(contentHeight, height);
             scrollBar.setScrollPercentage(scrollOffset / Math.max(1, contentHeight - height));
 
-            // Render scrollbar with direct mouse handling
             if (client != null && client.getWindow() != null) {
                 long windowHandle = client.getWindow().getHandle();
                 if (scrollBar.updateAndRender(context, mouseX, mouseY, delta, windowHandle)) {
-                    // Scroll position changed from scrollbar drag
                     double maxScroll = Math.max(0, contentHeight - height);
                     scrollOffset = scrollBar.getScrollPercentage() * maxScroll;
                 }
             } else {
-                // Fallback to regular render
                 scrollBar.render(context, mouseX, mouseY, delta);
             }
         }
 
-        // Note: Image viewer is rendered separately via renderImageViewer() to ensure it's on top
     }
 
-    /**
-     * Check if the image viewer modal is currently open
-     */
     public boolean hasImageViewerOpen() {
         return imageViewer != null;
     }
 
-    /**
-     * Render the image viewer modal on top of everything else
-     * This should be called after all other UI elements are rendered
-     */
     public void renderImageViewer(DrawContext context, int mouseX, int mouseY, float delta) {
         if (imageViewer != null) {
             imageViewer.render(context, mouseX, mouseY, delta);
@@ -1052,12 +955,10 @@ public class PostDetailPanel implements Drawable, Element {
 
         int lineY = textY;
 
-        // Split by newlines first to handle shift+enter line breaks
         String[] paragraphs = text.split("\\r?\\n");
 
         for (String paragraph : paragraphs) {
             if (paragraph.isEmpty()) {
-                // Empty line, just add spacing
                 lineY += 10;
                 continue;
             }
@@ -1090,12 +991,10 @@ public class PostDetailPanel implements Drawable, Element {
 
         int lines = 0;
 
-        // Split by newlines first to handle shift+enter line breaks
         String[] paragraphs = text.split("\\r?\\n");
 
         for (String paragraph : paragraphs) {
             if (paragraph.isEmpty()) {
-                // Empty line
                 lines++;
                 continue;
             }
@@ -1123,17 +1022,17 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Check image viewer first (it's a full-screen modal)
         if (imageViewer != null) {
             return imageViewer.mouseClicked(mouseX, mouseY, button);
         }
 
-        // Check dropdown first (it can be outside panel bounds when open)
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
-            boolean handled = schematicDropdown.mouseClicked(mouseX, mouseY, button);
-            // If clicked outside dropdown, it will close itself
-            // Also block all clicks if mouse is over dropdown
-            return handled || schematicDropdown.isOpen() || schematicDropdown.isMouseOver(mouseX, mouseY);
+            if (schematicDropdown.isMouseOver(mouseX, mouseY)) {
+                boolean handled = schematicDropdown.mouseClicked(mouseX, mouseY, button);
+                return handled;
+            } else {
+                schematicDropdown.close();
+            }
         }
 
         if (mouseX < x || mouseX >= x + width || mouseY < y || mouseY >= y + height) {
@@ -1142,7 +1041,6 @@ public class PostDetailPanel implements Drawable, Element {
 
         System.out.println("[PostDetailPanel] mouseClicked - x:" + mouseX + " y:" + mouseY + " button:" + button);
 
-        // Check download button
         if (button == 0 && downloadButton != null && postInfo != null) {
             boolean isOverDownload = mouseX >= downloadButton.getX() &&
                                     mouseX < downloadButton.getX() + downloadButton.getWidth() &&
@@ -1154,18 +1052,15 @@ public class PostDetailPanel implements Drawable, Element {
             }
         }
 
-        // Check scrollbar
         if (scrollBar != null && scrollBar.mouseClicked(mouseX, mouseY, button)) {
             System.out.println("[PostDetailPanel] Scrollbar handled the click");
             return true;
         }
 
-        // Check if clicking on the image to open fullscreen viewer
         if (button == 0 && currentImageTexture != null && !isLoadingImage && postInfo != null) {
-            // Calculate image bounds (accounting for scroll)
             int downloadBtnSize = 20;
             int contentStartY = y + downloadBtnSize;
-            int currentY = contentStartY + PADDING - (int) scrollOffset;
+            int currentY = contentStartY + UITheme.Dimensions.PADDING - (int) scrollOffset;
 
             int containerWidth = getDisplayImageWidth();
             int containerHeight = getDisplayImageHeight();
@@ -1177,19 +1072,15 @@ public class PostDetailPanel implements Drawable, Element {
             int imageX = containerX + (containerWidth - actualImageWidth) / 2;
             int imageY = containerY + (containerHeight - actualImageHeight) / 2;
 
-            // Check if mouse is over the image
             if (mouseX >= imageX && mouseX < imageX + actualImageWidth &&
                 mouseY >= imageY && mouseY < imageY + actualImageHeight &&
-                mouseY >= contentStartY && mouseY < y + height) { // Also check scissor bounds
-                // Open fullscreen image viewer
+                mouseY >= contentStartY && mouseY < y + height) {
                 openImageViewer();
                 return true;
             }
         }
 
-        // Check image navigation buttons
         if (button == 0 && imageUrls != null && imageUrls.length > 1) {
-            // Check if clicking on previous button
             if (prevImageButton != null) {
                 System.out.println("[PostDetailPanel] Checking prev button - btnX:" + prevImageButton.getX() +
                                   " btnY:" + prevImageButton.getY() + " btnW:" + prevImageButton.getWidth() +
@@ -1205,7 +1096,6 @@ public class PostDetailPanel implements Drawable, Element {
                 }
             }
 
-            // Check if clicking on next button
             if (nextImageButton != null) {
                 System.out.println("[PostDetailPanel] Checking next button - btnX:" + nextImageButton.getX() +
                                   " btnY:" + nextImageButton.getY() + " btnW:" + nextImageButton.getWidth() +
@@ -1239,15 +1129,11 @@ public class PostDetailPanel implements Drawable, Element {
         }
     }
 
-    /**
-     * Open fullscreen image viewer with carousel support
-     */
     private void openImageViewer() {
         if (currentImageTexture != null && client != null && client.getWindow() != null) {
             int screenWidth = client.getWindow().getScaledWidth();
             int screenHeight = client.getWindow().getScaledHeight();
 
-            // Determine total images for carousel
             int totalImages = (imageUrls != null) ? imageUrls.length : 1;
 
             imageViewer = new ImageViewerWidget(
@@ -1265,44 +1151,30 @@ public class PostDetailPanel implements Drawable, Element {
         }
     }
 
-    /**
-     * Navigate to previous image in the viewer and reload it
-     */
     private void previousImageInViewer() {
         if (imageUrls != null && imageUrls.length > 1) {
             currentImageIndex = (currentImageIndex - 1 + imageUrls.length) % imageUrls.length;
             loadImage(imageUrls[currentImageIndex]);
-            // Reopen viewer with updated image
             closeImageViewer();
             openImageViewer();
         }
     }
 
-    /**
-     * Navigate to next image in the viewer and reload it
-     */
     private void nextImageInViewer() {
         if (imageUrls != null && imageUrls.length > 1) {
             currentImageIndex = (currentImageIndex + 1) % imageUrls.length;
             loadImage(imageUrls[currentImageIndex]);
-            // Reopen viewer with updated image
             closeImageViewer();
             openImageViewer();
         }
     }
 
-    /**
-     * Close fullscreen image viewer
-     */
     private void closeImageViewer() {
         imageViewer = null;
     }
 
-
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-        // Forward to scrollbar if it's being dragged
         if (scrollBar != null && (scrollBar.isDragging() || scrollBar.mouseDragged(mouseX, mouseY, button, deltaX, deltaY))) {
-            // Update scroll offset based on scrollbar
             double maxScroll = Math.max(0, contentHeight - height);
             scrollOffset = scrollBar.getScrollPercentage() * maxScroll;
             return true;
@@ -1311,12 +1183,10 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        // Check image viewer first
         if (imageViewer != null) {
             return imageViewer.mouseReleased(mouseX, mouseY, button);
         }
 
-        // Forward to scrollbar
         if (scrollBar != null && scrollBar.mouseReleased(mouseX, mouseY, button)) {
             return true;
         }
@@ -1324,12 +1194,10 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Block all scrolling when image viewer is open
         if (imageViewer != null) {
             return true;
         }
 
-        // Check dropdown first
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
             if (schematicDropdown.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
                 return true;
@@ -1337,7 +1205,7 @@ public class PostDetailPanel implements Drawable, Element {
         }
 
         if (mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height) {
-            double maxScroll = Math.max(0, contentHeight - height + PADDING);
+            double maxScroll = Math.max(0, contentHeight - height + UITheme.Dimensions.PADDING);
             scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - verticalAmount * 20));
             return true;
         }
@@ -1345,12 +1213,10 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Check image viewer first (ESC closes it)
         if (imageViewer != null) {
             return imageViewer.keyPressed(keyCode, scanCode, modifiers);
         }
 
-        // Arrow key navigation for images
         if (imageUrls != null && imageUrls.length > 1) {
             if (keyCode == 263) { // Left arrow
                 previousImage();

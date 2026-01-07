@@ -16,7 +16,6 @@ import com.choculaterie.network.MinemevNetworkManager;
 import com.choculaterie.network.ChoculaterieNetworkManager;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 public class LitematicDownloaderScreen extends Screen {
@@ -39,14 +38,14 @@ public class LitematicDownloaderScreen extends Screen {
     private ToastManager toastManager;
     private ModMessageBanner modMessageBanner;
 
-    private int currentPage = 1; // API uses 1-based pagination
+    private int currentPage = 1;
     private int totalPages = 1;
     private int totalItems = 0;
     private boolean isLoading = false;
     private String currentSearchQuery = "";
     private boolean noResultsFound = false;
-    private boolean showFilterPanel = false; // Toggle between detail and filter panel
-    private boolean initialized = false; // Track if first init has been done
+    private boolean showFilterPanel = false;
+    private boolean initialized = false;
 
     public LitematicDownloaderScreen() {
         super(Text.of("Litematic Downloader"));
@@ -56,19 +55,15 @@ public class LitematicDownloaderScreen extends Screen {
     protected void init() {
         super.init();
 
-        // Store the current search text before reinitializing widgets
         String previousSearchText = (searchField != null) ? searchField.getText() : "";
 
-        // Initialize toast manager
         if (this.client != null) {
             toastManager = new ToastManager(this.client);
         }
 
-        // Calculate split layout dimensions
         int leftPanelWidth = this.width / 2;
         int rightPanelWidth = this.width - leftPanelWidth;
 
-        // Calculate responsive sizes based on left panel width (which is half the screen)
         boolean isCompact = leftPanelWidth < 250;
         boolean isVeryCompact = leftPanelWidth < 180;
 
@@ -80,10 +75,8 @@ public class LitematicDownloaderScreen extends Screen {
 
         int searchBarWidth = Math.max(50, leftPanelWidth - (PADDING * 3) - searchButtonWidth);
 
-        // Initialize loading spinner
         loadingSpinner = new LoadingSpinner(leftPanelWidth / 2 - 16, this.height / 2 - 16);
 
-        // Search field (left side)
         if (this.client != null) {
             searchField = new CustomTextField(
                     this.client,
@@ -96,14 +89,12 @@ public class LitematicDownloaderScreen extends Screen {
             searchField.setPlaceholder(Text.of(isCompact ? "Search..." : "Search schematics..."));
             searchField.setOnEnterPressed(this::performSearch);
             searchField.setOnClearPressed(this::performSearch);
-            // Restore previous search text on resize
             if (!previousSearchText.isEmpty()) {
                 searchField.setText(previousSearchText);
             }
             this.addDrawableChild(searchField);
         }
 
-        // Search button (left side)
         searchButton = new CustomButton(
                 PADDING + searchBarWidth + PADDING,
                 PADDING,
@@ -114,55 +105,29 @@ public class LitematicDownloaderScreen extends Screen {
         );
         this.addDrawableChild(searchButton);
 
-        // Post list area (left side) - reuse on resize to preserve scroll position
         int listY = PADDING + SEARCH_BAR_HEIGHT + PADDING;
         int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 2;
+        int listWidth = leftPanelWidth - PADDING * 2;
 
         if (postList == null) {
-            postList = new PostListWidget(
-                    PADDING,
-                    listY,
-                    leftPanelWidth - PADDING * 2,
-                    listHeight,
-                    this::onPostClick
-            );
+            postList = new PostListWidget(PADDING, listY, listWidth, listHeight, this::onPostClick);
         } else {
-            postList.setDimensions(
-                    PADDING,
-                    listY,
-                    leftPanelWidth - PADDING * 2,
-                    listHeight
-            );
+            postList.setDimensions(PADDING, listY, listWidth, listHeight);
         }
         this.addDrawableChild(postList);
 
-        // Detail panel (right side) - reuse on resize to preserve state
+        int rightPanelContentWidth = rightPanelWidth - PADDING;
+        int rightPanelContentHeight = this.height - PADDING * 2;
+
         if (detailPanel == null) {
-            detailPanel = new PostDetailPanel(
-                    leftPanelWidth,
-                    PADDING,
-                    rightPanelWidth - PADDING,
-                    this.height - PADDING * 2
-            );
+            detailPanel = new PostDetailPanel(leftPanelWidth, PADDING, rightPanelContentWidth, rightPanelContentHeight);
         } else {
-            detailPanel.setDimensions(
-                    leftPanelWidth,
-                    PADDING,
-                    rightPanelWidth - PADDING,
-                    this.height - PADDING * 2
-            );
+            detailPanel.setDimensions(leftPanelWidth, PADDING, rightPanelContentWidth, rightPanelContentHeight);
         }
 
-        // Sort/Filter panel (right side, same position as detail panel)
-        sortFilterPanel = new SortFilterPanel(
-                leftPanelWidth,
-                PADDING,
-                rightPanelWidth - PADDING,
-                this.height - PADDING * 2
-        );
+        sortFilterPanel = new SortFilterPanel(leftPanelWidth, PADDING, rightPanelContentWidth, rightPanelContentHeight);
         sortFilterPanel.setOnSettingsChanged(this::onFilterSettingsChanged);
 
-        // Folder button (to the left of filter and close buttons)
         int closeButtonSize = 20;
         folderButton = new CustomButton(
                 this.width - PADDING - closeButtonSize * 3,
@@ -172,9 +137,7 @@ public class LitematicDownloaderScreen extends Screen {
                 Text.of("📁"),
                 button -> openFolderPage()
         );
-        // Don't add to children - we'll render it manually on top
 
-        // Filter button (between folder and close button)
         filterButton = new CustomButton(
                 this.width - PADDING - closeButtonSize * 2,
                 PADDING,
@@ -183,10 +146,7 @@ public class LitematicDownloaderScreen extends Screen {
                 Text.of("⚙"),
                 button -> toggleFilterPanel()
         );
-        // Don't add to children - we'll render it manually on top
 
-        // Close button (top right corner of detail panel, square)
-        // Position it at the top right of the detail panel area
         closeButton = new CustomButton(
                 this.width - PADDING - closeButtonSize,
                 PADDING,
@@ -195,10 +155,8 @@ public class LitematicDownloaderScreen extends Screen {
                 Text.of("X"),
                 button -> this.close()
         );
-        closeButton.setRenderAsXIcon(true); // Use X icon instead of text
-        // Don't add to children - we'll render it manually on top
+        closeButton.setRenderAsXIcon(true);
 
-        // Pagination buttons at bottom (left side only)
         int bottomY = this.height - BUTTON_HEIGHT - PADDING;
 
         prevPageButton = new CustomButton(
@@ -223,20 +181,14 @@ public class LitematicDownloaderScreen extends Screen {
         nextPageButton.active = false;
         this.addDrawableChild(nextPageButton);
 
-        // Initialize mod message banner (full width at top)
         modMessageBanner = new ModMessageBanner(0, 0, this.width);
         modMessageBanner.setOnDismiss(this::onModMessageDismissed);
 
-        // Only perform initial actions on first init, not on resize
         if (!initialized) {
             initialized = true;
-            // Fetch mod message from server
             fetchModMessage();
-            // Perform initial search with empty query to show popular items
             performSearch();
         } else {
-            // On resize, just update pagination button states
-            // Note: postList and detailPanel preserve their own state since we reuse instances
             updatePaginationButtons();
         }
     }
@@ -246,13 +198,10 @@ public class LitematicDownloaderScreen extends Screen {
             .thenAccept(message -> {
                 if (this.client != null) {
                     this.client.execute(() -> {
-                        if (message != null && message.hasMessage() && message.getId() != null) {
-                            // Check if this message was already dismissed
+                        if (message != null && message.hasMessage() && message.id() != null) {
                             int dismissedId = DownloadSettings.getInstance().getDismissedModMessageId();
-                            if (message.getId() != dismissedId) {
+                            if (message.id() != dismissedId) {
                                 modMessageBanner.setMessage(message);
-                                // Adjust UI for banner if needed
-                                repositionForBanner();
                             }
                         }
                     });
@@ -265,29 +214,31 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     private void onModMessageDismissed(ModMessage message) {
-        if (message != null && message.getId() != null) {
-            // Save dismissed message ID
-            DownloadSettings.getInstance().setDismissedModMessageId(message.getId());
+        if (message != null && message.id() != null) {
+            DownloadSettings.getInstance().setDismissedModMessageId(message.id());
         }
-        // Reposition UI after banner is dismissed
-        repositionForBanner();
     }
 
-    private void repositionForBanner() {
-        // This can be called to adjust UI elements when banner shows/hides
-        // For now, the banner overlays at the top
+    private boolean isMouseOverButton(CustomButton button, double mouseX, double mouseY) {
+        return button != null &&
+               mouseX >= button.getX() &&
+               mouseX < button.getX() + button.getWidth() &&
+               mouseY >= button.getY() &&
+               mouseY < button.getY() + button.getHeight();
+    }
+
+    private Object getActivePanel() {
+        return showFilterPanel ? sortFilterPanel : detailPanel;
     }
 
     private void performSearch() {
         if (isLoading) return;
 
-        // Unfocus the search field (same behavior as clicking Search button)
         searchField.setFocused(false);
 
         currentSearchQuery = searchField.getText().trim();
-        currentPage = 1; // Reset to first page on new search
+        currentPage = 1;
 
-        // Clear selection when searching
         detailPanel.clear();
 
         loadPage();
@@ -304,7 +255,6 @@ public class LitematicDownloaderScreen extends Screen {
         nextPageButton.active = false;
         postList.clear();
 
-        // Get settings from filter panel
         String sort = sortFilterPanel != null ? sortFilterPanel.getSelectedSort() : "newest";
         String tag = sortFilterPanel != null ? sortFilterPanel.getTagFilter() : null;
         String excludeVendor = sortFilterPanel != null ? sortFilterPanel.getExcludedVendorsParam() : null;
@@ -318,7 +268,6 @@ public class LitematicDownloaderScreen extends Screen {
                             searchButton.active = true;
                             updatePaginationButtons();
 
-                            // Parse the error to provide user-friendly message
                             String errorMessage = throwable.getMessage();
                             String userMessage;
 
@@ -335,7 +284,6 @@ public class LitematicDownloaderScreen extends Screen {
                                 } else if (errorMessage.contains("HTTP error code:")) {
                                     userMessage = "Server error: " + errorMessage.substring(errorMessage.indexOf("HTTP error code:"));
                                 } else if (errorMessage.contains("Failed to search posts")) {
-                                    // Extract the actual cause
                                     Throwable cause = throwable.getCause();
                                     if (cause != null) {
                                         String causeMsg = cause.getMessage();
@@ -354,7 +302,6 @@ public class LitematicDownloaderScreen extends Screen {
                                 userMessage = "Search failed: Unknown error";
                             }
 
-                            // Full error for copying
                             String fullError = "Error: " + errorMessage;
                             if (throwable.getCause() != null) {
                                 fullError += "\nCause: " + throwable.getCause().toString();
@@ -373,18 +320,16 @@ public class LitematicDownloaderScreen extends Screen {
     private void handleSearchResponse(MinemevSearchResponse response) {
         if (this.client != null) {
             this.client.execute(() -> {
-                totalPages = response.getTotalPages();
-                totalItems = response.getTotalItems();
+                totalPages = response.totalPages();
+                totalItems = response.totalItems();
 
-                // The API returns the posts for the current page directly
-                MinemevPostInfo[] posts = response.getPosts();
+                MinemevPostInfo[] posts = response.posts();
                 postList.setPosts(posts);
 
                 isLoading = false;
                 searchButton.active = true;
                 updatePaginationButtons();
 
-                // Track if no results were found
                 noResultsFound = (totalItems == 0);
             });
         }
@@ -410,24 +355,18 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     private void onPostClick(MinemevPostInfo post) {
-        System.out.println("[LitematicDownloaderScreen] onPostClick called!");
-        System.out.println("[LitematicDownloaderScreen] Post: " + (post != null ? post.getTitle() : "null"));
-        System.out.println("[LitematicDownloaderScreen] UUID: " + (post != null ? post.getUuid() : "null"));
-        System.out.println("[LitematicDownloaderScreen] DetailPanel: " + (detailPanel != null ? "exists" : "null"));
-
         if (detailPanel != null && post != null) {
             detailPanel.setPost(post);
-            // Switch back to detail panel if filter panel is open
             if (showFilterPanel) {
                 showFilterPanel = false;
             }
-            System.out.println("[LitematicDownloaderScreen] detailPanel.setPost() called");
-        } else {
-            System.out.println("[LitematicDownloaderScreen] WARNING: Cannot set post - detailPanel or post is null!");
         }
     }
 
     private void openFolderPage() {
+        if (detailPanel != null) {
+            detailPanel.closeDropdown();
+        }
         if (this.client != null) {
             this.client.setScreen(new LocalFolderPage(this));
         }
@@ -438,7 +377,6 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     private void onFilterSettingsChanged(SortFilterPanel panel) {
-        // When filter settings change, perform a new search with the new settings
         currentPage = 1;
         loadPage();
     }
@@ -447,13 +385,10 @@ public class LitematicDownloaderScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         int leftPanelWidth = this.width / 2;
 
-        // Fill the entire screen with dark grey background
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
-        // Check if image viewer is open - if so, block all hover effects
         boolean imageViewerOpen = detailPanel != null && detailPanel.hasImageViewerOpen();
 
-        // Check if mouse is over the banner - if so, block hover for elements underneath
         boolean mouseOverBanner = modMessageBanner != null && modMessageBanner.isVisible()
                 && modMessageBanner.isMouseOver(mouseX, mouseY);
         int effectiveMouseX = (mouseOverBanner || imageViewerOpen) ? -1 : mouseX;
@@ -461,24 +396,19 @@ public class LitematicDownloaderScreen extends Screen {
 
         super.render(context, effectiveMouseX, effectiveMouseY, delta);
 
-        // Render either detail panel or filter panel based on toggle
         if (showFilterPanel) {
             sortFilterPanel.render(context, effectiveMouseX, effectiveMouseY, delta);
         } else {
             detailPanel.render(context, effectiveMouseX, effectiveMouseY, delta);
         }
 
-        // Draw page indicator (left side) - responsive text based on available space
         if (totalPages > 1 || totalItems > ITEMS_PER_PAGE) {
-            // Calculate responsive sizes (same as init())
             boolean isCompact = leftPanelWidth < 250;
             boolean isVeryCompact = leftPanelWidth < 180;
             int paginationButtonWidth = isVeryCompact ? 25 : (isCompact ? 50 : 80);
 
-            // Calculate available space between pagination buttons
             int availableWidth = leftPanelWidth - PADDING - paginationButtonWidth - PADDING - paginationButtonWidth - PADDING;
 
-            // Try progressively shorter formats until one fits
             String pageText;
             String fullText = String.format("Page %d / %d (%d items)",
                     currentPage,
@@ -494,7 +424,7 @@ public class LitematicDownloaderScreen extends Screen {
             } else if (this.textRenderer.getWidth(shortText) <= availableWidth) {
                 pageText = shortText;
             } else {
-                pageText = null; // Don't show if even shortest doesn't fit
+                pageText = null;
             }
 
             if (pageText != null) {
@@ -509,12 +439,10 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
-        // Draw loading indicator (left side)
         if (isLoading) {
             loadingSpinner.render(context, effectiveMouseX, effectiveMouseY, delta);
         }
 
-        // Draw no results found message (left side)
         if (noResultsFound) {
             String noResultsText = "No results found :(";
             int textWidth = this.textRenderer.getWidth(noResultsText);
@@ -527,32 +455,26 @@ public class LitematicDownloaderScreen extends Screen {
             );
         }
 
-        // Render folder button on top of everything
         if (folderButton != null) {
             folderButton.render(context, effectiveMouseX, effectiveMouseY, delta);
         }
 
-        // Render filter button on top of everything
         if (filterButton != null) {
             filterButton.render(context, effectiveMouseX, effectiveMouseY, delta);
         }
 
-        // Render close button on top of everything
         if (closeButton != null) {
             closeButton.render(context, effectiveMouseX, effectiveMouseY, delta);
         }
 
-        // Render mod message banner on top of other content (but below toasts) - use real mouse coords
         if (modMessageBanner != null && modMessageBanner.isVisible()) {
             modMessageBanner.render(context, mouseX, mouseY, delta);
         }
 
-        // Render image viewer modal on top of absolutely everything (except toasts)
         if (detailPanel != null && detailPanel.hasImageViewerOpen()) {
             detailPanel.renderImageViewer(context, mouseX, mouseY, delta);
         }
 
-        // Render toasts on top of everything
         if (toastManager != null) {
             toastManager.render(context, delta, mouseX, mouseY);
         }
@@ -565,70 +487,43 @@ public class LitematicDownloaderScreen extends Screen {
         double mouseY = click.y();
         int button = click.button();
 
-        // Check if image viewer is open - if so, only handle image viewer clicks
         if (detailPanel != null && detailPanel.hasImageViewerOpen()) {
             return detailPanel.mouseClicked(mouseX, mouseY, button);
         }
 
-        // Check toast clicks first (copy button and close button)
         if (button == 0 && toastManager != null) {
             if (toastManager.mouseClicked(mouseX, mouseY)) {
                 return true;
             }
-            // Block clicks to elements below if hovering over a toast
             if (toastManager.isMouseOverToast(mouseX, mouseY)) {
                 return true;
             }
         }
 
-        // Check mod message banner clicks
         if (button == 0 && modMessageBanner != null && modMessageBanner.isVisible()) {
             if (modMessageBanner.mouseClicked(mouseX, mouseY, button)) {
                 return true;
             }
-            // Block clicks to elements below if hovering over the banner
             if (modMessageBanner.isMouseOver(mouseX, mouseY)) {
                 return true;
             }
         }
 
-        // Check close button first (highest priority, on top)
-        if (button == 0 && closeButton != null) {
-            boolean isOverClose = mouseX >= closeButton.getX() &&
-                    mouseX < closeButton.getX() + closeButton.getWidth() &&
-                    mouseY >= closeButton.getY() &&
-                    mouseY < closeButton.getY() + closeButton.getHeight();
-            if (isOverClose) {
-                this.close();
-                return true;
-            }
+        if (button == 0 && isMouseOverButton(closeButton, mouseX, mouseY)) {
+            this.close();
+            return true;
         }
 
-        // Check filter button
-        if (button == 0 && filterButton != null) {
-            boolean isOverFilter = mouseX >= filterButton.getX() &&
-                    mouseX < filterButton.getX() + filterButton.getWidth() &&
-                    mouseY >= filterButton.getY() &&
-                    mouseY < filterButton.getY() + filterButton.getHeight();
-            if (isOverFilter) {
-                toggleFilterPanel();
-                return true;
-            }
+        if (button == 0 && isMouseOverButton(filterButton, mouseX, mouseY)) {
+            toggleFilterPanel();
+            return true;
         }
 
-        // Check folder button
-        if (button == 0 && folderButton != null) {
-            boolean isOverFolder = mouseX >= folderButton.getX() &&
-                    mouseX < folderButton.getX() + folderButton.getWidth() &&
-                    mouseY >= folderButton.getY() &&
-                    mouseY < folderButton.getY() + folderButton.getHeight();
-            if (isOverFolder) {
-                openFolderPage();
-                return true;
-            }
+        if (button == 0 && isMouseOverButton(folderButton, mouseX, mouseY)) {
+            openFolderPage();
+            return true;
         }
 
-        // Forward to the active panel (filter or detail)
         if (showFilterPanel) {
             if (sortFilterPanel != null && sortFilterPanel.mouseClicked(mouseX, mouseY, button)) {
                 return true;
@@ -639,7 +534,6 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
-        // Handle search field click
         if (button == 0 && searchField != null) {
             if (searchField.isMouseOver(mouseX, mouseY)) {
                 searchField.setFocused(true);
@@ -649,51 +543,40 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
-        // Then let parent handle it (for other widgets)
         return super.mouseClicked(click, doubled);
     }
 
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-        // Forward to the active panel for scrollbar dragging
-        if (showFilterPanel) {
-            if (sortFilterPanel != null && sortFilterPanel.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
-                return true;
-            }
-        } else {
-            if (detailPanel != null && detailPanel.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
-                return true;
-            }
+        Object panel = getActivePanel();
+        if (panel instanceof SortFilterPanel && ((SortFilterPanel) panel).mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
+            return true;
+        }
+        if (panel instanceof PostDetailPanel && ((PostDetailPanel) panel).mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
+            return true;
         }
         return false;
     }
 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        // Forward to the active panel for scrollbar release
-        if (showFilterPanel) {
-            if (sortFilterPanel != null && sortFilterPanel.mouseReleased(mouseX, mouseY, button)) {
-                return true;
-            }
-        } else {
-            if (detailPanel != null && detailPanel.mouseReleased(mouseX, mouseY, button)) {
-                return true;
-            }
+        Object panel = getActivePanel();
+        if (panel instanceof SortFilterPanel && ((SortFilterPanel) panel).mouseReleased(mouseX, mouseY, button)) {
+            return true;
+        }
+        if (panel instanceof PostDetailPanel && ((PostDetailPanel) panel).mouseReleased(mouseX, mouseY, button)) {
+            return true;
         }
         return false;
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Forward to the active panel first
-        if (showFilterPanel) {
-            if (sortFilterPanel != null && sortFilterPanel.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
-                return true;
-            }
-        } else {
-            if (detailPanel != null && detailPanel.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
-                return true;
-            }
+        Object panel = getActivePanel();
+        if (panel instanceof SortFilterPanel && ((SortFilterPanel) panel).mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
+            return true;
         }
-        // Then let parent handle it
+        if (panel instanceof PostDetailPanel && ((PostDetailPanel) panel).mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
+            return true;
+        }
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 
@@ -704,10 +587,7 @@ public class LitematicDownloaderScreen extends Screen {
 
     @Override
     public boolean shouldCloseOnEsc() {
-        // Don't close screen on ESC if image viewer is open
-        // (the viewer will handle ESC itself)
         if (detailPanel != null && detailPanel.hasImageViewerOpen()) {
-            // Close the image viewer instead
             detailPanel.keyPressed(256, 0, 0); // 256 = GLFW_KEY_ESCAPE
             return false;
         }

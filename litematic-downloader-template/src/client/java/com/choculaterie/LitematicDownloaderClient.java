@@ -9,20 +9,23 @@ import net.minecraft.client.MinecraftClient;
 public class LitematicDownloaderClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
-		// Register keybindings
 		ModKeybindings.register();
+		registerScreenToggleHandler();
+	}
 
-		// Register tick event to check for key press
+	private static void registerScreenToggleHandler() {
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			if (ModKeybindings.openMenuKey.wasPressed()) {
-				MinecraftClient mc = MinecraftClient.getInstance();
-				// Toggle: close if already open, open if closed
-				if (mc.currentScreen instanceof LitematicDownloaderScreen) {
-					mc.setScreen(null);
-				} else {
-					mc.setScreen(new LitematicDownloaderScreen());
-				}
+				toggleLitematicDownloaderScreen(MinecraftClient.getInstance());
 			}
 		});
+	}
+
+	private static void toggleLitematicDownloaderScreen(MinecraftClient client) {
+		if (client.currentScreen instanceof LitematicDownloaderScreen) {
+			client.setScreen(null);
+		} else {
+			client.setScreen(new LitematicDownloaderScreen());
+		}
 	}
 }

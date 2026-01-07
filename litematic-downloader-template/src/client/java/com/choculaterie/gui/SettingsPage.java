@@ -8,32 +8,26 @@ import com.choculaterie.gui.widget.ToastManager;
 import com.choculaterie.gui.widget.ToggleButton;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
-import javax.swing.*;
-import java.awt.*;
 import java.io.File;
 
 public class SettingsPage extends Screen {
     private static final int PADDING = 10;
-    private static final int BUTTON_HEIGHT = 20;
+    private static final int BACK_BUTTON_SIZE = 20;
     private static final int LABEL_HEIGHT = 20;
     private static final int TEXT_FIELD_HEIGHT = 20;
+    private static final int TOGGLE_SPACING = 25;
+    private static final String TITLE = "Settings";
 
     private final Screen parentScreen;
-    private CustomButton backButton;
     private CustomTextField downloadPathField;
-    private CustomButton browseButton;
     private CustomButton setPathButton;
-    private ToggleButton successToastsToggle;
-    private ToggleButton errorToastsToggle;
-    private ToggleButton infoToastsToggle;
-    private ToggleButton warningToastsToggle;
     private ToastManager toastManager;
+    private ConfirmPopup activePopup;
+
     private String pendingToastMessage;
     private boolean pendingToastSuccess;
-    private ConfirmPopup activePopup;
 
     public SettingsPage(Screen parentScreen) {
         super(Text.of("Settings"));
@@ -44,120 +38,80 @@ public class SettingsPage extends Screen {
     protected void init() {
         super.init();
 
-        // Initialize toast manager
         if (this.client != null) {
             toastManager = new ToastManager(this.client);
         }
 
-        // Calculate responsive sizes based on screen width
-        boolean isCompact = this.width < 400;
-        boolean isVeryCompact = this.width < 300;
+        addBackButton();
+        int contentY = initDownloadPathSection();
+        initToastToggles(contentY);
+    }
 
-        int browseButtonWidth = isVeryCompact ? 50 : (isCompact ? 70 : 90);
-        String browseLabel = isVeryCompact ? "..." : "Browse...";
-
-        // Back button (top left)
-        backButton = new CustomButton(
-                PADDING,
-                PADDING,
-                BUTTON_HEIGHT,
-                BUTTON_HEIGHT,
-                Text.of("←"),
-                button -> goBack()
+    private void addBackButton() {
+        CustomButton backButton = new CustomButton(
+                PADDING, PADDING, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE,
+                Text.of("←"), button -> goBack()
         );
         this.addDrawableChild(backButton);
+    }
 
-        // Download path section
-        int contentY = PADDING * 4 + BUTTON_HEIGHT;
+    private int initDownloadPathSection() {
+        int contentY = PADDING * 4 + BACK_BUTTON_SIZE;
+        boolean isVeryCompact = this.width < 300;
+        int browseButtonWidth = isVeryCompact ? 50 : (this.width < 400 ? 70 : 90);
+        String browseLabel = isVeryCompact ? "..." : "Browse...";
 
-        // Set button is square, same height as text field, placed far right
         int setButtonSize = TEXT_FIELD_HEIGHT;
         int setButtonX = this.width - PADDING * 2 - setButtonSize;
-
-        // Browse button next to set button
         int browseButtonX = setButtonX - PADDING - browseButtonWidth;
-
-        // Text field takes remaining space
         int fieldWidth = Math.max(100, browseButtonX - PADDING * 3);
 
-        // Download path text field
         if (this.client != null) {
             downloadPathField = new CustomTextField(
-                    this.client,
-                    PADDING * 2,
-                    contentY + LABEL_HEIGHT,
-                    fieldWidth,
-                    TEXT_FIELD_HEIGHT,
-                    Text.of("Download Path")
+                    this.client, PADDING * 2, contentY + LABEL_HEIGHT,
+                    fieldWidth, TEXT_FIELD_HEIGHT, Text.of("Download Path")
             );
             downloadPathField.setText(DownloadSettings.getInstance().getDownloadPath());
             downloadPathField.setPlaceholder(Text.of("Enter download path..."));
-            // Don't add as drawable child - CustomTextField handles its own input via GLFW
-            // Adding it would cause double character input
         }
 
-        // Browse button
-        browseButton = new CustomButton(
-                browseButtonX,
-                contentY + LABEL_HEIGHT,
-                browseButtonWidth,
-                TEXT_FIELD_HEIGHT,
-                Text.of(browseLabel),
-                button -> openFileDialog()
+        CustomButton browseButton = new CustomButton(
+                browseButtonX, contentY + LABEL_HEIGHT, browseButtonWidth, TEXT_FIELD_HEIGHT,
+                Text.of(browseLabel), button -> openFileDialog()
         );
         this.addDrawableChild(browseButton);
 
-        // Set button (square, far right) - initially hidden, shown when path changes
         setPathButton = new CustomButton(
-                setButtonX,
-                contentY + LABEL_HEIGHT,
-                setButtonSize,
-                setButtonSize,
-                Text.of("✓"),
-                button -> saveDownloadPath()
+                setButtonX, contentY + LABEL_HEIGHT, setButtonSize, setButtonSize,
+                Text.of("✓"), button -> saveDownloadPath()
         );
-        setPathButton.visible = false; // Hidden by default
+        setPathButton.visible = false;
         this.addDrawableChild(setPathButton);
 
-        // Toasts toggle section
+        return contentY;
+    }
+
+    private void initToastToggles(int contentY) {
         int toastsY = contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 30;
-        int toggleSpacing = 25;
+        DownloadSettings settings = DownloadSettings.getInstance();
 
-        // Info toasts toggle
-        infoToastsToggle = new ToggleButton(
-                PADDING * 2 + 120,
-                toastsY + LABEL_HEIGHT,
-                DownloadSettings.getInstance().isInfoToastsEnabled(),
-                enabled -> DownloadSettings.getInstance().setInfoToastsEnabled(enabled)
-        );
-        this.addDrawableChild(infoToastsToggle);
+        createToastToggle(0, toastsY, settings.isInfoToastsEnabled(),
+                settings::setInfoToastsEnabled);
+        createToastToggle(1, toastsY, settings.isSuccessToastsEnabled(),
+                settings::setSuccessToastsEnabled);
+        createToastToggle(2, toastsY, settings.isWarningToastsEnabled(),
+                settings::setWarningToastsEnabled);
+        createToastToggle(3, toastsY, settings.isErrorToastsEnabled(),
+                settings::setErrorToastsEnabled);
+    }
 
-        // Success toasts toggle
-        successToastsToggle = new ToggleButton(
-                PADDING * 2 + 120,
-                toastsY + LABEL_HEIGHT + toggleSpacing,
-                DownloadSettings.getInstance().isSuccessToastsEnabled(),
-                enabled -> DownloadSettings.getInstance().setSuccessToastsEnabled(enabled)
+    private void createToastToggle(int index, int baseY, boolean enabled,
+                                   java.util.function.Consumer<Boolean> callback) {
+        ToggleButton toggle = new ToggleButton(
+                PADDING * 2 + 120, baseY + LABEL_HEIGHT + (TOGGLE_SPACING * index),
+                enabled, callback
         );
-        this.addDrawableChild(successToastsToggle);
-
-        // Warning toasts toggle
-        warningToastsToggle = new ToggleButton(
-                PADDING * 2 + 120,
-                toastsY + LABEL_HEIGHT + toggleSpacing * 2,
-                DownloadSettings.getInstance().isWarningToastsEnabled(),
-                enabled -> DownloadSettings.getInstance().setWarningToastsEnabled(enabled)
-        );
-        this.addDrawableChild(warningToastsToggle);
-
-        // Error toasts toggle
-        errorToastsToggle = new ToggleButton(
-                PADDING * 2 + 120,
-                toastsY + LABEL_HEIGHT + toggleSpacing * 3,
-                DownloadSettings.getInstance().isErrorToastsEnabled(),
-                enabled -> DownloadSettings.getInstance().setErrorToastsEnabled(enabled)
-        );
-        this.addDrawableChild(errorToastsToggle);
+        this.addDrawableChild(toggle);
     }
 
     private void goBack() {
@@ -195,48 +149,45 @@ public class SettingsPage extends Screen {
     }
 
     private void saveDownloadPath() {
-        if (downloadPathField != null) {
-            String newPath = downloadPathField.getText();
-            if (newPath != null && !newPath.isEmpty()) {
-                // Check if the directory exists
-                String absolutePath = DownloadSettings.getInstance().getGameDirectory() + File.separator + newPath;
-                File directory = new File(absolutePath);
+        if (downloadPathField == null) return;
 
-                if (!directory.exists()) {
-                    // Show confirmation popup to create the folder
-                    activePopup = new ConfirmPopup(
-                        this,
-                        "Create Folder?",
-                        "The folder '" + newPath + "' does not exist.\n\nDo you want to create it?",
-                        () -> {
-                            // User confirmed - create the folder and save
-                            boolean created = directory.mkdirs();
-                            if (created) {
-                                completeSave(newPath);
-                            } else {
-                                if (toastManager != null) {
-                                    toastManager.showError("Failed to create folder!");
-                                }
-                            }
-                            activePopup = null;
-                        },
-                        () -> {
-                            // User cancelled
-                            activePopup = null;
-                        },
-                        "Create"  // Custom confirm button text
-                    );
-                } else {
-                    // Directory exists, save directly
-                    completeSave(newPath);
-                }
+        String newPath = downloadPathField.getText();
+        if (newPath == null || newPath.isEmpty()) return;
+
+        String absolutePath = DownloadSettings.getInstance().getGameDirectory() + File.separator + newPath;
+        File directory = new File(absolutePath);
+
+        if (directory.exists()) {
+            completeSave(newPath);
+        } else {
+            showCreateFolderConfirmation(newPath, directory);
+        }
+    }
+
+    private void showCreateFolderConfirmation(String relativePath, File directory) {
+        activePopup = new ConfirmPopup(
+                this,
+                "Create Folder?",
+                "The folder '" + relativePath + "' does not exist.\n\nDo you want to create it?",
+                () -> createFolderAndSave(directory, relativePath),
+                () -> activePopup = null,
+                "Create"
+        );
+    }
+
+    private void createFolderAndSave(File directory, String relativePath) {
+        if (directory.mkdirs()) {
+            completeSave(relativePath);
+        } else {
+            if (toastManager != null) {
+                toastManager.showError("Failed to create folder!");
             }
         }
+        activePopup = null;
     }
 
     private void completeSave(String newPath) {
         DownloadSettings.getInstance().setDownloadPath(newPath);
-        System.out.println("Download path saved: " + newPath);
         if (toastManager != null) {
             toastManager.showSuccess("Download path saved!");
         }
@@ -244,117 +195,78 @@ public class SettingsPage extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Show pending toast if any
-        if (pendingToastMessage != null && toastManager != null) {
-            if (pendingToastSuccess) {
-                toastManager.showSuccess(pendingToastMessage);
-            } else {
-                toastManager.showError(pendingToastMessage);
-            }
-            pendingToastMessage = null;
-        }
-
-        // Fill the entire screen with dark grey background
+        showPendingToast();
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
         super.render(context, mouseX, mouseY, delta);
 
-        // Draw title
-        String title = "Settings";
-        int titleWidth = this.textRenderer.getWidth(title);
-        context.drawTextWithShadow(
-                this.textRenderer,
-                title,
-                (this.width - titleWidth) / 2,
-                PADDING * 2 + BUTTON_HEIGHT,
-                0xFFFFFFFF
-        );
+        int contentY = renderTitleAndDownloadSection(context, mouseX, mouseY, delta);
+        renderToastTogglesSection(context, contentY);
+        renderOverlays(context, mouseX, mouseY, delta);
+    }
 
-        // Draw download path label
-        int contentY = PADDING * 4 + BUTTON_HEIGHT;
-        context.drawTextWithShadow(
-                this.textRenderer,
+    private void showPendingToast() {
+        if (pendingToastMessage == null || toastManager == null) return;
+
+        if (pendingToastSuccess) {
+            toastManager.showSuccess(pendingToastMessage);
+        } else {
+            toastManager.showError(pendingToastMessage);
+        }
+        pendingToastMessage = null;
+    }
+
+    private int renderTitleAndDownloadSection(DrawContext context, int mouseX, int mouseY, float delta) {
+        int titleX = (this.width - this.textRenderer.getWidth(TITLE)) / 2;
+        context.drawTextWithShadow(this.textRenderer, TITLE, titleX,
+                PADDING * 2 + BACK_BUTTON_SIZE, 0xFFFFFFFF);
+
+        int contentY = PADDING * 4 + BACK_BUTTON_SIZE;
+        context.drawTextWithShadow(this.textRenderer,
                 "Download Path (relative to game folder):",
-                PADDING * 2,
-                contentY,
-                0xFFFFFFFF
-        );
+                PADDING * 2, contentY, 0xFFFFFFFF);
 
-        // Render download path text field manually (not a drawable child)
-        if (downloadPathField != null) {
-            downloadPathField.render(context, mouseX, mouseY, delta);
+        renderDownloadPathField(context, contentY, mouseX, mouseY, delta);
+        return contentY;
+    }
 
-            // Show/hide set button based on whether path has changed
-            String currentText = downloadPathField.getText();
-            String savedPath = DownloadSettings.getInstance().getDownloadPath();
-            boolean pathChanged = !currentText.equals(savedPath);
-            if (setPathButton != null) {
-                setPathButton.visible = pathChanged;
-            }
+    private void renderDownloadPathField(DrawContext context, int contentY, int mouseX, int mouseY, float delta) {
+        if (downloadPathField == null) return;
+
+        downloadPathField.render(context, mouseX, mouseY, delta);
+
+        String currentText = downloadPathField.getText();
+        String savedPath = DownloadSettings.getInstance().getDownloadPath();
+        if (setPathButton != null) {
+            setPathButton.visible = !currentText.equals(savedPath);
         }
 
-        // Draw absolute path preview below the text field
-        String absolutePath = DownloadSettings.getInstance().getAbsoluteDownloadPath();
-        String previewText = "Full path: " + absolutePath;
-        context.drawTextWithShadow(
-                this.textRenderer,
-                previewText,
-                PADDING * 2,
-                contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 5,
-                0xFFAAAAAA
-        );
+        String previewText = "Full path: " + DownloadSettings.getInstance().getAbsoluteDownloadPath();
+        context.drawTextWithShadow(this.textRenderer, previewText, PADDING * 2,
+                contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 5, 0xFFAAAAAA);
+    }
 
-        // Draw toasts toggle section header
+    private void renderToastTogglesSection(DrawContext context, int contentY) {
         int toastsY = contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 30;
-        int toggleSpacing = 25;
 
-        context.drawTextWithShadow(
-                this.textRenderer,
-                "Show Notifications:",
-                PADDING * 2,
-                toastsY,
-                0xFFFFFFFF
-        );
+        context.drawTextWithShadow(this.textRenderer, "Show Notifications:",
+                PADDING * 2, toastsY, 0xFFFFFFFF);
 
-        // Draw individual toast type labels
-        context.drawTextWithShadow(
-                this.textRenderer,
-                "Info:",
-                PADDING * 2,
-                toastsY + LABEL_HEIGHT + 6,
-                0xFF2196F3
-        );
+        renderToastToggleLabel(context, "Info:", toastsY, 0, 0xFF2196F3);
+        renderToastToggleLabel(context, "Success:", toastsY, 1, 0xFF4CAF50);
+        renderToastToggleLabel(context, "Warning:", toastsY, 2, 0xFFFFC107);
+        renderToastToggleLabel(context, "Error:", toastsY, 3, 0xFFFF5252);
+    }
 
-        context.drawTextWithShadow(
-                this.textRenderer,
-                "Success:",
-                PADDING * 2,
-                toastsY + LABEL_HEIGHT + toggleSpacing + 6,
-                0xFF4CAF50
-        );
+    private void renderToastToggleLabel(DrawContext context, String label, int baseY, int index, int color) {
+        int y = baseY + LABEL_HEIGHT + TOGGLE_SPACING * index + 6;
+        context.drawTextWithShadow(this.textRenderer, label, PADDING * 2, y, color);
+    }
 
-        context.drawTextWithShadow(
-                this.textRenderer,
-                "Warning:",
-                PADDING * 2,
-                toastsY + LABEL_HEIGHT + toggleSpacing * 2 + 6,
-                0xFFFFC107
-        );
-
-        context.drawTextWithShadow(
-                this.textRenderer,
-                "Error:",
-                PADDING * 2,
-                toastsY + LABEL_HEIGHT + toggleSpacing * 3 + 6,
-                0xFFFF5252
-        );
-
-        // Render toasts on top of everything
+    private void renderOverlays(DrawContext context, int mouseX, int mouseY, float delta) {
         if (toastManager != null) {
             toastManager.render(context, delta, mouseX, mouseY);
         }
-
-        // Render popup on top of everything else
         if (activePopup != null) {
             activePopup.render(context, mouseX, mouseY, delta);
         }
@@ -366,12 +278,10 @@ public class SettingsPage extends Screen {
         double mouseY = click.y();
         int button = click.button();
 
-        // Handle popup first if active
         if (activePopup != null) {
             return activePopup.mouseClicked(mouseX, mouseY, button);
         }
 
-        // Handle download path text field click
         if (button == 0 && downloadPathField != null) {
             if (downloadPathField.isMouseOver(mouseX, mouseY)) {
                 downloadPathField.setFocused(true);

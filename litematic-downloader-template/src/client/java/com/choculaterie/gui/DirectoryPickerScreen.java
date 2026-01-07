@@ -6,7 +6,6 @@ import com.choculaterie.gui.widget.ScrollBar;
 import com.choculaterie.gui.widget.ToastManager;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 import java.io.File;
@@ -25,11 +24,8 @@ public class DirectoryPickerScreen extends Screen {
     private final Screen parentScreen;
     private final Consumer<String> onPathSelected;
     private File currentDirectory;
-    private List<File> directories = new ArrayList<>();
+    private final List<File> directories = new ArrayList<>();
     private int scrollOffset = 0;
-    private CustomButton backButton;
-    private CustomButton selectButton;
-    private CustomButton upButton;
     private ScrollBar scrollBar;
     private int selectedIndex = -1;
     private ToastManager toastManager;
@@ -39,13 +35,11 @@ public class DirectoryPickerScreen extends Screen {
         this.parentScreen = parentScreen;
         this.onPathSelected = onPathSelected;
 
-        // Start from the provided path or game directory
         File startDir = new File(startPath);
         if (!startDir.exists() || !startDir.isDirectory()) {
             startDir = new File(DownloadSettings.getInstance().getGameDirectory());
         }
 
-        // Start one folder higher (parent directory)
         File parentDir = startDir.getParentFile();
         if (parentDir != null && parentDir.exists()) {
             this.currentDirectory = parentDir;
@@ -56,20 +50,42 @@ public class DirectoryPickerScreen extends Screen {
         loadDirectories();
     }
 
+    private int getListY() {
+        return PADDING * 4 + BUTTON_HEIGHT + 10;
+    }
+
+    private int getListHeight() {
+        return this.height - getListY() - BUTTON_HEIGHT - PADDING * 3;
+    }
+
+    private int getListRightEdge() {
+        return this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
+    }
+
+    private int getMaxVisibleItems() {
+        return getListHeight() / ITEM_HEIGHT;
+    }
+
+    private int getMaxScroll() {
+        int contentHeight = directories.size() * ITEM_HEIGHT;
+        int listHeight = getListHeight();
+        if (contentHeight <= listHeight) {
+            return 0;
+        }
+        return Math.max(0, directories.size() - getMaxVisibleItems());
+    }
+
     @Override
     protected void init() {
         super.init();
 
-        // Save current scroll position before reinitializing
         int savedScrollOffset = scrollOffset;
         int savedSelectedIndex = selectedIndex;
 
-        // Initialize toast manager
         if (this.client != null) {
             toastManager = new ToastManager(this.client);
         }
 
-        // Calculate responsive sizes based on screen width
         boolean isCompact = this.width < 400;
         boolean isVeryCompact = this.width < 300;
 
@@ -78,8 +94,7 @@ public class DirectoryPickerScreen extends Screen {
         String upLabel = isVeryCompact ? "↑" : "Up ↑";
         String selectLabel = isVeryCompact ? "Select" : (isCompact ? "Select Folder" : "Select This Folder");
 
-        // Back button (top left)
-        backButton = new CustomButton(
+        CustomButton backButton = new CustomButton(
                 PADDING,
                 PADDING,
                 BUTTON_HEIGHT,
@@ -89,8 +104,7 @@ public class DirectoryPickerScreen extends Screen {
         );
         this.addDrawableChild(backButton);
 
-        // Up directory button (next to back button)
-        upButton = new CustomButton(
+        CustomButton upButton = new CustomButton(
                 PADDING * 2 + BUTTON_HEIGHT,
                 PADDING,
                 upButtonWidth,
@@ -100,8 +114,7 @@ public class DirectoryPickerScreen extends Screen {
         );
         this.addDrawableChild(upButton);
 
-        // Select current directory button (bottom)
-        selectButton = new CustomButton(
+        CustomButton selectButton = new CustomButton(
                 this.width / 2 - selectButtonWidth / 2,
                 this.height - PADDING - BUTTON_HEIGHT - PADDING,
                 selectButtonWidth,
@@ -111,25 +124,22 @@ public class DirectoryPickerScreen extends Screen {
         );
         this.addDrawableChild(selectButton);
 
-        // Initialize scrollbar
-        int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
-        int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;
+        int listY = getListY();
+        int listHeight = getListHeight();
         scrollBar = new ScrollBar(this.width - PADDING - SCROLLBAR_WIDTH, listY, listHeight);
 
-        // Restore scroll position and selection
         int contentHeight = directories.size() * ITEM_HEIGHT;
-        int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
-        // maxScroll = how many items are hidden when scrolled to bottom
-        int maxScroll = contentHeight <= listHeight ? 0 : directories.size() - maxVisibleItems;
-        // Set scroll data first
         scrollBar.setScrollData(contentHeight, listHeight);
-        // Clamp and restore scroll offset and selection
-        scrollOffset = Math.max(0, Math.min(maxScroll, savedScrollOffset));
-        selectedIndex = savedSelectedIndex;
-        // Update scrollbar percentage to match
+
+        int maxScroll = getMaxScroll();
         if (maxScroll > 0) {
+            scrollOffset = Math.min(savedScrollOffset, maxScroll);
             scrollBar.setScrollPercentage((double) scrollOffset / maxScroll);
+        } else {
+            scrollOffset = 0;
+            scrollBar.setScrollPercentage(0.0);
         }
+        selectedIndex = savedSelectedIndex;
     }
 
     private void loadDirectories() {
@@ -149,17 +159,19 @@ public class DirectoryPickerScreen extends Screen {
 
     private void updateScrollBar() {
         if (scrollBar != null) {
-            int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
-            int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;
+            int listHeight = getListHeight();
             int contentHeight = directories.size() * ITEM_HEIGHT;
 
             scrollBar.setScrollData(contentHeight, listHeight);
 
-            // Update scroll offset from scrollbar percentage
-            int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
-            // maxScroll = how many items are hidden when scrolled to bottom
-            int maxScroll = contentHeight <= listHeight ? 0 : directories.size() - maxVisibleItems;
-            scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
+            int maxScroll = getMaxScroll();
+            if (maxScroll > 0) {
+                scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset));
+                scrollBar.setScrollPercentage((double) scrollOffset / maxScroll);
+            } else {
+                scrollOffset = 0;
+                scrollBar.setScrollPercentage(0.0);
+            }
         }
     }
 
@@ -177,11 +189,9 @@ public class DirectoryPickerScreen extends Screen {
     private void selectCurrentDirectory() {
         File directoryToSelect;
 
-        // If a folder is highlighted (selected), use that one
         if (selectedIndex >= 0 && selectedIndex < directories.size()) {
             directoryToSelect = directories.get(selectedIndex);
         } else {
-            // Otherwise, select the current directory
             directoryToSelect = currentDirectory;
         }
 
@@ -217,12 +227,10 @@ public class DirectoryPickerScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Fill background
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
         super.render(context, mouseX, mouseY, delta);
 
-        // Draw current path
         String currentPath = currentDirectory != null ? currentDirectory.getAbsolutePath() : "";
         context.drawTextWithShadow(
                 this.textRenderer,
@@ -232,36 +240,26 @@ public class DirectoryPickerScreen extends Screen {
                 0xFFFFFFFF
         );
 
-        // Draw directories list
-        int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
-        int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;
-        // Add 1 to include partial items at the bottom
-        int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
+        int listY = getListY();
+        int listHeight = getListHeight();
+        int maxVisibleItems = getMaxVisibleItems();
+        int listRightEdge = getListRightEdge();
 
-        // Calculate list width (end before scrollbar)
-        int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
-
-        // Draw list background (end before scrollbar)
         context.fill(PADDING, listY, listRightEdge, listY + listHeight, 0xFF151515);
 
-        // Enable scissor to clip content outside the list area
         context.enableScissor(PADDING, listY, listRightEdge, listY + listHeight);
 
-        // Draw directories
         for (int i = scrollOffset; i < Math.min(directories.size(), scrollOffset + maxVisibleItems); i++) {
             File dir = directories.get(i);
             int itemY = listY + (i - scrollOffset) * ITEM_HEIGHT;
 
-            // Check if mouse is over this item (only in list area, not scrollbar)
             boolean isHovered = mouseX >= PADDING && mouseX < listRightEdge &&
                               mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
             boolean isSelected = i == selectedIndex;
 
-            // Draw item background (end before scrollbar)
             int bgColor = isSelected ? 0xFF404040 : (isHovered ? 0xFF2A2A2A : 0xFF1A1A1A);
             context.fill(PADDING + 2, itemY + 2, listRightEdge - 2, itemY + ITEM_HEIGHT - 2, bgColor);
 
-            // Draw folder icon and name
             String displayName = "📁 " + dir.getName();
             context.drawTextWithShadow(
                     this.textRenderer,
@@ -272,21 +270,17 @@ public class DirectoryPickerScreen extends Screen {
             );
         }
 
-        // Disable scissor after rendering entries
         context.disableScissor();
 
-        // Render scrollbar widget with drag support
         if (scrollBar != null && scrollBar.isVisible() && this.client != null) {
             boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, this.client.getWindow().getHandle());
 
-            // If scrollbar was dragged, update our scroll offset
             if (scrollChanged) {
-                int maxScroll = Math.max(0, directories.size() - maxVisibleItems);
+                int maxScroll = getMaxScroll();
                 scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
             }
         }
 
-        // Render toasts on top of everything
         if (toastManager != null) {
             toastManager.render(context, delta, mouseX, mouseY);
         }
@@ -302,10 +296,9 @@ public class DirectoryPickerScreen extends Screen {
             return true;
         }
 
-        // Handle directory list clicks (only in list area, not scrollbar)
-        int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
-        int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;
-        int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
+        int listY = getListY();
+        int listHeight = getListHeight();
+        int listRightEdge = getListRightEdge();
 
         if (mouseX >= PADDING && mouseX < listRightEdge &&
             mouseY >= listY && mouseY < listY + listHeight) {
@@ -313,14 +306,12 @@ public class DirectoryPickerScreen extends Screen {
             int clickedIndex = scrollOffset + (int)((mouseY - listY) / ITEM_HEIGHT);
 
             if (clickedIndex >= 0 && clickedIndex < directories.size()) {
-                if (button == 0) { // Left click
+                if (button == 0) {
                     if (clickedIndex == selectedIndex && doubled) {
-                        // Double click - enter directory
                         currentDirectory = directories.get(clickedIndex);
                         loadDirectories();
                         scrollOffset = 0;
                     } else {
-                        // Single click - select
                         selectedIndex = clickedIndex;
                     }
                     return true;
@@ -333,16 +324,10 @@ public class DirectoryPickerScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        int listY = PADDING * 4 + BUTTON_HEIGHT + 10;
-        int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 3;
-        int contentHeight = directories.size() * ITEM_HEIGHT;
-        int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
-        // maxScroll = how many items are hidden when scrolled to bottom
-        int maxScroll = contentHeight <= listHeight ? 0 : directories.size() - maxVisibleItems;
+        int maxScroll = getMaxScroll();
 
         scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int)verticalAmount));
 
-        // Update scrollbar to match
         if (scrollBar != null && maxScroll > 0) {
             scrollBar.setScrollPercentage((double) scrollOffset / maxScroll);
         }

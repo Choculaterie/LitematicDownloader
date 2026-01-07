@@ -1,26 +1,20 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.gui.theme.UITheme;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * A popup dialog for confirmation with Yes/No buttons
- */
 public class ConfirmPopup implements Drawable, Element {
-    private static final int POPUP_WIDTH = 400; // Increased from 300 for tree view
-    private static final int PADDING = 10;
-    private static final int BUTTON_HEIGHT = 20;
-    private static final int LINE_HEIGHT = 12;
-    private static final int MAX_MESSAGE_HEIGHT = 300; // Maximum height for message area
+    private static final int POPUP_WIDTH = 400;
+    private static final int MAX_MESSAGE_HEIGHT = 300;
 
     private final Screen parent;
     private final String title;
@@ -38,8 +32,8 @@ public class ConfirmPopup implements Drawable, Element {
     private final int y;
     private final int popupHeight;
     private final List<String> wrappedMessage;
-    private final int actualMessageHeight; // Full height of all message lines
-    private final int visibleMessageHeight; // Height of visible area (capped)
+    private final int actualMessageHeight;
+    private final int visibleMessageHeight;
     private ScrollBar scrollBar;
     private double scrollOffset = 0;
     private final String confirmButtonText;
@@ -58,34 +52,27 @@ public class ConfirmPopup implements Drawable, Element {
 
         MinecraftClient client = MinecraftClient.getInstance();
 
-        // Wrap message text
-        this.wrappedMessage = wrapText(message, POPUP_WIDTH - PADDING * 2, client);
+        this.wrappedMessage = wrapText(message, POPUP_WIDTH - UITheme.Dimensions.PADDING * 2, client);
 
-        // Calculate screen dimensions
         int screenHeight = client.getWindow().getScaledHeight();
         int screenWidth = client.getWindow().getScaledWidth();
 
-        // Calculate maximum available height for message (leave margins top and bottom)
-        int verticalMargin = 40; // Min space from top/bottom of screen
-        int popupChrome = PADDING + LINE_HEIGHT + PADDING + PADDING + BUTTON_HEIGHT + PADDING; // Title + paddings + buttons
+        int verticalMargin = 40;
+        int popupChrome = UITheme.Dimensions.PADDING + UITheme.Typography.LINE_HEIGHT + UITheme.Dimensions.PADDING + UITheme.Dimensions.PADDING + UITheme.Dimensions.BUTTON_HEIGHT + UITheme.Dimensions.PADDING;
         int maxAvailableMessageHeight = screenHeight - (verticalMargin * 2) - popupChrome;
 
-        // Ensure we don't exceed MAX_MESSAGE_HEIGHT or available screen space
         int effectiveMaxHeight = Math.min(MAX_MESSAGE_HEIGHT, maxAvailableMessageHeight);
 
-        // Calculate actual message height and visible height
-        this.actualMessageHeight = wrappedMessage.size() * LINE_HEIGHT;
+        this.actualMessageHeight = wrappedMessage.size() * UITheme.Typography.LINE_HEIGHT;
         this.visibleMessageHeight = Math.min(actualMessageHeight, effectiveMaxHeight);
-        this.popupHeight = PADDING + LINE_HEIGHT + PADDING + visibleMessageHeight + PADDING + BUTTON_HEIGHT + PADDING;
+        this.popupHeight = UITheme.Dimensions.PADDING + UITheme.Typography.LINE_HEIGHT + UITheme.Dimensions.PADDING + visibleMessageHeight + UITheme.Dimensions.PADDING + UITheme.Dimensions.BUTTON_HEIGHT + UITheme.Dimensions.PADDING;
 
-        // Center on screen
         this.x = (screenWidth - POPUP_WIDTH) / 2;
         this.y = (screenHeight - popupHeight) / 2;
 
-        // Initialize scrollbar if content exceeds visible height
         if (actualMessageHeight > visibleMessageHeight) {
-            int messageAreaY = y + PADDING + LINE_HEIGHT + PADDING;
-            int scrollBarX = x + POPUP_WIDTH - PADDING - 8; // 8 = scrollbar width
+            int messageAreaY = y + UITheme.Dimensions.PADDING + UITheme.Typography.LINE_HEIGHT + UITheme.Dimensions.PADDING;
+            int scrollBarX = x + POPUP_WIDTH - UITheme.Dimensions.PADDING - UITheme.Dimensions.SCROLLBAR_WIDTH;
             this.scrollBar = new ScrollBar(scrollBarX, messageAreaY, visibleMessageHeight);
             this.scrollBar.setScrollData(actualMessageHeight, visibleMessageHeight);
         }
@@ -96,12 +83,11 @@ public class ConfirmPopup implements Drawable, Element {
     private List<String> wrapText(String text, int maxWidth, MinecraftClient client) {
         List<String> lines = new ArrayList<>();
 
-        // Split by newlines first to preserve explicit line breaks
         String[] paragraphs = text.split("\n");
 
         for (String paragraph : paragraphs) {
             if (paragraph.isEmpty()) {
-                lines.add(""); // Preserve empty lines
+                lines.add("");
                 continue;
             }
 
@@ -134,24 +120,23 @@ public class ConfirmPopup implements Drawable, Element {
     }
 
     private void initWidgets() {
-        // Buttons
-        int buttonY = y + popupHeight - PADDING - BUTTON_HEIGHT;
-        int buttonWidth = (POPUP_WIDTH - PADDING * 3) / 2;
+        int buttonY = y + popupHeight - UITheme.Dimensions.PADDING - UITheme.Dimensions.BUTTON_HEIGHT;
+        int buttonWidth = (POPUP_WIDTH - UITheme.Dimensions.PADDING * 3) / 2;
 
         cancelButton = new CustomButton(
-                x + PADDING,
+                x + UITheme.Dimensions.PADDING,
                 buttonY,
                 buttonWidth,
-                BUTTON_HEIGHT,
+                UITheme.Dimensions.BUTTON_HEIGHT,
                 Text.of("Cancel"),
                 button -> onCancel.run()
         );
 
         confirmButton = new CustomButton(
-                x + POPUP_WIDTH - PADDING - buttonWidth,
+                x + POPUP_WIDTH - UITheme.Dimensions.PADDING - buttonWidth,
                 buttonY,
                 buttonWidth,
-                BUTTON_HEIGHT,
+                UITheme.Dimensions.BUTTON_HEIGHT,
                 Text.of(confirmButtonText),
                 button -> onConfirm.run()
         );
@@ -162,7 +147,6 @@ public class ConfirmPopup implements Drawable, Element {
         MinecraftClient client = MinecraftClient.getInstance();
         long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
 
-        // Handle Enter/Escape through GLFW polling
         if (windowHandle != 0) {
             boolean enterPressed = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_ENTER) == GLFW.GLFW_PRESS ||
                                   GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_KP_ENTER) == GLFW.GLFW_PRESS;
@@ -179,52 +163,44 @@ public class ConfirmPopup implements Drawable, Element {
             wasEscapePressed = escapePressed;
         }
 
-        // Draw overlay
-        context.fill(0, 0, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight(), 0x80000000);
+        context.fill(0, 0, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight(), UITheme.Colors.OVERLAY_BG);
 
-        // Draw popup background
-        context.fill(x, y, x + POPUP_WIDTH, y + popupHeight, 0xFF2A2A2A);
+        context.fill(x, y, x + POPUP_WIDTH, y + popupHeight, UITheme.Colors.BUTTON_BG_DISABLED);
 
-        // Draw border
-        context.fill(x, y, x + POPUP_WIDTH, y + 1, 0xFF555555);
-        context.fill(x, y + popupHeight - 1, x + POPUP_WIDTH, y + popupHeight, 0xFF555555);
-        context.fill(x, y, x + 1, y + popupHeight, 0xFF555555);
-        context.fill(x + POPUP_WIDTH - 1, y, x + POPUP_WIDTH, y + popupHeight, 0xFF555555);
+        context.fill(x, y, x + POPUP_WIDTH, y + UITheme.Dimensions.BORDER_WIDTH, UITheme.Colors.BUTTON_BORDER);
+        context.fill(x, y + popupHeight - UITheme.Dimensions.BORDER_WIDTH, x + POPUP_WIDTH, y + popupHeight, UITheme.Colors.BUTTON_BORDER);
+        context.fill(x, y, x + UITheme.Dimensions.BORDER_WIDTH, y + popupHeight, UITheme.Colors.BUTTON_BORDER);
+        context.fill(x + POPUP_WIDTH - UITheme.Dimensions.BORDER_WIDTH, y, x + POPUP_WIDTH, y + popupHeight, UITheme.Colors.BUTTON_BORDER);
 
-        // Draw title
         context.drawCenteredTextWithShadow(
                 client.textRenderer,
                 title,
                 x + POPUP_WIDTH / 2,
-                y + PADDING,
-                0xFFFFFFFF
+                y + UITheme.Dimensions.PADDING,
+                UITheme.Colors.TEXT_PRIMARY
         );
 
-        // Draw wrapped message with scissor for scrolling
-        int messageAreaY = y + PADDING + LINE_HEIGHT + PADDING;
+        int messageAreaY = y + UITheme.Dimensions.PADDING + UITheme.Typography.LINE_HEIGHT + UITheme.Dimensions.PADDING;
         int messageAreaHeight = visibleMessageHeight;
 
-        // Enable scissor to clip content
-        context.enableScissor(x + PADDING, messageAreaY, x + POPUP_WIDTH - PADDING, messageAreaY + messageAreaHeight);
+        context.enableScissor(x + UITheme.Dimensions.PADDING, messageAreaY, x + POPUP_WIDTH - UITheme.Dimensions.PADDING, messageAreaY + messageAreaHeight);
 
         int messageY = messageAreaY - (int)scrollOffset;
         for (String line : wrappedMessage) {
-            // Only render lines that are visible
-            if (messageY + LINE_HEIGHT >= messageAreaY && messageY < messageAreaY + messageAreaHeight) {
+            if (messageY + UITheme.Typography.LINE_HEIGHT >= messageAreaY && messageY < messageAreaY + messageAreaHeight) {
                 context.drawTextWithShadow(
                         client.textRenderer,
                         line,
-                        x + PADDING,
+                        x + UITheme.Dimensions.PADDING,
                         messageY,
-                        0xFFCCCCCC
+                        UITheme.Colors.TEXT_TAG
                 );
             }
-            messageY += LINE_HEIGHT;
+            messageY += UITheme.Typography.LINE_HEIGHT;
         }
 
         context.disableScissor();
 
-        // Render scrollbar if needed
         if (scrollBar != null && client.getWindow() != null) {
             scrollBar.setScrollPercentage(scrollOffset / Math.max(1, actualMessageHeight - visibleMessageHeight));
             boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, client.getWindow().getHandle());
@@ -235,7 +211,6 @@ public class ConfirmPopup implements Drawable, Element {
             }
         }
 
-        // Draw buttons
         if (cancelButton != null) {
             cancelButton.render(context, mouseX, mouseY, delta);
         }
@@ -245,13 +220,11 @@ public class ConfirmPopup implements Drawable, Element {
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Check if clicking outside popup - close it
         if (mouseX < x || mouseX > x + POPUP_WIDTH || mouseY < y || mouseY > y + popupHeight) {
             onCancel.run();
             return true;
         }
 
-        // Check cancel button
         if (cancelButton != null) {
             boolean isOverCancel = mouseX >= cancelButton.getX() &&
                                   mouseX < cancelButton.getX() + cancelButton.getWidth() &&
@@ -263,7 +236,6 @@ public class ConfirmPopup implements Drawable, Element {
             }
         }
 
-        // Check confirm button
         if (confirmButton != null) {
             boolean isOverConfirm = mouseX >= confirmButton.getX() &&
                                    mouseX < confirmButton.getX() + confirmButton.getWidth() &&
@@ -275,18 +247,17 @@ public class ConfirmPopup implements Drawable, Element {
             }
         }
 
-        return true; // Consume all clicks within popup
+        return true;
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Only scroll if mouse is over the message area and scrollbar exists
         if (scrollBar != null) {
-            int messageAreaY = y + PADDING + LINE_HEIGHT + PADDING;
+            int messageAreaY = y + UITheme.Dimensions.PADDING + UITheme.Typography.LINE_HEIGHT + UITheme.Dimensions.PADDING;
             if (mouseX >= x && mouseX < x + POPUP_WIDTH &&
                 mouseY >= messageAreaY && mouseY < messageAreaY + visibleMessageHeight) {
 
                 double maxScroll = actualMessageHeight - visibleMessageHeight;
-                scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - verticalAmount * LINE_HEIGHT));
+                scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - verticalAmount * UITheme.Typography.LINE_HEIGHT));
 
                 return true;
             }

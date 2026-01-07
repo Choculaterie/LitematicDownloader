@@ -1,74 +1,98 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.gui.theme.UITheme;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.text.Text;
 
 import java.util.function.Consumer;
 
-/**
- * Custom toggle button for on/off settings
- */
 public class ToggleButton extends ButtonWidget {
-    private static final int TOGGLE_WIDTH = 40;
-    private static final int TOGGLE_HEIGHT = 20;
+	private static final int TOGGLE_WIDTH = 40;
+	private static final int TOGGLE_HEIGHT = 20;
+	private static final int TRACK_PADDING = 2;
+	private static final int TRACK_VERTICAL_PADDING = 3;
+	private static final int KNOB_PADDING = 4;
+	private static final int KNOB_OFFSET = 2;
 
-    private static final int TRACK_OFF_COLOR = 0xFF4A4A4A;
-    private static final int TRACK_ON_COLOR = 0xFF4CAF50;
-    private static final int KNOB_COLOR = 0xFFFFFFFF;
-    private static final int BORDER_COLOR = 0xFF555555;
+	private boolean toggled;
+	private final Consumer<Boolean> onToggle;
 
-    private boolean toggled;
-    private final Consumer<Boolean> onToggle;
+	public ToggleButton(int x, int y, boolean initialState, Consumer<Boolean> onToggle) {
+		super(x, y, TOGGLE_WIDTH, TOGGLE_HEIGHT, net.minecraft.text.Text.literal(" "),
+			button -> ((ToggleButton) button).toggle(),
+			DEFAULT_NARRATION_SUPPLIER);
+		this.toggled = initialState;
+		this.onToggle = onToggle;
+	}
 
-    public ToggleButton(int x, int y, boolean initialState, Consumer<Boolean> onToggle) {
-        super(x, y, TOGGLE_WIDTH, TOGGLE_HEIGHT, net.minecraft.text.Text.of(" "), button -> {
-            ToggleButton toggle = (ToggleButton) button;
-            toggle.toggled = !toggle.toggled;
-            if (toggle.onToggle != null) {
-                toggle.onToggle.accept(toggle.toggled);
-            }
-        }, DEFAULT_NARRATION_SUPPLIER);
-        this.toggled = initialState;
-        this.onToggle = onToggle;
-    }
+	private void toggle() {
+		this.toggled = !this.toggled;
+		if (this.onToggle != null) {
+			this.onToggle.accept(this.toggled);
+		}
+	}
 
-    public boolean isToggled() {
-        return toggled;
-    }
+	public boolean isToggled() {
+		return toggled;
+	}
 
-    public void setToggled(boolean toggled) {
-        this.toggled = toggled;
-    }
+	public void setToggled(boolean toggled) {
+		this.toggled = toggled;
+	}
 
-    @Override
-    protected void drawIcon(DrawContext context, int mouseX, int mouseY, float delta) {
-        // ButtonWidget's base render draws the vanilla background; we paint our toggle on top.
-        boolean isHovered = mouseX >= this.getX() && mouseY >= this.getY() &&
-                mouseX < this.getX() + this.getWidth() && mouseY < this.getY() + this.getHeight();
+	@Override
+	protected void drawIcon(DrawContext context, int mouseX, int mouseY, float delta) {
+		boolean isHovered = isMouseOver(mouseX, mouseY);
+		int trackColor = getTrackColor(isHovered);
+		int trackY = getY() + TRACK_VERTICAL_PADDING;
+		int trackHeight = getHeight() - (TRACK_VERTICAL_PADDING * 2);
 
-        int trackColor = toggled ? TRACK_ON_COLOR : TRACK_OFF_COLOR;
-        if (isHovered) {
-            // Lighten on hover
-            trackColor = toggled ? 0xFF5FBF63 : 0xFF5A5A5A;
-        }
+		drawTrack(context, trackColor, trackY, trackHeight);
+		drawBorder(context, trackY, trackHeight);
+		drawKnob(context, trackY, trackHeight);
+	}
 
-        int trackY = this.getY() + 3;
-        int trackHeight = this.getHeight() - 6;
+	private int getTrackColor(boolean isHovered) {
+		if (toggled) {
+			return isHovered ? UITheme.Colors.TOGGLE_ON_HOVER : UITheme.Colors.TOGGLE_ON;
+		}
+		return isHovered ? UITheme.Colors.TOGGLE_OFF_HOVER : UITheme.Colors.BUTTON_BG_HOVER;
+	}
 
-        // Track
-        context.fill(this.getX() + 2, trackY, this.getX() + this.getWidth() - 2, trackY + trackHeight, trackColor);
+	private void drawTrack(DrawContext context, int color, int trackY, int trackHeight) {
+		context.fill(
+			getX() + TRACK_PADDING,
+			trackY,
+			getX() + getWidth() - TRACK_PADDING,
+			trackY + trackHeight,
+			color
+		);
+	}
 
-        // Border
-        context.fill(this.getX(), trackY, this.getX() + this.getWidth(), trackY + 1, BORDER_COLOR); // Top
-        context.fill(this.getX(), trackY + trackHeight - 1, this.getX() + this.getWidth(), trackY + trackHeight, BORDER_COLOR); // Bottom
-        context.fill(this.getX(), trackY, this.getX() + 1, trackY + trackHeight, BORDER_COLOR); // Left
-        context.fill(this.getX() + this.getWidth() - 1, trackY, this.getX() + this.getWidth(), trackY + trackHeight, BORDER_COLOR); // Right
+	private boolean isMouseOver(int mouseX, int mouseY) {
+		return mouseX >= getX() && mouseY >= getY() &&
+			   mouseX < getX() + getWidth() && mouseY < getY() + getHeight();
+	}
 
-        // Knob
-        int knobSize = trackHeight - 4;
-        int knobX = toggled ? (this.getX() + this.getWidth() - knobSize - 4) : (this.getX() + 4);
-        int knobY = trackY + 2;
-        context.fill(knobX, knobY, knobX + knobSize, knobY + knobSize, KNOB_COLOR);
-    }
+	private void drawBorder(DrawContext context, int trackY, int trackHeight) {
+		int x = getX();
+		int width = getWidth();
+		int borderWidth = UITheme.Dimensions.BORDER_WIDTH;
+		int borderColor = UITheme.Colors.BUTTON_BORDER;
+
+		context.fill(x, trackY, x + width, trackY + borderWidth, borderColor);
+		context.fill(x, trackY + trackHeight - borderWidth, x + width, trackY + trackHeight, borderColor);
+		context.fill(x, trackY, x + borderWidth, trackY + trackHeight, borderColor);
+		context.fill(x + width - borderWidth, trackY, x + width, trackY + trackHeight, borderColor);
+	}
+
+	private void drawKnob(DrawContext context, int trackY, int trackHeight) {
+		int knobSize = trackHeight - KNOB_PADDING;
+		int knobX = toggled
+			? getX() + getWidth() - knobSize - KNOB_PADDING
+			: getX() + KNOB_PADDING;
+		int knobY = trackY + KNOB_OFFSET;
+
+		context.fill(knobX, knobY, knobX + knobSize, knobY + knobSize, UITheme.Colors.TEXT_PRIMARY);
+	}
 }

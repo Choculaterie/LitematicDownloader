@@ -2,9 +2,6 @@ package com.choculaterie.gui.widget;
 
 import org.lwjgl.glfw.GLFW;
 
-/**
- * Helper class for keyboard input handling via GLFW polling
- */
 public class KeyboardHelper {
     private final long windowHandle;
     
@@ -40,4 +37,3 @@ public class KeyboardHelper {
         return isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
     }
 }
-

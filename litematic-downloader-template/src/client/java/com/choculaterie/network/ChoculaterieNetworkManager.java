@@ -12,238 +12,159 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * Network manager for Choculaterie API operations
- * Handles quick share uploads and other Choculaterie-specific API calls
- *
- * <p>Usage example for quick share:</p>
- * <pre>
- * File litematicFile = new File("path/to/schematic.litematic");
- * ChoculaterieNetworkManager.uploadLitematic(litematicFile)
- *     .thenAccept(response -> {
- *         String shortUrl = response.getShortUrl();
- *         System.out.println("Share URL: " + shortUrl);
- *         // Copy to clipboard, display to user, etc.
- *     })
- *     .exceptionally(error -> {
- *         System.err.println("Upload failed: " + error.getMessage());
- *         return null;
- *     });
- * </pre>
- *
- * <p>The short URL can be shared with other players and will open the litematic
- * in the Choculaterie viewer. The file is stored temporarily on the server.</p>
- */
 public class ChoculaterieNetworkManager {
-    private static final String BASE_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI";
-    private static final Gson GSON = new Gson();
-    private static final int TIMEOUT = 30000; // 30 seconds for file uploads
-    private static final String BOUNDARY = "----WebKitFormBoundary" + System.currentTimeMillis();
+	private static final String BASE_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI";
+	private static final String UPLOAD_ENDPOINT = BASE_URL + "/upload";
+	private static final String MESSAGE_ENDPOINT = BASE_URL + "/GetModMessage";
 
-    /**
-     * Upload a litematic file to Choculaterie for quick sharing
-     * @param file The litematic file to upload
-     * @return CompletableFuture with the quick share response containing the short URL
-     */
-    public static CompletableFuture<QuickShareResponse> uploadLitematic(File file) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                // Validate file
-                if (file == null || !file.exists()) {
-                    throw new IllegalArgumentException("File does not exist");
-                }
+	private static final Gson GSON = new Gson();
+	private static final int TIMEOUT_STANDARD = 10000;
+	private static final int TIMEOUT_UPLOAD = 30000;
+	private static final String BOUNDARY = "----WebKitFormBoundary" + System.currentTimeMillis();
+	private static final String LITEMATIC_EXTENSION = ".litematic";
 
-                if (!file.getName().toLowerCase().endsWith(".litematic")) {
-                    throw new IllegalArgumentException("Only .litematic files are allowed");
-                }
+	public static CompletableFuture<QuickShareResponse> uploadLitematic(File file) {
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				validateFile(file);
+				byte[] fileBytes = Files.readAllBytes(file.toPath());
+				String jsonResponse = uploadMultipartFile(file.getName(), fileBytes);
+				return parseQuickShareResponse(jsonResponse);
+			} catch (IOException e) {
+				throw new RuntimeException("Failed to upload litematic file", e);
+			}
+		});
+	}
 
-                // Read file bytes
-                byte[] fileBytes = Files.readAllBytes(file.toPath());
+	public static CompletableFuture<ModMessage> getModMessage() {
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				String jsonResponse = makeGetRequest();
+				return parseModMessage(jsonResponse);
+			} catch (Exception e) {
+				return new ModMessage(false, null, null, null);
+			}
+		});
+	}
 
-                // Upload the file
-                String jsonResponse = uploadMultipartFile(file.getName(), fileBytes);
+	private static void validateFile(File file) throws IOException {
+		if (file == null || !file.exists()) {
+			throw new IOException("File does not exist");
+		}
+		if (!file.getName().toLowerCase().endsWith(LITEMATIC_EXTENSION)) {
+			throw new IOException("Only .litematic files are allowed");
+		}
+	}
 
-                // Parse response
-                return parseQuickShareResponse(jsonResponse);
+	private static String uploadMultipartFile(String fileName, byte[] fileBytes) throws IOException {
+		URL url = new URL(UPLOAD_ENDPOINT);
+		HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to upload litematic file", e);
-            }
-        });
-    }
+		try {
+			conn.setRequestMethod("POST");
+			conn.setDoOutput(true);
+			conn.setConnectTimeout(TIMEOUT_UPLOAD);
+			conn.setReadTimeout(TIMEOUT_UPLOAD);
+			conn.setRequestProperty("User-Agent", "LitematicDownloader/1.0");
+			conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + BOUNDARY);
 
-    /**
-     * Upload a file using multipart/form-data
-     * @param fileName The name of the file
-     * @param fileBytes The file content as bytes
-     * @return The JSON response as a string
-     * @throws IOException If the upload fails
-     */
-    private static String uploadMultipartFile(String fileName, byte[] fileBytes) throws IOException {
-        String urlString = BASE_URL + "/upload";
-        URL url = new URL(urlString);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+			try (DataOutputStream out = new DataOutputStream(conn.getOutputStream())) {
+				out.writeBytes("--" + BOUNDARY + "\r\n");
+				out.writeBytes("Content-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\n");
+				out.writeBytes("Content-Type: application/octet-stream\r\n");
+				out.writeBytes("\r\n");
+				out.write(fileBytes);
+				out.writeBytes("\r\n");
+				out.writeBytes("--" + BOUNDARY + "--\r\n");
+				out.flush();
+			}
 
-        try {
-            connection.setRequestMethod("POST");
-            connection.setDoOutput(true);
-            connection.setConnectTimeout(TIMEOUT);
-            connection.setReadTimeout(TIMEOUT);
-            connection.setRequestProperty("User-Agent", "LitematicDownloader/1.0");
-            connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + BOUNDARY);
+			int responseCode = conn.getResponseCode();
+			InputStream stream = responseCode >= 200 && responseCode < 300
+				? conn.getInputStream()
+				: conn.getErrorStream();
 
-            // Build multipart form data
-            try (DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream())) {
-                // Write file part
-                outputStream.writeBytes("--" + BOUNDARY + "\r\n");
-                outputStream.writeBytes("Content-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\n");
-                outputStream.writeBytes("Content-Type: application/octet-stream\r\n");
-                outputStream.writeBytes("\r\n");
-                outputStream.write(fileBytes);
-                outputStream.writeBytes("\r\n");
+			String response = readStream(stream);
 
-                // End boundary
-                outputStream.writeBytes("--" + BOUNDARY + "--\r\n");
-                outputStream.flush();
-            }
+			if (responseCode != HttpURLConnection.HTTP_OK) {
+				throw new IOException("HTTP error: " + responseCode + ", response: " + response);
+			}
 
-            // Read response
-            int responseCode = connection.getResponseCode();
+			return response;
+		} finally {
+			conn.disconnect();
+		}
+	}
 
-            // Read the response body (either from input or error stream)
-            InputStream inputStream;
-            if (responseCode >= 200 && responseCode < 300) {
-                inputStream = connection.getInputStream();
-            } else {
-                inputStream = connection.getErrorStream();
-            }
+	private static String makeGetRequest() throws IOException {
+		URL url = new URL(ChoculaterieNetworkManager.MESSAGE_ENDPOINT);
+		HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
-            StringBuilder response = new StringBuilder();
-            if (inputStream != null) {
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        response.append(line);
-                    }
-                }
-            }
+		try {
+			conn.setRequestMethod("GET");
+			conn.setConnectTimeout(TIMEOUT_STANDARD);
+			conn.setReadTimeout(TIMEOUT_STANDARD);
+			conn.setRequestProperty("User-Agent", "LitematicDownloader/1.0");
 
-            // Check for HTTP errors
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                throw new IOException("HTTP error code: " + responseCode + ", response: " + response);
-            }
+			if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
+				throw new IOException("HTTP error: " + conn.getResponseCode());
+			}
 
-            return response.toString();
+			return readStream(conn.getInputStream());
+		} finally {
+			conn.disconnect();
+		}
+	}
 
-        } finally {
-            connection.disconnect();
-        }
-    }
+	private static String readStream(InputStream stream) throws IOException {
+		if (stream == null) {
+			return "";
+		}
+		StringBuilder response = new StringBuilder();
+		try (BufferedReader reader = new BufferedReader(
+				new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				response.append(line);
+			}
+		}
+		return response.toString();
+	}
 
-    /**
-     * Parse the quick share response JSON
-     * @param json The JSON response string
-     * @return QuickShareResponse object
-     */
-    private static QuickShareResponse parseQuickShareResponse(String json) {
-        JsonObject root = GSON.fromJson(json, JsonObject.class);
+	private static QuickShareResponse parseQuickShareResponse(String json) {
+		JsonObject root = GSON.fromJson(json, JsonObject.class);
+		if (!root.has("shortUrl")) {
+			throw new RuntimeException("Response does not contain shortUrl");
+		}
+		return new QuickShareResponse(root.get("shortUrl").getAsString());
+	}
 
-        if (!root.has("shortUrl")) {
-            throw new RuntimeException("Response does not contain shortUrl");
-        }
+	private static ModMessage parseModMessage(String json) {
+		JsonObject root = GSON.fromJson(json, JsonObject.class);
+		boolean hasMessage = getBoolean(root);
 
-        String shortUrl = root.get("shortUrl").getAsString();
-        return new QuickShareResponse(shortUrl);
-    }
+		if (!hasMessage) {
+			return new ModMessage(false, null, null, null);
+		}
 
-    /**
-     * Upload a litematic file by path
-     * @param filePath The path to the litematic file
-     * @return CompletableFuture with the quick share response
-     */
-    public static CompletableFuture<QuickShareResponse> uploadLitematic(String filePath) {
-        return uploadLitematic(new File(filePath));
-    }
+		return new ModMessage(
+			true,
+			getInt(root),
+			getString(root, "message"),
+			getString(root, "type")
+		);
+	}
 
-    /**
-     * Get the current mod message from the server
-     * @return CompletableFuture with the mod message
-     */
-    public static CompletableFuture<ModMessage> getModMessage() {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                String urlString = BASE_URL + "/GetModMessage";
-                System.out.println("[ChoculaterieNetworkManager] Request URL: " + urlString);
+	private static String getString(JsonObject obj, String key) {
+		return (obj.has(key) && !obj.get(key).isJsonNull()) ? obj.get(key).getAsString() : null;
+	}
 
-                String jsonResponse = makeGetRequest(urlString);
-                return parseModMessage(jsonResponse);
-            } catch (Exception e) {
-                System.err.println("[ChoculaterieNetworkManager] Failed to get mod message: " + e.getMessage());
-                // Return empty message on error
-                return new ModMessage(false, null, null, null, null);
-            }
-        });
-    }
+	private static Integer getInt(JsonObject obj) {
+		return (obj.has("id") && !obj.get("id").isJsonNull()) ? obj.get("id").getAsInt() : null;
+	}
 
-    /**
-     * Parse mod message response JSON
-     */
-    private static ModMessage parseModMessage(String json) {
-        JsonObject root = GSON.fromJson(json, JsonObject.class);
-
-        boolean hasMessage = root.has("hasMessage") && !root.get("hasMessage").isJsonNull()
-                && root.get("hasMessage").getAsBoolean();
-
-        if (!hasMessage) {
-            return new ModMessage(false, null, null, null, null);
-        }
-
-        Integer id = root.has("id") && !root.get("id").isJsonNull()
-                ? root.get("id").getAsInt() : null;
-        String message = root.has("message") && !root.get("message").isJsonNull()
-                ? root.get("message").getAsString() : null;
-        String type = root.has("type") && !root.get("type").isJsonNull()
-                ? root.get("type").getAsString() : null;
-        String time = root.has("time") && !root.get("time").isJsonNull()
-                ? root.get("time").getAsString() : null;
-
-        return new ModMessage(hasMessage, id, message, type, time);
-    }
-
-    /**
-     * Make a GET request to the specified URL
-     * @param urlString The URL to request
-     * @return The response body as a string
-     * @throws IOException If the request fails
-     */
-    private static String makeGetRequest(String urlString) throws IOException {
-        URL url = new URL(urlString);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-
-        try {
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(10000);
-            connection.setReadTimeout(10000);
-            connection.setRequestProperty("User-Agent", "LitematicDownloader/1.0");
-
-            int responseCode = connection.getResponseCode();
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                throw new IOException("HTTP error code: " + responseCode);
-            }
-
-            StringBuilder response = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
-                }
-            }
-
-            return response.toString();
-        } finally {
-            connection.disconnect();
-        }
-    }
+	private static boolean getBoolean(JsonObject obj) {
+		return (obj.has("hasMessage") && !obj.get("hasMessage").isJsonNull()) && obj.get("hasMessage").getAsBoolean();
+	}
 }
+

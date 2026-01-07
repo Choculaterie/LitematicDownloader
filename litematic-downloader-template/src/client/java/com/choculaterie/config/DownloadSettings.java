@@ -11,266 +11,188 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
 
-/**
- * Manages download settings for schematics
- */
 public class DownloadSettings {
-    private static final String CONFIG_FILE = "litematic-downloader-settings.json";
-    private static DownloadSettings INSTANCE;
+	private static final String CONFIG_FILE = "litematic-downloader-settings.json";
+	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+	private static DownloadSettings INSTANCE;
 
-    private String downloadPath;
-    private boolean successToastsEnabled;
-    private boolean errorToastsEnabled;
-    private boolean infoToastsEnabled;
-    private boolean warningToastsEnabled;
-    // Sort/Filter settings
-    private String sortOption;
-    private int itemsPerPage;
-    private String tagFilter;
-    private String excludedVendors;
-    // Dismissed mod message tracking
-    private int dismissedModMessageId;
-    private final Gson gson;
+	private JsonObject config;
 
-    private DownloadSettings() {
-        gson = new GsonBuilder().setPrettyPrinting().create();
-        // Default path is "schematics" (relative to game directory)
-        downloadPath = "schematics";
-        // Only warning and error toasts enabled by default
-        successToastsEnabled = false;
-        errorToastsEnabled = true;
-        infoToastsEnabled = false;
-        warningToastsEnabled = true;
-        // Default sort/filter settings
-        sortOption = "newest";
-        itemsPerPage = 20;
-        tagFilter = "";
-        excludedVendors = "";
-        // No dismissed message by default
-        dismissedModMessageId = -1;
-        load();
-    }
+	private DownloadSettings() {
+		this.config = loadConfig();
+		applyDefaults();
+	}
 
-    public static DownloadSettings getInstance() {
-        if (INSTANCE == null) {
-            INSTANCE = new DownloadSettings();
-        }
-        return INSTANCE;
-    }
+	public static DownloadSettings getInstance() {
+		if (INSTANCE == null) {
+			INSTANCE = new DownloadSettings();
+		}
+		return INSTANCE;
+	}
 
-    /**
-     * Get the relative download path (e.g., "schematics")
-     */
-    public String getDownloadPath() {
-        return downloadPath;
-    }
+	private JsonObject loadConfig() {
+		File configFile = getConfigFile();
+		if (!configFile.exists()) {
+			return new JsonObject();
+		}
+		try (FileReader reader = new FileReader(configFile)) {
+			JsonObject json = GSON.fromJson(reader, JsonObject.class);
+			return json != null ? json : new JsonObject();
+		} catch (IOException e) {
+			System.err.println("Failed to load settings: " + e.getMessage());
+			return new JsonObject();
+		}
+	}
 
-    /**
-     * Get the absolute download path resolved from game directory
-     */
-    public String getAbsoluteDownloadPath() {
-        Path gamePath = FabricLoader.getInstance().getGameDir();
-        return gamePath.resolve(downloadPath).toString();
-    }
+	private void applyDefaults() {
+		setDefault("downloadPath", "schematics");
+		setDefault("successToastsEnabled", false);
+		setDefault("errorToastsEnabled", true);
+		setDefault("infoToastsEnabled", false);
+		setDefault("warningToastsEnabled", true);
+		setDefault("sortOption", "newest");
+		setDefault("itemsPerPage", 20);
+		setDefault("tagFilter", "");
+		setDefault("excludedVendors", "");
+		setDefault("dismissedModMessageId", -1);
+	}
 
-    /**
-     * Get the game directory path
-     */
-    public String getGameDirectory() {
-        return FabricLoader.getInstance().getGameDir().toString();
-    }
+	private void setDefault(String key, Object value) {
+		if (!config.has(key)) {
+			if (value instanceof String) {
+				config.addProperty(key, (String) value);
+			} else if (value instanceof Number) {
+				config.addProperty(key, (Number) value);
+			} else if (value instanceof Boolean) {
+				config.addProperty(key, (Boolean) value);
+			}
+		}
+	}
 
-    public void setDownloadPath(String path) {
-        this.downloadPath = path;
-        save();
-    }
+	public String getDownloadPath() {
+		return config.get("downloadPath").getAsString();
+	}
 
-    /**
-     * Check if success toasts are enabled
-     */
-    public boolean isSuccessToastsEnabled() {
-        return successToastsEnabled;
-    }
+	public String getAbsoluteDownloadPath() {
+		Path gamePath = FabricLoader.getInstance().getGameDir();
+		return gamePath.resolve(getDownloadPath()).toString();
+	}
 
-    /**
-     * Set whether success toasts are enabled
-     */
-    public void setSuccessToastsEnabled(boolean enabled) {
-        this.successToastsEnabled = enabled;
-        save();
-    }
+	public String getGameDirectory() {
+		return FabricLoader.getInstance().getGameDir().toString();
+	}
 
-    /**
-     * Check if error toasts are enabled
-     */
-    public boolean isErrorToastsEnabled() {
-        return errorToastsEnabled;
-    }
+	private boolean isToastEnabled(String type) {
+		return config.get(type + "ToastsEnabled").getAsBoolean();
+	}
 
-    /**
-     * Set whether error toasts are enabled
-     */
-    public void setErrorToastsEnabled(boolean enabled) {
-        this.errorToastsEnabled = enabled;
-        save();
-    }
+	public String getSortOption() {
+		return config.get("sortOption").getAsString();
+	}
 
-    /**
-     * Check if info toasts are enabled
-     */
-    public boolean isInfoToastsEnabled() {
-        return infoToastsEnabled;
-    }
+	public int getItemsPerPage() {
+		return config.get("itemsPerPage").getAsInt();
+	}
 
-    /**
-     * Set whether info toasts are enabled
-     */
-    public void setInfoToastsEnabled(boolean enabled) {
-        this.infoToastsEnabled = enabled;
-        save();
-    }
+	public String getTagFilter() {
+		return config.get("tagFilter").getAsString();
+	}
 
-    /**
-     * Check if warning toasts are enabled
-     */
-    public boolean isWarningToastsEnabled() {
-        return warningToastsEnabled;
-    }
+	public String getExcludedVendors() {
+		return config.get("excludedVendors").getAsString();
+	}
 
-    /**
-     * Set whether warning toasts are enabled
-     */
-    public void setWarningToastsEnabled(boolean enabled) {
-        this.warningToastsEnabled = enabled;
-        save();
-    }
+	public int getDismissedModMessageId() {
+		return config.get("dismissedModMessageId").getAsInt();
+	}
 
-    // Sort/Filter settings getters and setters
-    public String getSortOption() {
-        return sortOption;
-    }
+	private void set(String key, Object value) {
+		if (value instanceof String) {
+			config.addProperty(key, (String) value);
+		} else if (value instanceof Number) {
+			config.addProperty(key, (Number) value);
+		} else if (value instanceof Boolean) {
+			config.addProperty(key, (Boolean) value);
+		}
+		save();
+	}
 
-    public void setSortOption(String sortOption) {
-        this.sortOption = sortOption;
-        save();
-    }
+	public boolean isSuccessToastsEnabled() {
+		return isToastEnabled("success");
+	}
 
-    public int getItemsPerPage() {
-        return itemsPerPage;
-    }
+	public void setSuccessToastsEnabled(boolean enabled) {
+		set("successToastsEnabled", enabled);
+	}
 
-    public void setItemsPerPage(int itemsPerPage) {
-        this.itemsPerPage = itemsPerPage;
-        save();
-    }
+	public boolean isErrorToastsEnabled() {
+		return isToastEnabled("error");
+	}
 
-    public String getTagFilter() {
-        return tagFilter;
-    }
+	public void setErrorToastsEnabled(boolean enabled) {
+		set("errorToastsEnabled", enabled);
+	}
 
-    public void setTagFilter(String tagFilter) {
-        this.tagFilter = tagFilter != null ? tagFilter : "";
-        save();
-    }
+	public boolean isInfoToastsEnabled() {
+		return isToastEnabled("info");
+	}
 
-    public String getExcludedVendors() {
-        return excludedVendors;
-    }
+	public void setInfoToastsEnabled(boolean enabled) {
+		set("infoToastsEnabled", enabled);
+	}
 
-    public void setExcludedVendors(String excludedVendors) {
-        this.excludedVendors = excludedVendors != null ? excludedVendors : "";
-        save();
-    }
+	public boolean isWarningToastsEnabled() {
+		return isToastEnabled("warning");
+	}
 
-    public int getDismissedModMessageId() {
-        return dismissedModMessageId;
-    }
+	public void setWarningToastsEnabled(boolean enabled) {
+		set("warningToastsEnabled", enabled);
+	}
 
-    public void setDismissedModMessageId(int messageId) {
-        this.dismissedModMessageId = messageId;
-        save();
-    }
+	public void setDownloadPath(String path) {
+		set("downloadPath", path);
+	}
 
-    private File getConfigFile() {
-        Path configDir = FabricLoader.getInstance().getConfigDir();
-        return configDir.resolve(CONFIG_FILE).toFile();
-    }
+	public void setSortOption(String sortOption) {
+		set("sortOption", sortOption);
+	}
 
-    private void load() {
-        File configFile = getConfigFile();
-        if (!configFile.exists()) {
-            save(); // Create default config
-            return;
-        }
+	public void setItemsPerPage(int itemsPerPage) {
+		set("itemsPerPage", itemsPerPage);
+	}
 
-        try (FileReader reader = new FileReader(configFile)) {
-            JsonObject json = gson.fromJson(reader, JsonObject.class);
-            if (json != null && json.has("downloadPath")) {
-                downloadPath = json.get("downloadPath").getAsString();
-            }
-            if (json != null && json.has("successToastsEnabled")) {
-                successToastsEnabled = json.get("successToastsEnabled").getAsBoolean();
-            }
-            if (json != null && json.has("errorToastsEnabled")) {
-                errorToastsEnabled = json.get("errorToastsEnabled").getAsBoolean();
-            }
-            if (json != null && json.has("infoToastsEnabled")) {
-                infoToastsEnabled = json.get("infoToastsEnabled").getAsBoolean();
-            }
-            if (json != null && json.has("warningToastsEnabled")) {
-                warningToastsEnabled = json.get("warningToastsEnabled").getAsBoolean();
-            }
-            // Sort/Filter settings
-            if (json != null && json.has("sortOption")) {
-                sortOption = json.get("sortOption").getAsString();
-            }
-            if (json != null && json.has("itemsPerPage")) {
-                itemsPerPage = json.get("itemsPerPage").getAsInt();
-            }
-            if (json != null && json.has("tagFilter")) {
-                tagFilter = json.get("tagFilter").getAsString();
-            }
-            if (json != null && json.has("excludedVendors")) {
-                excludedVendors = json.get("excludedVendors").getAsString();
-            }
-            if (json != null && json.has("dismissedModMessageId")) {
-                dismissedModMessageId = json.get("dismissedModMessageId").getAsInt();
-            }
-        } catch (IOException e) {
-            System.err.println("Failed to load download settings: " + e.getMessage());
-        }
-    }
+	public void setTagFilter(String tagFilter) {
+		set("tagFilter", tagFilter != null ? tagFilter : "");
+	}
 
-    private void save() {
-        File configFile = getConfigFile();
+	public void setExcludedVendors(String excludedVendors) {
+		set("excludedVendors", excludedVendors != null ? excludedVendors : "");
+	}
 
-        try {
-            // Ensure config directory exists
-            File parentDir = configFile.getParentFile();
-            if (!parentDir.exists()) {
-                parentDir.mkdirs();
-            }
+	public void setDismissedModMessageId(int messageId) {
+		set("dismissedModMessageId", messageId);
+	}
 
-            JsonObject json = new JsonObject();
-            json.addProperty("downloadPath", downloadPath);
-            json.addProperty("successToastsEnabled", successToastsEnabled);
-            json.addProperty("errorToastsEnabled", errorToastsEnabled);
-            json.addProperty("infoToastsEnabled", infoToastsEnabled);
-            json.addProperty("warningToastsEnabled", warningToastsEnabled);
-            // Sort/Filter settings
-            json.addProperty("sortOption", sortOption);
-            json.addProperty("itemsPerPage", itemsPerPage);
-            json.addProperty("tagFilter", tagFilter);
-            json.addProperty("excludedVendors", excludedVendors);
-            // Dismissed mod message
-            json.addProperty("dismissedModMessageId", dismissedModMessageId);
+	private File getConfigFile() {
+		Path configDir = FabricLoader.getInstance().getConfigDir();
+		return configDir.resolve(CONFIG_FILE).toFile();
+	}
 
-            try (FileWriter writer = new FileWriter(configFile)) {
-                gson.toJson(json, writer);
-            }
-        } catch (IOException e) {
-            System.err.println("Failed to save download settings: " + e.getMessage());
-        }
-    }
+	private void save() {
+		try {
+			File configFile = getConfigFile();
+			File parentDir = configFile.getParentFile();
+			if (parentDir != null && !parentDir.exists()) {
+				if (!parentDir.mkdirs()) {
+					System.err.println("Failed to create config directory");
+					return;
+				}
+			}
+			try (FileWriter writer = new FileWriter(configFile)) {
+				GSON.toJson(config, writer);
+			}
+		} catch (IOException e) {
+			System.err.println("Failed to save settings: " + e.getMessage());
+		}
+	}
 }
-

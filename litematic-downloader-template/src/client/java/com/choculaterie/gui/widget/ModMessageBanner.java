@@ -1,5 +1,6 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.models.ModMessage;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -8,20 +9,14 @@ import net.minecraft.client.gui.Element;
 
 import java.util.function.Consumer;
 
-/**
- * Banner widget to display mod messages from the server
- */
 public class ModMessageBanner implements Drawable, Element {
     private static final int BANNER_HEIGHT = 30;
-    private static final int PADDING = 8;
-    private static final int CLOSE_BUTTON_SIZE = 16;
+    private static final int CLOSE_BUTTON_SIZE = UITheme.Dimensions.ICON_SMALL;
 
-    // Colors for different message types
-    private static final int INFO_BG_COLOR = 0xE02196F3;      // Blue
-    private static final int WARNING_BG_COLOR = 0xE0FF9800;   // Orange
-    private static final int ERROR_BG_COLOR = 0xE0F44336;     // Red
-    private static final int DEFAULT_BG_COLOR = 0xE03A3A3A;   // Grey
-    private static final int TEXT_COLOR = 0xFFFFFFFF;
+    private static final int INFO_BG_COLOR = 0xE02196F3;
+    private static final int WARNING_BG_COLOR = 0xE0FF9800;
+    private static final int ERROR_BG_COLOR = 0xE0F44336;
+    private static final int DEFAULT_BG_COLOR = 0xE03A3A3A;
     private static final int CLOSE_HOVER_COLOR = 0x40FFFFFF;
 
     private final MinecraftClient client;
@@ -69,14 +64,26 @@ public class ModMessageBanner implements Drawable, Element {
         this.visible = false;
     }
 
-    /**
-     * Check if the mouse is over the banner
-     */
     public boolean isMouseOver(double mouseX, double mouseY) {
         if (!visible) {
             return false;
         }
         return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + BANNER_HEIGHT;
+    }
+
+    private int getCloseButtonX() {
+        return x + width - CLOSE_BUTTON_SIZE - UITheme.Dimensions.PADDING;
+    }
+
+    private int getCloseButtonY() {
+        return y + (BANNER_HEIGHT - CLOSE_BUTTON_SIZE) / 2;
+    }
+
+    private boolean isOverCloseButton(double mouseX, double mouseY) {
+        int closeX = getCloseButtonX();
+        int closeY = getCloseButtonY();
+        return mouseX >= closeX && mouseX < closeX + CLOSE_BUTTON_SIZE &&
+               mouseY >= closeY && mouseY < closeY + CLOSE_BUTTON_SIZE;
     }
 
     @Override
@@ -85,49 +92,59 @@ public class ModMessageBanner implements Drawable, Element {
             return;
         }
 
-        // Get background color based on message type
-        int bgColor = getBackgroundColor(message.getType());
+        int bgColor = getBackgroundColor(message.type());
 
-        // Draw background
+        drawBackground(context, bgColor);
+        drawBorder(context);
+        drawMessageText(context);
+        drawCloseButton(context, mouseX, mouseY);
+    }
+
+    private void drawBackground(DrawContext context, int bgColor) {
         context.fill(x, y, x + width, y + BANNER_HEIGHT, bgColor);
+    }
 
-        // Draw bottom border
-        context.fill(x, y + BANNER_HEIGHT - 1, x + width, y + BANNER_HEIGHT, 0xFF000000);
+    private void drawBorder(DrawContext context) {
+        context.fill(x, y + BANNER_HEIGHT - UITheme.Dimensions.BORDER_WIDTH,
+                    x + width, y + BANNER_HEIGHT, UITheme.Colors.DIVIDER);
+    }
 
-        // Draw message text (centered vertically, left aligned with padding)
-        String text = message.getMessage();
-        if (text != null) {
-            // Truncate text if too long
-            int maxTextWidth = width - PADDING * 2 - CLOSE_BUTTON_SIZE - PADDING;
-            if (client.textRenderer.getWidth(text) > maxTextWidth) {
-                while (client.textRenderer.getWidth(text + "...") > maxTextWidth && text.length() > 0) {
-                    text = text.substring(0, text.length() - 1);
-                }
-                text = text + "...";
-            }
-            
-            int textY = y + (BANNER_HEIGHT - 8) / 2;
-            context.drawTextWithShadow(client.textRenderer, text, x + PADDING, textY, TEXT_COLOR);
+    private void drawMessageText(DrawContext context) {
+        String text = message.message();
+        if (text == null) return;
+
+        int maxTextWidth = width - UITheme.Dimensions.PADDING * 2 - CLOSE_BUTTON_SIZE - UITheme.Dimensions.PADDING;
+        text = truncateText(text, maxTextWidth);
+
+        int textY = y + (BANNER_HEIGHT - UITheme.Typography.TEXT_HEIGHT) / 2;
+        context.drawTextWithShadow(client.textRenderer, text, x + UITheme.Dimensions.PADDING, textY, UITheme.Colors.TEXT_PRIMARY);
+    }
+
+    private String truncateText(String text, int maxWidth) {
+        if (client.textRenderer.getWidth(text) <= maxWidth) {
+            return text;
         }
 
-        // Draw close button (X) on the right
-        int closeX = x + width - CLOSE_BUTTON_SIZE - PADDING;
-        int closeY = y + (BANNER_HEIGHT - CLOSE_BUTTON_SIZE) / 2;
-        
-        boolean isHoveringClose = mouseX >= closeX && mouseX < closeX + CLOSE_BUTTON_SIZE
-                && mouseY >= closeY && mouseY < closeY + CLOSE_BUTTON_SIZE;
-        
-        if (isHoveringClose) {
+        while (client.textRenderer.getWidth(text + "...") > maxWidth && text.length() > 0) {
+            text = text.substring(0, text.length() - 1);
+        }
+        return text + "...";
+    }
+
+    private void drawCloseButton(DrawContext context, int mouseX, int mouseY) {
+        int closeX = getCloseButtonX();
+        int closeY = getCloseButtonY();
+
+        if (isOverCloseButton(mouseX, mouseY)) {
             context.fill(closeX, closeY, closeX + CLOSE_BUTTON_SIZE, closeY + CLOSE_BUTTON_SIZE, CLOSE_HOVER_COLOR);
         }
 
-        // Draw X
         String closeText = "✕";
         int closeTextWidth = client.textRenderer.getWidth(closeText);
-        context.drawTextWithShadow(client.textRenderer, closeText, 
-                closeX + (CLOSE_BUTTON_SIZE - closeTextWidth) / 2, 
-                closeY + (CLOSE_BUTTON_SIZE - 8) / 2, 
-                TEXT_COLOR);
+        context.drawTextWithShadow(client.textRenderer, closeText,
+                closeX + (CLOSE_BUTTON_SIZE - closeTextWidth) / 2,
+                closeY + (CLOSE_BUTTON_SIZE - UITheme.Typography.TEXT_HEIGHT) / 2,
+                UITheme.Colors.TEXT_PRIMARY);
     }
 
     private int getBackgroundColor(String type) {
@@ -147,12 +164,7 @@ public class ModMessageBanner implements Drawable, Element {
             return false;
         }
 
-        // Check close button click
-        int closeX = x + width - CLOSE_BUTTON_SIZE - PADDING;
-        int closeY = y + (BANNER_HEIGHT - CLOSE_BUTTON_SIZE) / 2;
-
-        if (mouseX >= closeX && mouseX < closeX + CLOSE_BUTTON_SIZE
-                && mouseY >= closeY && mouseY < closeY + CLOSE_BUTTON_SIZE) {
+        if (isOverCloseButton(mouseX, mouseY)) {
             visible = false;
             if (onDismiss != null && message != null) {
                 onDismiss.accept(message);

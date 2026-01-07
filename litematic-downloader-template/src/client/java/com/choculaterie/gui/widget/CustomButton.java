@@ -1,20 +1,12 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.gui.theme.UITheme;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
 
-/**
- * Custom styled button for the Litematic Downloader UI
- */
 public class CustomButton extends ButtonWidget {
-    private static final int BUTTON_COLOR = 0xFF3A3A3A;
-    private static final int BUTTON_HOVER_COLOR = 0xFF4A4A4A;
-    private static final int BUTTON_DISABLED_COLOR = 0xFF2A2A2A;
-    private static final int TEXT_COLOR = 0xFFFFFFFF;
-    private static final int TEXT_DISABLED_COLOR = 0xFF888888;
-
     private boolean renderAsXIcon = false;
     private boolean renderAsDownloadIcon = false;
 
@@ -32,64 +24,60 @@ public class CustomButton extends ButtonWidget {
 
     @Override
     protected void drawIcon(DrawContext context, int mouseX, int mouseY, float delta) {
-        boolean isHovered = mouseX >= this.getX() && mouseY >= this.getY() &&
-                mouseX < this.getX() + this.getWidth() && mouseY < this.getY() + this.getHeight();
+        int bgColor = getBackgroundColor(mouseX, mouseY);
+        drawBackground(context, bgColor);
+        drawBorder(context);
+        drawText(context);
+    }
 
-        int color;
+    private int getBackgroundColor(int mouseX, int mouseY) {
         if (!this.active) {
-            color = BUTTON_DISABLED_COLOR;
-        } else if (isHovered) {
-            color = BUTTON_HOVER_COLOR;
-        } else {
-            color = BUTTON_COLOR;
+            return UITheme.Colors.BUTTON_BG_DISABLED;
         }
 
-        // Draw button background
-        context.fill(this.getX(), this.getY(), this.getX() + this.getWidth(),
-                this.getY() + this.getHeight(), color);
+        boolean isHovered = mouseX >= this.getX() && mouseY >= this.getY() &&
+                           mouseX < this.getX() + this.getWidth() && mouseY < this.getY() + this.getHeight();
 
-        // Draw border
-        context.fill(this.getX(), this.getY(), this.getX() + this.getWidth(),
-                this.getY() + 1, 0xFF555555); // Top
-        context.fill(this.getX(), this.getY() + this.getHeight() - 1,
-                this.getX() + this.getWidth(), this.getY() + this.getHeight(), 0xFF555555); // Bottom
-        context.fill(this.getX(), this.getY(), this.getX() + 1,
-                this.getY() + this.getHeight(), 0xFF555555); // Left
-        context.fill(this.getX() + this.getWidth() - 1, this.getY(),
-                this.getX() + this.getWidth(), this.getY() + this.getHeight(), 0xFF555555); // Right
+        return isHovered ? UITheme.Colors.BUTTON_BG_HOVER : UITheme.Colors.BUTTON_BG;
+    }
 
+    private void drawBackground(DrawContext context, int color) {
+        context.fill(this.getX(), this.getY(), this.getX() + this.getWidth(),
+                    this.getY() + this.getHeight(), color);
+    }
+
+    private void drawBorder(DrawContext context) {
+        int x1 = this.getX();
+        int y1 = this.getY();
+        int x2 = x1 + this.getWidth();
+        int y2 = y1 + this.getHeight();
+        int borderColor = UITheme.Colors.BUTTON_BORDER;
+        int borderWidth = UITheme.Dimensions.BORDER_WIDTH;
+
+        context.fill(x1, y1, x2, y1 + borderWidth, borderColor);
+        context.fill(x1, y2 - borderWidth, x2, y2, borderColor);
+        context.fill(x1, y1, x1 + borderWidth, y2, borderColor);
+        context.fill(x2 - borderWidth, y1, x2, y2, borderColor);
+    }
+
+    private void drawText(DrawContext context) {
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
-        int textColor = this.active ? TEXT_COLOR : TEXT_DISABLED_COLOR;
+        int textColor = this.active ? UITheme.Colors.TEXT_PRIMARY : UITheme.Colors.TEXT_DISABLED;
 
-        // Check if this is the settings icon (⚙) - keep it at original position
-        String messageText = this.getMessage().getString();
-        boolean isSettingsIcon = messageText.equals("⚙");
-        int yOffset = isSettingsIcon ? 0 : 1;
+        String text = getDisplayText();
+        int yOffset = this.getMessage().getString().equals("⚙") ? 0 : 1;
+        int centerX = this.getX() + this.getWidth() / 2;
+        int centerY = this.getY() + (this.getHeight() - UITheme.Typography.TEXT_HEIGHT) / 2 + yOffset;
 
+        context.drawCenteredTextWithShadow(tr, text, centerX, centerY, textColor);
+    }
+
+    private String getDisplayText() {
         if (renderAsXIcon) {
-            context.drawCenteredTextWithShadow(
-                    tr,
-                    "✕",
-                    this.getX() + this.getWidth() / 2,
-                    this.getY() + (this.getHeight() - 8) / 2 + yOffset,
-                    textColor
-            );
+            return "✕";
         } else if (renderAsDownloadIcon) {
-            context.drawCenteredTextWithShadow(
-                    tr,
-                    "💾",
-                    this.getX() + this.getWidth() / 2,
-                    this.getY() + (this.getHeight() - 8) / 2 + yOffset,
-                    textColor
-            );
-        } else {
-            context.drawCenteredTextWithShadow(
-                    tr,
-                    this.getMessage().getString(),
-                    this.getX() + this.getWidth() / 2,
-                    this.getY() + (this.getHeight() - 8) / 2 + yOffset,
-                    textColor
-            );
+            return "💾";
         }
+        return this.getMessage().getString();
     }
 }

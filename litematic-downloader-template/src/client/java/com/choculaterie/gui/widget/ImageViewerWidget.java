@@ -1,23 +1,28 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.gui.theme.UITheme;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+import org.lwjgl.glfw.GLFW;
 
-/**
- * Full-screen image viewer modal widget with carousel navigation
- */
 public class ImageViewerWidget {
+    private static final int IMAGE_MARGIN = 40;
+    private static final int NAV_AREA_HEIGHT = 40;
+    private static final int NAV_AREA_BOTTOM_OFFSET = 40;
+    private static final int NAV_BUTTON_WIDTH = 25;
+    private static final int NAV_BUTTON_HEIGHT = 16;
+    private static final int NAV_BUTTON_SPACING = UITheme.Dimensions.PADDING;
+    private static final int TEXT_VERTICAL_OFFSET = 4;
+    private static final int NAV_BG_COLOR = 0xD0000000;
+
     private final Identifier imageTexture;
     private final int originalImageWidth;
     private final int originalImageHeight;
     private final Runnable onClose;
     private final MinecraftClient client;
-
-    // Carousel navigation
     private final int currentImageIndex;
     private final int totalImages;
     private final Runnable onPrevious;
@@ -29,13 +34,6 @@ public class ImageViewerWidget {
     private CustomButton prevButton;
     private CustomButton nextButton;
 
-    private static final int CLOSE_BUTTON_SIZE = 20; // Same as quit button
-    private static final int CLOSE_BUTTON_MARGIN = 10;
-    private static final int NAV_BUTTON_WIDTH = 25; // Same as PostDetailPanel arrow buttons
-    private static final int NAV_BUTTON_HEIGHT = 16; // Same as PostDetailPanel arrow buttons
-    private static final int NAV_BUTTON_SPACING = 10; // Spacing between button and indicator (same as PostDetailPanel)
-    private static final int OVERLAY_COLOR = 0xE0000000; // Semi-transparent black
-    private static final int SUBTITLE_COLOR = 0xFFAAAAAA; // Same as PostDetailPanel
 
     public ImageViewerWidget(MinecraftClient client, Identifier imageTexture,
                             int originalImageWidth, int originalImageHeight,
@@ -58,66 +56,63 @@ public class ImageViewerWidget {
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
 
-        // Position close button in top-right corner
-        int closeX = screenWidth - CLOSE_BUTTON_SIZE - CLOSE_BUTTON_MARGIN;
-        int closeY = CLOSE_BUTTON_MARGIN;
+        updateCloseButton();
 
-        if (closeButton == null) {
-            closeButton = new CustomButton(closeX, closeY, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE,
-                    Text.of("×"), btn -> onClose.run());
-            closeButton.setRenderAsXIcon(true);
-        } else {
-            closeButton.setX(closeX);
-            closeButton.setY(closeY);
-            closeButton.setWidth(CLOSE_BUTTON_SIZE);
-            closeButton.setHeight(CLOSE_BUTTON_SIZE);
-        }
-
-        // Only show navigation buttons if there are multiple images
         if (totalImages > 1) {
-            // Calculate page indicator position (will be at bottom center)
-            String indicator = String.format("%d / %d", currentImageIndex + 1, totalImages);
-            int indicatorWidth = client.textRenderer.getWidth(indicator);
-            int indicatorX = (screenWidth - indicatorWidth) / 2;
-            int navY = screenHeight - 40; // 40px from bottom, same height as text
-
-            // Previous button positioned left of indicator (same as PostDetailPanel)
-            int prevX = indicatorX - NAV_BUTTON_WIDTH - NAV_BUTTON_SPACING;
-            if (prevButton == null) {
-                prevButton = new CustomButton(prevX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT,
-                        Text.of("<"), btn -> onPrevious.run());
-            } else {
-                prevButton.setX(prevX);
-                prevButton.setY(navY);
-                prevButton.setWidth(NAV_BUTTON_WIDTH);
-                prevButton.setHeight(NAV_BUTTON_HEIGHT);
-            }
-
-            // Next button positioned right of indicator (same as PostDetailPanel)
-            int nextX = indicatorX + indicatorWidth + NAV_BUTTON_SPACING;
-            if (nextButton == null) {
-                nextButton = new CustomButton(nextX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT,
-                        Text.of(">"), btn -> onNext.run());
-            } else {
-                nextButton.setX(nextX);
-                nextButton.setY(navY);
-                nextButton.setWidth(NAV_BUTTON_WIDTH);
-                nextButton.setHeight(NAV_BUTTON_HEIGHT);
-            }
+            updateNavigationButtons();
         }
     }
 
-    /**
-     * Calculate scaled image dimensions to fit the screen while maintaining aspect ratio
-     */
+    private void updateCloseButton() {
+        int closeX = screenWidth - UITheme.Dimensions.BUTTON_HEIGHT - UITheme.Dimensions.PADDING;
+        int closeY = UITheme.Dimensions.PADDING;
+
+        if (closeButton == null) {
+            closeButton = new CustomButton(closeX, closeY, UITheme.Dimensions.BUTTON_HEIGHT,
+                    UITheme.Dimensions.BUTTON_HEIGHT, Text.of("×"), btn -> onClose.run());
+            closeButton.setRenderAsXIcon(true);
+        } else {
+            setButtonBounds(closeButton, closeX, closeY, UITheme.Dimensions.BUTTON_HEIGHT, UITheme.Dimensions.BUTTON_HEIGHT);
+        }
+    }
+
+    private void updateNavigationButtons() {
+        String indicator = String.format("%d / %d", currentImageIndex + 1, totalImages);
+        int indicatorWidth = client.textRenderer.getWidth(indicator);
+        int indicatorX = (screenWidth - indicatorWidth) / 2;
+        int navY = screenHeight - NAV_AREA_BOTTOM_OFFSET;
+
+        int prevX = indicatorX - NAV_BUTTON_WIDTH - NAV_BUTTON_SPACING;
+        if (prevButton == null) {
+            prevButton = new CustomButton(prevX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT,
+                    Text.of("<"), btn -> onPrevious.run());
+        } else {
+            setButtonBounds(prevButton, prevX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT);
+        }
+
+        int nextX = indicatorX + indicatorWidth + NAV_BUTTON_SPACING;
+        if (nextButton == null) {
+            nextButton = new CustomButton(nextX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT,
+                    Text.of(">"), btn -> onNext.run());
+        } else {
+            setButtonBounds(nextButton, nextX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT);
+        }
+    }
+
+    private void setButtonBounds(CustomButton button, int x, int y, int width, int height) {
+        button.setX(x);
+        button.setY(y);
+        button.setWidth(width);
+        button.setHeight(height);
+    }
+
     private int[] getScaledImageDimensions() {
         if (originalImageWidth <= 0 || originalImageHeight <= 0) {
             return new int[]{screenWidth, screenHeight};
         }
 
-        // Leave some margin around the image
-        int maxWidth = screenWidth - 40;
-        int maxHeight = screenHeight - 40;
+        int maxWidth = screenWidth - IMAGE_MARGIN;
+        int maxHeight = screenHeight - IMAGE_MARGIN;
 
         float imageAspect = (float) originalImageWidth / originalImageHeight;
         float screenAspect = (float) maxWidth / maxHeight;
@@ -125,11 +120,9 @@ public class ImageViewerWidget {
         int displayWidth, displayHeight;
 
         if (imageAspect > screenAspect) {
-            // Image is wider, fit to width
             displayWidth = Math.min(maxWidth, originalImageWidth);
             displayHeight = (int) (displayWidth / imageAspect);
         } else {
-            // Image is taller, fit to height
             displayHeight = Math.min(maxHeight, originalImageHeight);
             displayWidth = (int) (displayHeight * imageAspect);
         }
@@ -138,10 +131,19 @@ public class ImageViewerWidget {
     }
 
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Draw semi-transparent overlay
-        context.fill(0, 0, screenWidth, screenHeight, OVERLAY_COLOR);
+        context.fill(0, 0, screenWidth, screenHeight, UITheme.Colors.OVERLAY_BG);
 
-        // Calculate centered image position
+        renderImage(context);
+
+        if (totalImages > 1) {
+            renderNavigation(context, mouseX, mouseY, delta);
+        }
+
+        if (closeButton != null) {
+            closeButton.render(context, mouseX, mouseY, delta);
+        }
+    }
+    private void renderImage(DrawContext context) {
         int[] dimensions = getScaledImageDimensions();
         int displayWidth = dimensions[0];
         int displayHeight = dimensions[1];
@@ -149,7 +151,8 @@ public class ImageViewerWidget {
         int imageX = (screenWidth - displayWidth) / 2;
         int imageY = (screenHeight - displayHeight) / 2;
 
-        // Draw the image
+        context.fill(0, 0, screenWidth, screenHeight, UITheme.Colors.PANEL_BG);
+
         if (imageTexture != null) {
             context.drawTexture(
                 RenderPipelines.GUI_TEXTURED,
@@ -160,126 +163,87 @@ public class ImageViewerWidget {
                 displayWidth, displayHeight
             );
         }
+    }
 
-        // Draw navigation buttons and page indicator if there are multiple images
-        if (totalImages > 1) {
-            // Calculate positions for page indicator and buttons
-            String pageText = String.format("%d / %d", currentImageIndex + 1, totalImages);
-            int textWidth = client.textRenderer.getWidth(pageText);
-            int textX = (screenWidth - textWidth) / 2;
-            int textY = screenHeight - 40 + 4; // 40px from bottom, +4 for vertical centering with 16px buttons
+    private void renderNavigation(DrawContext context, int mouseX, int mouseY, float delta) {
+        String pageText = String.format("%d / %d", currentImageIndex + 1, totalImages);
+        int textWidth = client.textRenderer.getWidth(pageText);
+        int textX = (screenWidth - textWidth) / 2;
+        int textY = screenHeight - NAV_AREA_BOTTOM_OFFSET + TEXT_VERTICAL_OFFSET;
 
-            // Calculate button positions (same logic as updateLayout)
-            int indicatorWidth = textWidth;
-            int indicatorX = textX;
-            int prevBtnX = indicatorX - NAV_BUTTON_WIDTH - NAV_BUTTON_SPACING;
-            int nextBtnX = indicatorX + indicatorWidth + NAV_BUTTON_SPACING;
-            int navY = screenHeight - 40;
+        int indicatorX = textX;
+        int prevBtnX = indicatorX - NAV_BUTTON_WIDTH - NAV_BUTTON_SPACING;
+        int nextBtnX = indicatorX + textWidth + NAV_BUTTON_SPACING;
+        int navY = screenHeight - NAV_AREA_BOTTOM_OFFSET;
 
-            // Draw background spanning from left button to right button, with button height
-            int bgX = prevBtnX;
-            int bgWidth = (nextBtnX + NAV_BUTTON_WIDTH) - prevBtnX;
-            int bgY = navY;
-            int bgHeight = NAV_BUTTON_HEIGHT;
+        drawNavigationBackground(context, prevBtnX, navY, nextBtnX);
 
-            context.fill(
-                bgX,
-                bgY,
-                bgX + bgWidth,
-                bgY + bgHeight,
-                0xD0000000  // Darker semi-transparent black
-            );
+        context.drawTextWithShadow(client.textRenderer, pageText, textX, textY, UITheme.Colors.TEXT_SUBTITLE);
 
-            // Draw text with shadow
-            context.drawTextWithShadow(
-                client.textRenderer,
-                pageText,
-                textX,
-                textY,
-                SUBTITLE_COLOR
-            );
-
-            // Draw navigation buttons
-            if (prevButton != null) {
-                prevButton.render(context, mouseX, mouseY, delta);
-            }
-            if (nextButton != null) {
-                nextButton.render(context, mouseX, mouseY, delta);
-            }
+        if (prevButton != null) {
+            prevButton.render(context, mouseX, mouseY, delta);
         }
-
-        // Draw close button (on top of everything)
-        if (closeButton != null) {
-            closeButton.render(context, mouseX, mouseY, delta);
+        if (nextButton != null) {
+            nextButton.render(context, mouseX, mouseY, delta);
         }
+    }
+
+    private void drawNavigationBackground(DrawContext context, int prevBtnX, int navY, int nextBtnX) {
+        int bgX = prevBtnX;
+        int bgWidth = (nextBtnX + NAV_BUTTON_WIDTH) - prevBtnX;
+        int bgY = navY;
+        int bgHeight = NAV_BUTTON_HEIGHT;
+
+        context.fill(bgX, bgY, bgX + bgWidth, bgY + bgHeight, NAV_BG_COLOR);
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button != 0) return false;
 
-        // Check close button first
-        if (closeButton != null) {
-            boolean isOverClose = mouseX >= closeButton.getX() &&
-                                 mouseX < closeButton.getX() + closeButton.getWidth() &&
-                                 mouseY >= closeButton.getY() &&
-                                 mouseY < closeButton.getY() + closeButton.getHeight();
-            if (isOverClose) {
-                onClose.run();
-                return true;
-            }
-        }
-
-        // Check navigation buttons if carousel is active
-        if (totalImages > 1) {
-            // Check previous button
-            if (prevButton != null) {
-                boolean isOverPrev = mouseX >= prevButton.getX() &&
-                                    mouseX < prevButton.getX() + prevButton.getWidth() &&
-                                    mouseY >= prevButton.getY() &&
-                                    mouseY < prevButton.getY() + prevButton.getHeight();
-                if (isOverPrev) {
-                    onPrevious.run();
-                    return true;
-                }
-            }
-
-            // Check next button
-            if (nextButton != null) {
-                boolean isOverNext = mouseX >= nextButton.getX() &&
-                                    mouseX < nextButton.getX() + nextButton.getWidth() &&
-                                    mouseY >= nextButton.getY() &&
-                                    mouseY < nextButton.getY() + nextButton.getHeight();
-                if (isOverNext) {
-                    onNext.run();
-                    return true;
-                }
-            }
-        }
-
-        // Click anywhere else closes the viewer
-        onClose.run();
-        return true;
-    }
-
-
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        // No special handling needed
-        return false;
-    }
-
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // ESC key closes the viewer
-        if (keyCode == 256) { // GLFW_KEY_ESCAPE
+        if (isOverButton(closeButton, mouseX, mouseY)) {
             onClose.run();
             return true;
         }
 
-        // Arrow key navigation for carousel
         if (totalImages > 1) {
-            if (keyCode == 263) { // GLFW_KEY_LEFT
+            if (isOverButton(prevButton, mouseX, mouseY)) {
                 onPrevious.run();
                 return true;
-            } else if (keyCode == 262) { // GLFW_KEY_RIGHT
+            }
+
+            if (isOverButton(nextButton, mouseX, mouseY)) {
+                onNext.run();
+                return true;
+            }
+        }
+
+        onClose.run();
+        return true;
+    }
+
+    private boolean isOverButton(CustomButton btn, double mouseX, double mouseY) {
+        if (btn == null) return false;
+        return mouseX >= btn.getX() &&
+               mouseX < btn.getX() + btn.getWidth() &&
+               mouseY >= btn.getY() &&
+               mouseY < btn.getY() + btn.getHeight();
+    }
+
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        return false;
+    }
+
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            onClose.run();
+            return true;
+        }
+
+        if (totalImages > 1) {
+            if (keyCode == GLFW.GLFW_KEY_LEFT) {
+                onPrevious.run();
+                return true;
+            } else if (keyCode == GLFW.GLFW_KEY_RIGHT) {
                 onNext.run();
                 return true;
             }
@@ -288,4 +252,3 @@ public class ImageViewerWidget {
         return false;
     }
 }
-

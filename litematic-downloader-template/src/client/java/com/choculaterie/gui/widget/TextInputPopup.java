@@ -1,11 +1,11 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.gui.theme.UITheme;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Drawable;
 import net.minecraft.client.gui.Element;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
@@ -13,37 +13,34 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * A popup dialog for text input with validation
- */
 public class TextInputPopup implements Drawable, Element {
     private static final int POPUP_WIDTH = 300;
     private static final int POPUP_HEIGHT = 120;
-    private static final int PADDING = 10;
-    private static final int BUTTON_HEIGHT = 20;
+    private static final String[] INVALID_CHARS = {"/", "\\", ":", "*", "?", "\"", "<", ">", "|"};
+    private static final String[] RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL"};
 
-    private final Screen parent;
     private final String title;
     private final Consumer<String> onConfirm;
     private final Runnable onCancel;
     private final String confirmButtonText;
+    private final int x;
+    private final int y;
 
     private CustomTextField textField;
     private CustomButton confirmButton;
     private CustomButton cancelButton;
     private String errorMessage = "";
-
-    private boolean wasEscapePressed = false;
-
-    private final int x;
-    private final int y;
+    private boolean wasEscapePressed;
 
     public TextInputPopup(Screen parent, String title, Consumer<String> onConfirm, Runnable onCancel) {
-        this(parent, title, "Create", onConfirm, onCancel);
+        this(title, "Create", onConfirm, onCancel);
     }
 
     public TextInputPopup(Screen parent, String title, String confirmButtonText, Consumer<String> onConfirm, Runnable onCancel) {
-        this.parent = parent;
+        this(title, confirmButtonText, onConfirm, onCancel);
+    }
+
+    public TextInputPopup(String title, String confirmButtonText, Consumer<String> onConfirm, Runnable onCancel) {
         this.title = title;
         this.confirmButtonText = confirmButtonText;
         this.onConfirm = onConfirm;
@@ -58,40 +55,38 @@ public class TextInputPopup implements Drawable, Element {
 
     private void initWidgets() {
         MinecraftClient client = MinecraftClient.getInstance();
+        int fieldY = y + UITheme.Dimensions.PADDING * 3;
 
-        // Text field using CustomTextField which handles all input through GLFW
-        int fieldY = y + PADDING * 3;
         textField = new CustomTextField(
                 client,
-                x + PADDING,
+                x + UITheme.Dimensions.PADDING,
                 fieldY,
-                POPUP_WIDTH - PADDING * 2,
-                20,
+                POPUP_WIDTH - UITheme.Dimensions.PADDING * 2,
+                UITheme.Dimensions.BUTTON_HEIGHT,
                 Text.of("")
         );
         textField.setPlaceholder(Text.of("Enter name..."));
         textField.setFocused(true);
-        textField.setOnChanged(() -> errorMessage = ""); // Clear error when typing
+        textField.setOnChanged(() -> errorMessage = "");
         textField.setOnEnterPressed(this::handleConfirm);
 
-        // Buttons
-        int buttonY = y + POPUP_HEIGHT - PADDING - BUTTON_HEIGHT;
-        int buttonWidth = (POPUP_WIDTH - PADDING * 3) / 2;
+        int buttonY = y + POPUP_HEIGHT - UITheme.Dimensions.PADDING - UITheme.Dimensions.BUTTON_HEIGHT;
+        int buttonWidth = (POPUP_WIDTH - UITheme.Dimensions.PADDING * 3) / 2;
 
         cancelButton = new CustomButton(
-                x + PADDING,
+                x + UITheme.Dimensions.PADDING,
                 buttonY,
                 buttonWidth,
-                BUTTON_HEIGHT,
+                UITheme.Dimensions.BUTTON_HEIGHT,
                 Text.of("Cancel"),
                 button -> onCancel.run()
         );
 
         confirmButton = new CustomButton(
-                x + PADDING * 2 + buttonWidth,
+                x + UITheme.Dimensions.PADDING * 2 + buttonWidth,
                 buttonY,
                 buttonWidth,
-                BUTTON_HEIGHT,
+                UITheme.Dimensions.BUTTON_HEIGHT,
                 Text.of(confirmButtonText),
                 button -> handleConfirm()
         );
@@ -113,23 +108,23 @@ public class TextInputPopup implements Drawable, Element {
         StringBuilder currentLine = new StringBuilder();
 
         for (String word : words) {
-            String testLine = currentLine.length() == 0 ? word : currentLine + " " + word;
+            String testLine = currentLine.isEmpty() ? word : currentLine + " " + word;
             int width = client.textRenderer.getWidth(testLine);
 
             if (width <= maxWidth) {
-                if (currentLine.length() > 0) {
+                if (!currentLine.isEmpty()) {
                     currentLine.append(" ");
                 }
                 currentLine.append(word);
             } else {
-                if (currentLine.length() > 0) {
+                if (!currentLine.isEmpty()) {
                     lines.add(currentLine.toString());
                 }
                 currentLine = new StringBuilder(word);
             }
         }
 
-        if (currentLine.length() > 0) {
+        if (!currentLine.isEmpty()) {
             lines.add(currentLine.toString());
         }
 
@@ -139,24 +134,17 @@ public class TextInputPopup implements Drawable, Element {
     private void handleConfirm() {
         String text = textField.getText().trim();
 
-        // Validate input
         if (text.isEmpty()) {
             setErrorMessage("Folder name cannot be empty");
             return;
         }
 
-        // Check for invalid characters
-        if (text.contains("/") || text.contains("\\") || text.contains(":") ||
-            text.contains("*") || text.contains("?") || text.contains("\"") ||
-            text.contains("<") || text.contains(">") || text.contains("|")) {
+        if (containsInvalidChars(text)) {
             setErrorMessage("Invalid characters in folder name");
             return;
         }
 
-        // Check for reserved names (Windows)
-        String upperText = text.toUpperCase();
-        if (upperText.equals("CON") || upperText.equals("PRN") || upperText.equals("AUX") ||
-            upperText.equals("NUL") || upperText.matches("COM[0-9]") || upperText.matches("LPT[0-9]")) {
+        if (isReservedName(text)) {
             setErrorMessage("Reserved folder name");
             return;
         }
@@ -164,12 +152,59 @@ public class TextInputPopup implements Drawable, Element {
         onConfirm.accept(text);
     }
 
+    private boolean containsInvalidChars(String text) {
+        for (String invalidChar : INVALID_CHARS) {
+            if (text.contains(invalidChar)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isReservedName(String text) {
+        String upperText = text.toUpperCase();
+
+        for (String reserved : RESERVED_NAMES) {
+            if (upperText.equals(reserved)) {
+                return true;
+            }
+        }
+
+        return upperText.matches("COM[0-9]") || upperText.matches("LPT[0-9]");
+    }
+
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        handleEscapeKey();
+
+        MinecraftClient client = MinecraftClient.getInstance();
+
+        drawOverlay(context, client);
+        drawPopupBackground(context);
+        drawTitle(context, client);
+
+        if (textField != null) {
+            textField.setFocused(true);
+            textField.render(context, mouseX, mouseY, delta);
+        }
+
+        if (!errorMessage.isEmpty()) {
+            drawErrorMessage(context, client);
+        }
+
+        if (cancelButton != null) {
+            cancelButton.render(context, mouseX, mouseY, delta);
+        }
+
+        if (confirmButton != null) {
+            confirmButton.render(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private void handleEscapeKey() {
         MinecraftClient client = MinecraftClient.getInstance();
         long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
 
-        // Handle Escape through GLFW polling (Enter is handled by TextField callback)
         if (windowHandle != 0) {
             boolean escapePressed = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_ESCAPE) == GLFW.GLFW_PRESS;
 
@@ -179,108 +214,91 @@ public class TextInputPopup implements Drawable, Element {
 
             wasEscapePressed = escapePressed;
         }
+    }
 
-        // Draw overlay
-        context.fill(0, 0, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight(), 0x80000000);
+    private void drawOverlay(DrawContext context, MinecraftClient client) {
+        context.fill(0, 0, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight(), UITheme.Colors.OVERLAY_BG);
+    }
 
-        // Draw popup background
-        context.fill(x, y, x + POPUP_WIDTH, y + POPUP_HEIGHT, 0xFF2A2A2A);
+    private void drawPopupBackground(DrawContext context) {
+        context.fill(x, y, x + POPUP_WIDTH, y + POPUP_HEIGHT, UITheme.Colors.BUTTON_BG_DISABLED);
+        context.fill(x, y, x + POPUP_WIDTH, y + UITheme.Dimensions.BORDER_WIDTH, UITheme.Colors.BUTTON_BORDER);
+        context.fill(x, y + POPUP_HEIGHT - UITheme.Dimensions.BORDER_WIDTH, x + POPUP_WIDTH, y + POPUP_HEIGHT, UITheme.Colors.BUTTON_BORDER);
+        context.fill(x, y, x + UITheme.Dimensions.BORDER_WIDTH, y + POPUP_HEIGHT, UITheme.Colors.BUTTON_BORDER);
+        context.fill(x + POPUP_WIDTH - UITheme.Dimensions.BORDER_WIDTH, y, x + POPUP_WIDTH, y + POPUP_HEIGHT, UITheme.Colors.BUTTON_BORDER);
+    }
 
-        // Draw border
-        context.fill(x, y, x + POPUP_WIDTH, y + 1, 0xFF555555); // Top
-        context.fill(x, y + POPUP_HEIGHT - 1, x + POPUP_WIDTH, y + POPUP_HEIGHT, 0xFF555555); // Bottom
-        context.fill(x, y, x + 1, y + POPUP_HEIGHT, 0xFF555555); // Left
-        context.fill(x + POPUP_WIDTH - 1, y, x + POPUP_WIDTH, y + POPUP_HEIGHT, 0xFF555555); // Right
-
-        // Draw title
+    private void drawTitle(DrawContext context, MinecraftClient client) {
         context.drawCenteredTextWithShadow(
                 client.textRenderer,
                 title,
                 x + POPUP_WIDTH / 2,
-                y + PADDING,
-                0xFFFFFFFF
+                y + UITheme.Dimensions.PADDING,
+                UITheme.Colors.TEXT_PRIMARY
         );
+    }
 
-        // Draw text field (it handles its own keyboard input through GLFW)
-        if (textField != null) {
-            // Ensure text field stays focused to receive character input
-            if (!textField.isFocused()) {
-                textField.setFocused(true);
-            }
-            textField.render(context, mouseX, mouseY, delta);
-        }
+    private void drawErrorMessage(DrawContext context, MinecraftClient client) {
+        List<String> wrappedError = wrapText(errorMessage, POPUP_WIDTH - UITheme.Dimensions.PADDING * 2, client);
+        int errorY = y + UITheme.Dimensions.PADDING * 3 + 25;
 
-        // Draw error message with wrapping
-        if (!errorMessage.isEmpty()) {
-            List<String> wrappedError = wrapText(errorMessage, POPUP_WIDTH - PADDING * 2, client);
-            int errorY = y + PADDING * 3 + 25;
-            for (String line : wrappedError) {
-                context.drawCenteredTextWithShadow(
-                        client.textRenderer,
-                        line,
-                        x + POPUP_WIDTH / 2,
-                        errorY,
-                        0xFFFF5555
-                );
-                errorY += 10;
-            }
-        }
-
-        // Draw buttons
-        if (cancelButton != null) {
-            cancelButton.render(context, mouseX, mouseY, delta);
-        }
-        if (confirmButton != null) {
-            confirmButton.render(context, mouseX, mouseY, delta);
+        for (String line : wrappedError) {
+            context.drawCenteredTextWithShadow(
+                    client.textRenderer,
+                    line,
+                    x + POPUP_WIDTH / 2,
+                    errorY,
+                    UITheme.Colors.ERROR_TEXT
+            );
+            errorY += UITheme.Typography.LINE_HEIGHT - 2;
         }
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Check if clicking outside popup - close it
-        if (mouseX < x || mouseX > x + POPUP_WIDTH || mouseY < y || mouseY > y + POPUP_HEIGHT) {
+        if (!isMouseOverPopup(mouseX, mouseY)) {
             onCancel.run();
             return true;
         }
 
-        // Check text field - set focus if clicked
-        if (textField != null) {
-            boolean isOverTextField = mouseX >= textField.getX() &&
-                                     mouseX < textField.getX() + textField.getWidth() &&
-                                     mouseY >= textField.getY() &&
-                                     mouseY < textField.getY() + textField.getHeight();
-            if (isOverTextField) {
-                textField.setFocused(true);
-                return true;
-            }
+        if (isMouseOverWidget(textField, mouseX, mouseY)) {
+            textField.setFocused(true);
+            return true;
         }
 
-        // Check cancel button
-        if (cancelButton != null) {
-            boolean isOverCancel = mouseX >= cancelButton.getX() &&
-                                  mouseX < cancelButton.getX() + cancelButton.getWidth() &&
-                                  mouseY >= cancelButton.getY() &&
-                                  mouseY < cancelButton.getY() + cancelButton.getHeight();
-            if (isOverCancel) {
-                onCancel.run();
-                return true;
-            }
+        if (isMouseOverWidget(cancelButton, mouseX, mouseY)) {
+            onCancel.run();
+            return true;
         }
 
-        // Check confirm button
-        if (confirmButton != null) {
-            boolean isOverConfirm = mouseX >= confirmButton.getX() &&
-                                   mouseX < confirmButton.getX() + confirmButton.getWidth() &&
-                                   mouseY >= confirmButton.getY() &&
-                                   mouseY < confirmButton.getY() + confirmButton.getHeight();
-            if (isOverConfirm) {
-                handleConfirm();
-                return true;
-            }
+        if (isMouseOverWidget(confirmButton, mouseX, mouseY)) {
+            handleConfirm();
+            return true;
         }
 
-        return true; // Consume all clicks within popup
+        return true;
     }
 
+    private boolean isMouseOverPopup(double mouseX, double mouseY) {
+        return mouseX >= x && mouseX <= x + POPUP_WIDTH && mouseY >= y && mouseY <= y + POPUP_HEIGHT;
+    }
+
+    private boolean isMouseOverWidget(Element widget, double mouseX, double mouseY) {
+        if (widget == null) {
+            return false;
+        }
+
+        return switch (widget) {
+            case CustomTextField field -> mouseX >= field.getX() &&
+                                          mouseX < field.getX() + field.getWidth() &&
+                                          mouseY >= field.getY() &&
+                                          mouseY < field.getY() + field.getHeight();
+            case CustomButton button -> mouseX >= button.getX() &&
+                                        mouseX < button.getX() + button.getWidth() &&
+                                        mouseY >= button.getY() &&
+                                        mouseY < button.getY() + button.getHeight();
+            default -> false;
+        };
+    }
 
     @Override
     public void setFocused(boolean focused) {
