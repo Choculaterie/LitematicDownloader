@@ -55,6 +55,7 @@ public class DownloadSettings {
 		setDefault("tagFilter", "");
 		setDefault("excludedVendors", "");
 		setDefault("dismissedModMessageId", -1);
+		setDefault("useChoculaterieAPI", false);
 	}
 
 	private void setDefault(String key, Object value) {
@@ -171,6 +172,14 @@ public class DownloadSettings {
 
 	public void setDismissedModMessageId(int messageId) {
 		set("dismissedModMessageId", messageId);
+	}
+
+	public boolean isUseChoculaterieAPI() {
+		return config.get("useChoculaterieAPI").getAsBoolean();
+	}
+
+	public void setUseChoculaterieAPI(boolean enabled) {
+		set("useChoculaterieAPI", enabled);
 	}
 
 	private File getConfigFile() {

@@ -28,10 +28,15 @@ public class SettingsPage extends Screen {
 
     private String pendingToastMessage;
     private boolean pendingToastSuccess;
+    private Runnable onApiToggleChanged;
 
     public SettingsPage(Screen parentScreen) {
         super(Text.of("Settings"));
         this.parentScreen = parentScreen;
+    }
+
+    public void setOnApiToggleChanged(Runnable callback) {
+        this.onApiToggleChanged = callback;
     }
 
     @Override
@@ -103,6 +108,19 @@ public class SettingsPage extends Screen {
                 settings::setWarningToastsEnabled);
         createToastToggle(3, toastsY, settings.isErrorToastsEnabled(),
                 settings::setErrorToastsEnabled);
+
+        int apiToggleY = toastsY + LABEL_HEIGHT + (TOGGLE_SPACING * 4) + 20;
+        ToggleButton apiToggle = new ToggleButton(
+                PADDING * 2 + 200, apiToggleY,
+                settings.isUseChoculaterieAPI(),
+                enabled -> {
+                    settings.setUseChoculaterieAPI(enabled);
+                    if (onApiToggleChanged != null) {
+                        onApiToggleChanged.run();
+                    }
+                }
+        );
+        this.addDrawableChild(apiToggle);
     }
 
     private void createToastToggle(int index, int baseY, boolean enabled,
@@ -256,6 +274,10 @@ public class SettingsPage extends Screen {
         renderToastToggleLabel(context, "Success:", toastsY, 1, 0xFF4CAF50);
         renderToastToggleLabel(context, "Warning:", toastsY, 2, 0xFFFFC107);
         renderToastToggleLabel(context, "Error:", toastsY, 3, 0xFFFF5252);
+
+        int apiToggleY = toastsY + LABEL_HEIGHT + (TOGGLE_SPACING * 4) + 20;
+        context.drawTextWithShadow(this.textRenderer, "Use Choculaterie API:",
+                PADDING * 2, apiToggleY + 6, 0xFFFFFFFF);
     }
 
     private void renderToastToggleLabel(DrawContext context, String label, int baseY, int index, int color) {
@@ -296,6 +318,15 @@ public class SettingsPage extends Screen {
     @Override
     public boolean shouldPause() {
         return false;
+    }
+
+    @Override
+    public boolean shouldCloseOnEsc() {
+        if (activePopup != null) {
+            activePopup = null;
+            return false;
+        }
+        return super.shouldCloseOnEsc();
     }
 
     @Override

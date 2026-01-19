@@ -368,8 +368,15 @@ public class LitematicDownloaderScreen extends Screen {
             detailPanel.closeDropdown();
         }
         if (this.client != null) {
-            this.client.setScreen(new LocalFolderPage(this));
+            LocalFolderPage folderPage = new LocalFolderPage(this);
+            folderPage.setOnApiToggleChanged(this::refreshPostList);
+            this.client.setScreen(folderPage);
         }
+    }
+
+    public void refreshPostList() {
+        currentPage = 1;
+        loadPage();
     }
 
     private void toggleFilterPanel() {
@@ -388,18 +395,23 @@ public class LitematicDownloaderScreen extends Screen {
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
         boolean imageViewerOpen = detailPanel != null && detailPanel.hasImageViewerOpen();
+        boolean confirmPopupOpen = detailPanel != null && detailPanel.hasConfirmPopupOpen();
 
         boolean mouseOverBanner = modMessageBanner != null && modMessageBanner.isVisible()
                 && modMessageBanner.isMouseOver(mouseX, mouseY);
-        int effectiveMouseX = (mouseOverBanner || imageViewerOpen) ? -1 : mouseX;
-        int effectiveMouseY = (mouseOverBanner || imageViewerOpen) ? -1 : mouseY;
 
-        super.render(context, effectiveMouseX, effectiveMouseY, delta);
+        int listMouseX = (mouseOverBanner || imageViewerOpen || confirmPopupOpen) ? -1 : mouseX;
+        int listMouseY = (mouseOverBanner || imageViewerOpen || confirmPopupOpen) ? -1 : mouseY;
+
+        int detailMouseX = (mouseOverBanner || imageViewerOpen) ? -1 : mouseX;
+        int detailMouseY = (mouseOverBanner || imageViewerOpen) ? -1 : mouseY;
+
+        super.render(context, listMouseX, listMouseY, delta);
 
         if (showFilterPanel) {
-            sortFilterPanel.render(context, effectiveMouseX, effectiveMouseY, delta);
+            sortFilterPanel.render(context, detailMouseX, detailMouseY, delta);
         } else {
-            detailPanel.render(context, effectiveMouseX, effectiveMouseY, delta);
+            detailPanel.render(context, detailMouseX, detailMouseY, delta);
         }
 
         if (totalPages > 1 || totalItems > ITEMS_PER_PAGE) {
@@ -440,7 +452,7 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         if (isLoading) {
-            loadingSpinner.render(context, effectiveMouseX, effectiveMouseY, delta);
+            loadingSpinner.render(context, listMouseX, listMouseY, delta);
         }
 
         if (noResultsFound) {
@@ -456,15 +468,15 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         if (folderButton != null) {
-            folderButton.render(context, effectiveMouseX, effectiveMouseY, delta);
+            folderButton.render(context, listMouseX, listMouseY, delta);
         }
 
         if (filterButton != null) {
-            filterButton.render(context, effectiveMouseX, effectiveMouseY, delta);
+            filterButton.render(context, listMouseX, listMouseY, delta);
         }
 
         if (closeButton != null) {
-            closeButton.render(context, effectiveMouseX, effectiveMouseY, delta);
+            closeButton.render(context, listMouseX, listMouseY, delta);
         }
 
         if (modMessageBanner != null && modMessageBanner.isVisible()) {
@@ -587,6 +599,10 @@ public class LitematicDownloaderScreen extends Screen {
 
     @Override
     public boolean shouldCloseOnEsc() {
+        if (detailPanel != null && detailPanel.hasConfirmPopupOpen()) {
+            detailPanel.keyPressed(256, 0, 0);
+            return false;
+        }
         if (detailPanel != null && detailPanel.hasImageViewerOpen()) {
             detailPanel.keyPressed(256, 0, 0); // 256 = GLFW_KEY_ESCAPE
             return false;

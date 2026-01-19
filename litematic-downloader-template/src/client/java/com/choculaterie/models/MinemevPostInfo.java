@@ -2,10 +2,10 @@ package com.choculaterie.models;
 
 public record MinemevPostInfo(String uuid, String title, String description, String author, int downloads,
 							  String createdAt, String[] tags, String[] versions, String vendor, String[] images,
-							  String thumbnailUrl, String userPicture, String ytLink) {
+							  String thumbnailUrl, String userPicture, String ytLink, String urlRedirect) {
 	public MinemevPostInfo(String uuid, String title, String description, String author,
 						   int downloads, String createdAt, String[] tags, String[] versions, String vendor,
-						   String[] images, String thumbnailUrl, String userPicture, String ytLink) {
+						   String[] images, String thumbnailUrl, String userPicture, String ytLink, String urlRedirect) {
 		this.uuid = uuid;
 		this.title = title;
 		this.description = description;
@@ -19,6 +19,7 @@ public record MinemevPostInfo(String uuid, String title, String description, Str
 		this.thumbnailUrl = thumbnailUrl;
 		this.userPicture = userPicture;
 		this.ytLink = ytLink;
+		this.urlRedirect = urlRedirect;
 	}
 
 

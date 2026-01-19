@@ -76,6 +76,12 @@ public class LocalFolderPage extends Screen {
 
     private boolean isSearchActive = false;
 
+    private Runnable onApiToggleChanged;
+
+    public void setOnApiToggleChanged(Runnable callback) {
+        this.onApiToggleChanged = callback;
+    }
+
     public void setFileOpsManager(FileOperationsManager fileOpsManager) {
         this.fileOpsManager = fileOpsManager;
     }
@@ -306,7 +312,11 @@ public class LocalFolderPage extends Screen {
 
     private void openSettings() {
         if (this.client != null) {
-            this.client.setScreen(new SettingsPage(this));
+            SettingsPage settingsPage = new SettingsPage(this);
+            if (onApiToggleChanged != null) {
+                settingsPage.setOnApiToggleChanged(onApiToggleChanged);
+            }
+            this.client.setScreen(settingsPage);
         }
     }
 
@@ -1853,6 +1863,19 @@ public class LocalFolderPage extends Screen {
     @Override
     public boolean shouldPause() {
         return false;
+    }
+
+    @Override
+    public boolean shouldCloseOnEsc() {
+        if (activePopup != null) {
+            activePopup = null;
+            return false;
+        }
+        if (confirmPopup != null) {
+            confirmPopup = null;
+            return false;
+        }
+        return super.shouldCloseOnEsc();
     }
 
     @Override

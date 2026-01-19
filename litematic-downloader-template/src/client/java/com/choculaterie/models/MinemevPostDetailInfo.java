@@ -14,10 +14,12 @@ public class MinemevPostDetailInfo {
 	private final String ytLink;
 	private final boolean owner;
 	private final String creators;
+	private final String urlRedirect;
 
 	public MinemevPostDetailInfo(String uuid, String title, String description, String descriptionMd,
 								 String author, int downloads, String createdAt, String[] tags,
-								 String[] versions, String[] images, String ytLink, boolean owner, String creators) {
+								 String[] versions, String[] images, String ytLink, boolean owner, String creators,
+								 String urlRedirect) {
 		this.uuid = uuid;
 		this.title = title;
 		this.description = description;
@@ -31,6 +33,7 @@ public class MinemevPostDetailInfo {
 		this.ytLink = ytLink;
 		this.owner = owner;
 		this.creators = creators;
+		this.urlRedirect = urlRedirect;
 	}
 
 	public String getUuid() {
@@ -83,5 +86,9 @@ public class MinemevPostDetailInfo {
 
 	public String getCreators() {
 		return creators;
+	}
+
+	public String getUrlRedirect() {
+		return urlRedirect;
 	}
 }

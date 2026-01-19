@@ -15,6 +15,7 @@ import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.Util;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
@@ -88,6 +89,9 @@ public class PostDetailPanel implements Drawable, Element {
 
     private ImageViewerWidget imageViewer;
 
+    private CustomButton redirectLinkButton;
+    private ConfirmPopup confirmPopup;
+
     public PostDetailPanel(int x, int y, int width, int height) {
         this.x = x;
         this.y = y;
@@ -113,6 +117,10 @@ public class PostDetailPanel implements Drawable, Element {
                 schematicDropdown.close();
             }
         }
+    }
+
+    public boolean hasConfirmPopupOpen() {
+        return confirmPopup != null;
     }
 
     public void closeDropdown() {
@@ -243,6 +251,11 @@ public class PostDetailPanel implements Drawable, Element {
                 uuid = parts[1];
                 System.out.println("[PostDetailPanel] Stripped vendor prefix - vendor: " + vendor + ", uuid: " + uuid);
             }
+        }
+
+        if ("LitematicaGen".equalsIgnoreCase(vendor) || "LitematicaShare".equalsIgnoreCase(vendor)) {
+            vendor = "redenmc";
+            System.out.println("[PostDetailPanel] Overriding vendor to redenmc");
         }
 
         MinemevNetworkManager.getPostDetails(vendor, uuid)
@@ -506,6 +519,14 @@ public class PostDetailPanel implements Drawable, Element {
             return;
         }
 
+        boolean isLitematicaGenVendor = "LitematicaGen".equalsIgnoreCase(postInfo.vendor()) ||
+                                        "LitematicaShare".equalsIgnoreCase(postInfo.vendor());
+
+        if (isLitematicaGenVendor && postInfo.urlRedirect() != null && !postInfo.urlRedirect().isEmpty()) {
+            showRedirectConfirmation();
+            return;
+        }
+
         isLoadingFiles = true;
         downloadStatus = "";
 
@@ -520,6 +541,10 @@ public class PostDetailPanel implements Drawable, Element {
             }
         }
 
+        if ("LitematicaGen".equalsIgnoreCase(vendor) || "LitematicaShare".equalsIgnoreCase(vendor)) {
+            vendor = "redenmc";
+        }
+
         MinemevNetworkManager.getPostFiles(vendor, uuid)
             .thenAccept(files -> {
                 if (client != null) {
@@ -529,7 +554,15 @@ public class PostDetailPanel implements Drawable, Element {
                         if (files != null && files.length > 0) {
                             showSchematicDropdown();
                         } else {
-                            downloadStatus = "No files available";
+                            boolean isLitGen = postInfo != null &&
+                                ("LitematicaGen".equalsIgnoreCase(postInfo.vendor()) ||
+                                 "LitematicaShare".equalsIgnoreCase(postInfo.vendor()));
+
+                            if (isLitGen && postInfo.urlRedirect() != null && !postInfo.urlRedirect().isEmpty()) {
+                                showRedirectConfirmation();
+                            } else {
+                                downloadStatus = "No files available";
+                            }
                         }
                     });
                 }
@@ -557,6 +590,15 @@ public class PostDetailPanel implements Drawable, Element {
         if (availableFiles == null || availableFiles.length == 0) return;
 
         List<DropdownWidget.DropdownItem> items = new ArrayList<>();
+
+        boolean isLitematicaGenVendor = postInfo != null &&
+            ("LitematicaGen".equalsIgnoreCase(postInfo.vendor()) ||
+             "LitematicaShare".equalsIgnoreCase(postInfo.vendor()));
+
+        if (isLitematicaGenVendor && postInfo.urlRedirect() != null && !postInfo.urlRedirect().isEmpty()) {
+            items.add(new DropdownWidget.DropdownItem("🔗 View on Website", "WEBSITE_LINK"));
+        }
+
         for (MinemevFileInfo file : availableFiles) {
             String displayText = file.getDefaultFileName();
             if (file.getFileSize() > 0) {
@@ -579,7 +621,17 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     private void onSchematicSelected(DropdownWidget.DropdownItem item) {
-        if (item == null || !(item.getData() instanceof MinemevFileInfo)) return;
+        if (item == null) return;
+
+        if ("WEBSITE_LINK".equals(item.getData())) {
+            if (schematicDropdown != null) {
+                schematicDropdown.close();
+            }
+            showRedirectConfirmation();
+            return;
+        }
+
+        if (!(item.getData() instanceof MinemevFileInfo)) return;
 
         MinemevFileInfo file = (MinemevFileInfo) item.getData();
         downloadSchematic(file);
@@ -730,11 +782,43 @@ public class PostDetailPanel implements Drawable, Element {
         return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
+    private void showRedirectConfirmation() {
+        if (postInfo == null || postInfo.urlRedirect() == null) return;
+
+        confirmPopup = new ConfirmPopup(
+            null,
+            "Leaving Mod",
+            "LitematicaGen posts are not supported in this version :(\n\nYou are about to open an external website:\n\n" + postInfo.urlRedirect() + "\n\nDo you want to continue?",
+            this::openRedirectUrl,
+            this::closeConfirmPopup,
+            "Continue"
+        );
+    }
+
+    private void openRedirectUrl() {
+        if (postInfo != null && postInfo.urlRedirect() != null && !postInfo.urlRedirect().isEmpty()) {
+            try {
+                Util.getOperatingSystem().open(postInfo.urlRedirect());
+            } catch (Exception e) {
+                System.err.println("[PostDetailPanel] ERROR - Failed to open URL: " + e.getMessage());
+            }
+        }
+        closeConfirmPopup();
+    }
+
+    private void closeConfirmPopup() {
+        confirmPopup = null;
+    }
+
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         int renderMouseX = mouseX;
         int renderMouseY = mouseY;
-        if (schematicDropdown != null && schematicDropdown.isOpen() && schematicDropdown.isMouseOver(mouseX, mouseY)) {
+
+        if (confirmPopup != null) {
+            renderMouseX = -1;
+            renderMouseY = -1;
+        } else if (schematicDropdown != null && schematicDropdown.isOpen() && schematicDropdown.isMouseOver(mouseX, mouseY)) {
             renderMouseX = -1;
             renderMouseY = -1;
         }
@@ -908,11 +992,41 @@ public class PostDetailPanel implements Drawable, Element {
             String desc = postDetail.getDescription();
             drawWrappedText(context, desc, x + UITheme.Dimensions.PADDING, currentY, width - UITheme.Dimensions.PADDING * 2, UITheme.Colors.TEXT_TAG);
             int descHeight = getWrappedTextHeight(desc, width - UITheme.Dimensions.PADDING * 2);
+            currentY += descHeight;
             contentHeight += descHeight;
         } else if (isLoadingDetails) {
             currentY += 8;
             context.drawTextWithShadow(client.textRenderer, "Loading details...", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+            currentY += 20;
             contentHeight += 20;
+        }
+
+        if (postInfo != null && "redenmc".equalsIgnoreCase(postInfo.vendor()) &&
+            postInfo.urlRedirect() != null && !postInfo.urlRedirect().isEmpty()) {
+            currentY += 8;
+            contentHeight += 8;
+
+            int btnWidth = 120;
+            int btnHeight = 20;
+            int btnX = x + UITheme.Dimensions.PADDING;
+            int btnY = currentY;
+
+            if (redirectLinkButton == null) {
+                redirectLinkButton = new CustomButton(
+                    btnX, btnY, btnWidth, btnHeight,
+                    Text.of("🔗 View on Website"),
+                    button -> showRedirectConfirmation()
+                );
+            } else {
+                redirectLinkButton.setX(btnX);
+                redirectLinkButton.setY(btnY);
+            }
+
+            redirectLinkButton.render(context, renderMouseX, renderMouseY, delta);
+            currentY += btnHeight + 8;
+            contentHeight += btnHeight + 8;
+        } else {
+            redirectLinkButton = null;
         }
 
         contentHeight += UITheme.Dimensions.PADDING * 2;
@@ -921,6 +1035,10 @@ public class PostDetailPanel implements Drawable, Element {
 
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
             schematicDropdown.render(context, mouseX, mouseY, delta);
+        }
+
+        if (confirmPopup != null) {
+            confirmPopup.render(context, mouseX, mouseY, delta);
         }
 
         if (contentHeight > height) {
@@ -1026,6 +1144,10 @@ public class PostDetailPanel implements Drawable, Element {
             return imageViewer.mouseClicked(mouseX, mouseY, button);
         }
 
+        if (confirmPopup != null) {
+            return confirmPopup.mouseClicked(mouseX, mouseY, button);
+        }
+
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
             if (schematicDropdown.isMouseOver(mouseX, mouseY)) {
                 boolean handled = schematicDropdown.mouseClicked(mouseX, mouseY, button);
@@ -1048,6 +1170,17 @@ public class PostDetailPanel implements Drawable, Element {
                                     mouseY < downloadButton.getY() + downloadButton.getHeight();
             if (isOverDownload && downloadButton.active) {
                 onDownloadButtonClick();
+                return true;
+            }
+        }
+
+        if (button == 0 && redirectLinkButton != null) {
+            boolean isOverRedirect = mouseX >= redirectLinkButton.getX() &&
+                                    mouseX < redirectLinkButton.getX() + redirectLinkButton.getWidth() &&
+                                    mouseY >= redirectLinkButton.getY() &&
+                                    mouseY < redirectLinkButton.getY() + redirectLinkButton.getHeight();
+            if (isOverRedirect) {
+                showRedirectConfirmation();
                 return true;
             }
         }
@@ -1213,6 +1346,11 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (confirmPopup != null && keyCode == 256) { // ESC key
+            closeConfirmPopup();
+            return true;
+        }
+
         if (imageViewer != null) {
             return imageViewer.keyPressed(keyCode, scanCode, modifiers);
         }

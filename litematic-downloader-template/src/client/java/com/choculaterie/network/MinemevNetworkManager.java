@@ -1,5 +1,6 @@
 package com.choculaterie.network;
 
+import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.models.*;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -17,11 +18,28 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public class MinemevNetworkManager {
-	private static final String BASE_URL = "https://www.minemev.com/api";
-	private static final String VENDORS_ENDPOINT = BASE_URL + "/vendors";
-	private static final String SEARCH_ENDPOINT = BASE_URL + "/search";
-	private static final String DETAILS_ENDPOINT = BASE_URL + "/details";
-	private static final String FILES_ENDPOINT = BASE_URL + "/files";
+	private static final String MINEMEV_BASE_URL = "https://www.minemev.com/api";
+	private static final String CHOCULATERIE_BASE_URL = "https://choculaterie.com/api/FallbackModAPI";
+
+	private static String getBaseUrl() {
+		return DownloadSettings.getInstance().isUseChoculaterieAPI() ? CHOCULATERIE_BASE_URL : MINEMEV_BASE_URL;
+	}
+
+	private static String getVendorsEndpoint() {
+		return getBaseUrl() + "/vendors";
+	}
+
+	private static String getSearchEndpoint() {
+		return getBaseUrl() + "/search";
+	}
+
+	private static String getDetailsEndpoint() {
+		return getBaseUrl() + "/details";
+	}
+
+	private static String getFilesEndpoint() {
+		return getBaseUrl() + "/files";
+	}
 
 	private static final Gson GSON = new Gson();
 	private static final int TIMEOUT = 10000;
@@ -30,7 +48,7 @@ public class MinemevNetworkManager {
 
 	public static CompletableFuture<String[]> getVendors() {
 		return supplyAsync(() -> {
-			String response = makeGetRequest(VENDORS_ENDPOINT);
+			String response = makeGetRequest(getVendorsEndpoint());
 			return parseVendorList(response);
 		});
 	}
@@ -86,18 +104,18 @@ public class MinemevNetworkManager {
 	}
 
 	private static MinemevPostDetailInfo getPostDetailsInternal(String vendor, String uuid) throws IOException {
-		String url = String.format("%s/%s/%s", DETAILS_ENDPOINT, vendor, uuid);
+		String url = String.format("%s/%s/%s", getDetailsEndpoint(), vendor, uuid);
 		return parsePostDetail(makeGetRequest(url));
 	}
 
 	private static MinemevFileInfo[] getPostFilesInternal(String vendor, String uuid) throws IOException {
-		String url = String.format("%s/%s/%s", FILES_ENDPOINT, vendor, uuid);
+		String url = String.format("%s/%s/%s", getFilesEndpoint(), vendor, uuid);
 		return parseFileList(makeGetRequest(url));
 	}
 
 	private static String buildSearchUrl(String query, String sort, int cleanUuid, int page,
 										 String tag, String versions, String excludeVendor) {
-		StringBuilder url = new StringBuilder(SEARCH_ENDPOINT)
+		StringBuilder url = new StringBuilder(getSearchEndpoint())
 				.append("?clean_uuid=").append(cleanUuid);
 
 		if (query != null && !query.isEmpty()) {
@@ -138,6 +156,29 @@ public class MinemevNetworkManager {
 	}
 
 	private static String makeGetRequest(String urlString) throws IOException {
+		try {
+			return makeGetRequestInternal(urlString);
+		} catch (IOException primaryError) {
+			System.err.println("[HTTP] ERROR - Primary API request failed: " + primaryError.getMessage());
+
+			String fallbackUrl = getFallbackUrl(urlString);
+			if (fallbackUrl != null) {
+				try {
+					System.out.println("[HTTP] Trying fallback API...");
+					return makeGetRequestInternal(fallbackUrl);
+				} catch (IOException fallbackError) {
+					System.err.println("[HTTP] ERROR - Fallback API also failed: " + fallbackError.getMessage());
+					throw primaryError;
+				}
+			}
+
+			throw primaryError;
+		}
+	}
+
+
+	private static String makeGetRequestInternal(String urlString) throws IOException {
+		System.out.println("[HTTP] GET " + urlString);
 		URL url = new URL(urlString);
 		HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
@@ -147,8 +188,11 @@ public class MinemevNetworkManager {
 			conn.setReadTimeout(TIMEOUT);
 			conn.setRequestProperty("User-Agent", "LitematicDownloader/1.0");
 
-			if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-				throw new IOException("HTTP error: " + conn.getResponseCode());
+			int responseCode = conn.getResponseCode();
+
+			if (responseCode != HttpURLConnection.HTTP_OK) {
+				System.err.println("[HTTP] ERROR - HTTP " + responseCode + ": " + conn.getResponseMessage());
+				throw new IOException("HTTP error: " + responseCode);
 			}
 
 			StringBuilder response = new StringBuilder();
@@ -160,9 +204,24 @@ public class MinemevNetworkManager {
 				}
 			}
 			return response.toString();
+		} catch (IOException e) {
+			System.err.println("[HTTP] ERROR - Exception during request: " + e.getMessage());
+			throw e;
 		} finally {
 			conn.disconnect();
 		}
+	}
+
+	private static String getFallbackUrl(String originalUrl) {
+		boolean usingChoculaterie = originalUrl.contains(CHOCULATERIE_BASE_URL);
+
+		if (usingChoculaterie) {
+			return originalUrl.replace(CHOCULATERIE_BASE_URL, MINEMEV_BASE_URL);
+		} else if (originalUrl.contains(MINEMEV_BASE_URL)) {
+			return originalUrl.replace(MINEMEV_BASE_URL, CHOCULATERIE_BASE_URL);
+		}
+
+		return null;
 	}
 
 	private static MinemevSearchResponse parseSearchResponse(String json) {
@@ -182,18 +241,19 @@ public class MinemevNetworkManager {
 	private static MinemevPostInfo parsePostInfo(JsonObject obj) {
 		return new MinemevPostInfo(
 				getString(obj, "uuid"),
-				getString(obj, "post_name"),
+				getStringEither(obj, "post_name", "postName"),
 				getString(obj, "description"),
 				getString(obj, "User"),
 				getInt(obj, "downloads"),
-				getString(obj, "published_at"),
+				getStringEither(obj, "published_at", "publishedAt"),
 				getStringArray(obj, "tags"),
 				getStringArray(obj, "versions"),
 				getString(obj, "vendor"),
 				getStringArray(obj, "images"),
-				getString(obj, "thumbnail_url"),
-				getString(obj, "user_picture"),
-				getString(obj, "yt_link")
+				getStringEither(obj, "thumbnail_url", "thumbnailUrl"),
+				getStringEither(obj, "user_picture", "userPicture"),
+				getStringEither(obj, "yt_link", "ytLink"),
+				getStringEither(obj, "url_redirect", "urlRedirect")
 		);
 	}
 
@@ -202,36 +262,42 @@ public class MinemevNetworkManager {
 
 		return new MinemevPostDetailInfo(
 				getString(obj, "uuid"),
-				getString(obj, "post_name"),
+				getStringEither(obj, "post_name", "postName"),
 				getString(obj, "description"),
-				getString(obj, "description_md"),
+				getStringEither(obj, "description_md", "descriptionMd"),
 				getString(obj, "User"),
 				getInt(obj, "downloads"),
-				getString(obj, "published_at"),
+				getStringEither(obj, "published_at", "publishedAt"),
 				getStringArray(obj, "tags"),
 				getStringArray(obj, "versions"),
 				getStringArray(obj, "images"),
-				getString(obj, "yt_link"),
+				getStringEither(obj, "yt_link", "ytLink"),
 				getBoolean(obj, "owner"),
-				getString(obj, "creators")
+				getString(obj, "creators"),
+				getStringEither(obj, "url_redirect", "urlRedirect")
 		);
 	}
 
 	private static MinemevFileInfo[] parseFileList(String json) {
 		JsonArray filesArray = GSON.fromJson(json, JsonArray.class);
+		if (filesArray == null) {
+			System.err.println("[MinemevNetworkManager] ERROR - filesArray is null");
+			return new MinemevFileInfo[0];
+		}
+
 		List<MinemevFileInfo> files = new ArrayList<>();
 
 		for (int i = 0; i < filesArray.size(); i++) {
 			JsonObject obj = filesArray.get(i).getAsJsonObject();
 			files.add(new MinemevFileInfo(
 					getInt(obj, "id"),
-					getString(obj, "default_file_name"),
+					getStringEither(obj, "default_file_name", "defaultFileName"),
 					getString(obj, "file"),
-					getLong(obj),
+					getLongEither(obj, "file_size", "fileSize"),
 					getStringArray(obj, "versions"),
 					getInt(obj, "downloads"),
-					getString(obj, "file_type"),
-					getBoolean(obj, "is_verified")
+					getStringEither(obj, "file_type", "fileType"),
+					getBooleanEither(obj, "is_verified", "isVerified")
 			));
 		}
 
@@ -256,6 +322,16 @@ public class MinemevNetworkManager {
 		return (obj.has(key) && !obj.get(key).isJsonNull()) ? obj.get(key).getAsString() : null;
 	}
 
+	private static String getStringEither(JsonObject obj, String snakeKey, String camelKey) {
+		if (obj.has(snakeKey) && !obj.get(snakeKey).isJsonNull()) {
+			return obj.get(snakeKey).getAsString();
+		}
+		if (obj.has(camelKey) && !obj.get(camelKey).isJsonNull()) {
+			return obj.get(camelKey).getAsString();
+		}
+		return null;
+	}
+
 	private static int getInt(JsonObject obj, String key) {
 		return (obj.has(key) && !obj.get(key).isJsonNull()) ? obj.get(key).getAsInt() : 0;
 	}
@@ -264,8 +340,28 @@ public class MinemevNetworkManager {
 		return (obj.has("file_size") && !obj.get("file_size").isJsonNull()) ? obj.get("file_size").getAsLong() : 0L;
 	}
 
+	private static long getLongEither(JsonObject obj, String snakeKey, String camelKey) {
+		if (obj.has(snakeKey) && !obj.get(snakeKey).isJsonNull()) {
+			return obj.get(snakeKey).getAsLong();
+		}
+		if (obj.has(camelKey) && !obj.get(camelKey).isJsonNull()) {
+			return obj.get(camelKey).getAsLong();
+		}
+		return 0L;
+	}
+
 	private static boolean getBoolean(JsonObject obj, String key) {
 		return (obj.has(key) && !obj.get(key).isJsonNull()) && obj.get(key).getAsBoolean();
+	}
+
+	private static boolean getBooleanEither(JsonObject obj, String snakeKey, String camelKey) {
+		if (obj.has(snakeKey) && !obj.get(snakeKey).isJsonNull()) {
+			return obj.get(snakeKey).getAsBoolean();
+		}
+		if (obj.has(camelKey) && !obj.get(camelKey).isJsonNull()) {
+			return obj.get(camelKey).getAsBoolean();
+		}
+		return false;
 	}
 
 	private static String[] getStringArray(JsonObject obj, String key) {
