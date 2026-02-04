@@ -7,6 +7,7 @@ import com.choculaterie.gui.localfolder.LocalFolderSelectionManager;
 import com.choculaterie.gui.widget.ConfirmPopup;
 import com.choculaterie.gui.widget.CustomButton;
 import com.choculaterie.gui.widget.CustomTextField;
+import com.choculaterie.gui.widget.LitematicDetailPanel;
 import com.choculaterie.gui.widget.ScrollBar;
 import com.choculaterie.gui.widget.TextInputPopup;
 import com.choculaterie.gui.widget.ToastManager;
@@ -43,6 +44,9 @@ public class LocalFolderPage extends Screen {
     private TextInputPopup activePopup;
     private ConfirmPopup confirmPopup;
     private ToastManager toastManager;
+    private LitematicDetailPanel detailPanel;
+    private boolean showDetailPanel = false;
+    private boolean pendingReload = false;
 
     private File currentDirectory;
     private File baseDirectory;
@@ -193,6 +197,7 @@ public class LocalFolderPage extends Screen {
     @Override
     protected void init() {
         super.init();
+        this.clearChildren();
 
         String downloadPath = DownloadSettings.getInstance().getAbsoluteDownloadPath();
         File newBaseDirectory = new File(downloadPath);
@@ -223,19 +228,10 @@ public class LocalFolderPage extends Screen {
             toastManager = new ToastManager(this.client);
         }
 
-        int availableWidth = this.width - PADDING * 2 - BUTTON_HEIGHT - PADDING;
+        int leftPanelWidth = showDetailPanel ? this.width / 2 : this.width;
+        int availableWidth = leftPanelWidth - PADDING * 2 - BUTTON_HEIGHT - PADDING;
         boolean isCompact = availableWidth < 550;
         boolean isVeryCompact = availableWidth < 450;
-
-        int newFolderWidth = isVeryCompact ? 25 : (isCompact ? 70 : 100);
-        int renameWidth = isVeryCompact ? 25 : (isCompact ? 50 : 70);
-        int deleteWidth = isVeryCompact ? 25 : (isCompact ? 45 : 60);
-        int openFolderWidth = isVeryCompact ? 25 : (isCompact ? 80 : 120);
-
-        String newFolderLabel = isVeryCompact ? "+" : (isCompact ? "+ New" : "+ New Folder");
-        String renameLabel = isVeryCompact ? "✏" : "Rename";
-        String deleteLabel = isVeryCompact ? "🗑" : "Delete";
-        String openFolderLabel = isVeryCompact ? "📁" : (isCompact ? "📁 Open" : "📁 Open Folder");
 
         int currentX = PADDING;
 
@@ -245,55 +241,93 @@ public class LocalFolderPage extends Screen {
         ));
         currentX += BUTTON_HEIGHT + PADDING;
 
-        this.addDrawableChild(new CustomButton(
-                currentX, PADDING, newFolderWidth, BUTTON_HEIGHT,
-                Text.of(newFolderLabel), button -> openNewFolderPopup()
-        ));
-        currentX += newFolderWidth + PADDING;
+        if (!showDetailPanel) {
+            int newFolderWidth = isVeryCompact ? 25 : (isCompact ? 70 : 100);
+            int renameWidth = isVeryCompact ? 25 : (isCompact ? 50 : 70);
+            int deleteWidth = isVeryCompact ? 25 : (isCompact ? 45 : 60);
+            int openFolderWidth = isVeryCompact ? 25 : (isCompact ? 80 : 120);
 
-        renameButton = new CustomButton(
-                currentX, PADDING, renameWidth, BUTTON_HEIGHT,
-                Text.of(renameLabel), button -> openRenamePopup()
-        );
-        renameButton.active = false;
-        this.addDrawableChild(renameButton);
-        currentX += renameWidth + PADDING;
+            String newFolderLabel = isVeryCompact ? "+" : (isCompact ? "+ New" : "+ New Folder");
+            String renameLabel = isVeryCompact ? "✏" : "Rename";
+            String deleteLabel = isVeryCompact ? "🗑" : "Delete";
+            String openFolderLabel = isVeryCompact ? "📁" : (isCompact ? "📁 Open" : "📁 Open Folder");
 
-        deleteButton = new CustomButton(
-                currentX, PADDING, deleteWidth, BUTTON_HEIGHT,
-                Text.of(deleteLabel), button -> handleDeleteClick()
-        );
-        deleteButton.active = false;
-        this.addDrawableChild(deleteButton);
-        currentX += deleteWidth + PADDING;
+            this.addDrawableChild(new CustomButton(
+                    currentX, PADDING, newFolderWidth, BUTTON_HEIGHT,
+                    Text.of(newFolderLabel), button -> openNewFolderPopup()
+            ));
+            currentX += newFolderWidth + PADDING;
 
-        this.addDrawableChild(new CustomButton(
-                currentX, PADDING, openFolderWidth, BUTTON_HEIGHT,
-                Text.of(openFolderLabel), button -> openInFileExplorer()
-        ));
-        currentX += openFolderWidth + PADDING;
+            renameButton = new CustomButton(
+                    currentX, PADDING, renameWidth, BUTTON_HEIGHT,
+                    Text.of(renameLabel), button -> openRenamePopup()
+            );
+            renameButton.active = false;
+            this.addDrawableChild(renameButton);
+            currentX += renameWidth + PADDING;
 
-        int settingsX = this.width - PADDING - BUTTON_HEIGHT;
-        this.addDrawableChild(new CustomButton(
-                settingsX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
-                Text.of("⚙"), button -> openSettings()
-        ));
+            deleteButton = new CustomButton(
+                    currentX, PADDING, deleteWidth, BUTTON_HEIGHT,
+                    Text.of(deleteLabel), button -> handleDeleteClick()
+            );
+            deleteButton.active = false;
+            this.addDrawableChild(deleteButton);
+            currentX += deleteWidth + PADDING;
 
-        int searchWidth = settingsX - currentX - PADDING;
-        if (this.client != null && searchWidth > 30) {
-            searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT, Text.of("Search"));
-            searchField.setPlaceholder(Text.of("Search..."));
-            searchField.setOnChanged(this::onSearchChanged);
-            searchField.setOnClearPressed(this::onSearchCleared);
-            if (!previousSearchText.isEmpty()) {
-                searchField.setText(previousSearchText);
+            this.addDrawableChild(new CustomButton(
+                    currentX, PADDING, openFolderWidth, BUTTON_HEIGHT,
+                    Text.of(openFolderLabel), button -> openInFileExplorer()
+            ));
+            currentX += openFolderWidth + PADDING;
+
+            int settingsX = this.width - PADDING - BUTTON_HEIGHT;
+            this.addDrawableChild(new CustomButton(
+                    settingsX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
+                    Text.of("⚙"), button -> openSettings()
+            ));
+
+            int searchWidth = settingsX - currentX - PADDING;
+            if (this.client != null && searchWidth > 30) {
+                searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT, Text.of("Search"));
+                searchField.setPlaceholder(Text.of("Search..."));
+                searchField.setOnChanged(this::onSearchChanged);
+                searchField.setOnClearPressed(this::onSearchCleared);
+                if (!previousSearchText.isEmpty()) {
+                    searchField.setText(previousSearchText);
+                }
+                this.addDrawableChild(searchField);
             }
-            this.addDrawableChild(searchField);
+        } else {
+            int searchWidth = leftPanelWidth - currentX - PADDING * 2;
+            if (this.client != null && searchWidth > 30) {
+                searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT, Text.of("Search"));
+                searchField.setPlaceholder(Text.of("Search..."));
+                searchField.setOnChanged(this::onSearchChanged);
+                searchField.setOnClearPressed(this::onSearchCleared);
+                if (!previousSearchText.isEmpty()) {
+                    searchField.setText(previousSearchText);
+                }
+                this.addDrawableChild(searchField);
+            }
+            renameButton = null;
+            deleteButton = null;
         }
 
         int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
         int listHeight = this.height - listY - PADDING * 2;
-        scrollBar = new ScrollBar(this.width - PADDING - SCROLLBAR_WIDTH, listY, listHeight);
+
+        int rightPanelWidth = this.width - leftPanelWidth;
+
+        scrollBar = new ScrollBar(leftPanelWidth - PADDING - SCROLLBAR_WIDTH, listY, listHeight);
+
+        if (showDetailPanel) {
+            if (detailPanel == null) {
+                detailPanel = new LitematicDetailPanel(leftPanelWidth, PADDING, rightPanelWidth - PADDING, this.height - PADDING * 2);
+                detailPanel.setOnClose(this::closeDetailPanel);
+            } else {
+                detailPanel.setDimensions(leftPanelWidth, PADDING, rightPanelWidth - PADDING, this.height - PADDING * 2);
+            }
+        }
 
         int contentHeight = entries.size() * ITEM_HEIGHT;
         int maxScroll = contentHeight <= listHeight ? 0 : entries.size() - listHeight / ITEM_HEIGHT;
@@ -302,6 +336,38 @@ public class LocalFolderPage extends Screen {
         if (maxScroll > 0) {
             scrollBar.setScrollPercentage((double) scrollOffset / maxScroll);
         }
+    }
+
+    private void closeDetailPanel() {
+        showDetailPanel = false;
+        if (detailPanel != null) {
+            detailPanel.clear();
+        }
+        pendingReload = true;
+    }
+
+    private void openDetailPanel(File file) {
+        if (file == null || file.isDirectory()) {
+            return;
+        }
+        if (!file.getName().toLowerCase().endsWith(".litematic")) {
+            return;
+        }
+
+        if (showDetailPanel && detailPanel != null && detailPanel.getFile() != null && detailPanel.getFile().equals(file)) {
+            closeDetailPanel();
+            return;
+        }
+
+        showDetailPanel = true;
+        if (detailPanel == null) {
+            int leftPanelWidth = this.width / 2;
+            int rightPanelWidth = this.width - leftPanelWidth;
+            detailPanel = new LitematicDetailPanel(leftPanelWidth, PADDING, rightPanelWidth - PADDING, this.height - PADDING * 2);
+            detailPanel.setOnClose(this::closeDetailPanel);
+        }
+        detailPanel.setFile(file);
+        pendingReload = true;
     }
 
     private void goBack() {
@@ -1019,6 +1085,27 @@ public class LocalFolderPage extends Screen {
         return "";
     }
 
+    private String truncateText(String text, int maxWidth) {
+        if (this.textRenderer.getWidth(text) <= maxWidth) {
+            return text;
+        }
+        String ellipsis = "...";
+        int ellipsisWidth = this.textRenderer.getWidth(ellipsis);
+        int availableWidth = maxWidth - ellipsisWidth;
+        if (availableWidth <= 0) {
+            return ellipsis;
+        }
+        StringBuilder truncated = new StringBuilder();
+        for (int c = 0; c < text.length(); c++) {
+            String test = truncated.toString() + text.charAt(c);
+            if (this.textRenderer.getWidth(test) > availableWidth) {
+                break;
+            }
+            truncated.append(text.charAt(c));
+        }
+        return truncated + ellipsis;
+    }
+
     private void loadEntries() {
         entries.clear();
         selectionManager.clearSelection();
@@ -1155,6 +1242,11 @@ public class LocalFolderPage extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        if (pendingReload) {
+            pendingReload = false;
+            init();
+        }
+
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
         if (this.client != null && this.client.getWindow() != null) {
@@ -1215,7 +1307,8 @@ public class LocalFolderPage extends Screen {
                 if (isDragging) {
                     int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
                     int listHeight = this.height - listY - PADDING * 2;
-                    int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
+                    int leftPanelWidth = showDetailPanel ? this.width / 2 : this.width;
+                    int listRightEdge = leftPanelWidth - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
                     dropTargetIndex = -1;
                     dropTargetBreadcrumb = null;
@@ -1290,7 +1383,8 @@ public class LocalFolderPage extends Screen {
         int listHeight = this.height - listY - PADDING * 2;
         int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
 
-        int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
+        int leftPanelWidth = showDetailPanel ? this.width / 2 : this.width;
+        int listRightEdge = leftPanelWidth - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
         context.fill(PADDING, listY, listRightEdge, listY + listHeight, 0xFF151515);
 
@@ -1331,6 +1425,27 @@ public class LocalFolderPage extends Screen {
             context.drawTextWithShadow(this.textRenderer, icon + " ", textX, textY, 0xFFFFFFFF);
             textX += this.textRenderer.getWidth(icon + " ");
 
+            int buttonAreaWidth = (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic"))
+                    ? (showDetailPanel ? 25 : 80) + 10
+                    : 0;
+            int maxTextWidth = listRightEdge - textX - buttonAreaWidth - 5;
+
+            String displayFileName = fileName;
+            if (this.textRenderer.getWidth(fileName) > maxTextWidth) {
+                String ellipsis = "...";
+                int ellipsisWidth = this.textRenderer.getWidth(ellipsis);
+                int availableWidth = maxTextWidth - ellipsisWidth;
+                StringBuilder truncated = new StringBuilder();
+                for (int c = 0; c < fileName.length(); c++) {
+                    String test = truncated.toString() + fileName.charAt(c);
+                    if (this.textRenderer.getWidth(test) > availableWidth) {
+                        break;
+                    }
+                    truncated.append(fileName.charAt(c));
+                }
+                displayFileName = truncated + ellipsis;
+            }
+
             if (searchManager.isActive()) {
                 String lowerName = fileName.toLowerCase();
                 int searchIndex = lowerName.indexOf(searchManager.getSearchQuery());
@@ -1338,35 +1453,47 @@ public class LocalFolderPage extends Screen {
                 if (searchIndex >= 0) {
                     String beforeMatch = fileName.substring(0, searchIndex);
                     if (!beforeMatch.isEmpty()) {
-                        context.drawTextWithShadow(this.textRenderer, beforeMatch, textX, textY, 0xFFFFFFFF);
-                        textX += this.textRenderer.getWidth(beforeMatch);
+                        String displayBefore = beforeMatch;
+                        if (this.textRenderer.getWidth(beforeMatch) > maxTextWidth) {
+                            displayBefore = truncateText(beforeMatch, maxTextWidth);
+                        }
+                        context.drawTextWithShadow(this.textRenderer, displayBefore, textX, textY, 0xFFFFFFFF);
+                        textX += this.textRenderer.getWidth(displayBefore);
                     }
 
                     String queryLen = searchManager.getSearchQuery();
                     String matchText = fileName.substring(searchIndex, searchIndex + queryLen.length());
                     int matchWidth = this.textRenderer.getWidth(matchText);
-                    context.fill(textX - 1, textY - 1, textX + matchWidth + 1, textY + 9, 0xFF4488FF); // Blue highlight bg
+                    context.fill(textX - 1, textY - 1, textX + matchWidth + 1, textY + 9, 0xFF4488FF);
                     context.drawTextWithShadow(this.textRenderer, matchText, textX, textY, 0xFFFFFFFF);
                     textX += matchWidth;
 
                     String afterMatch = fileName.substring(searchIndex + queryLen.length());
                     if (!afterMatch.isEmpty()) {
-                        context.drawTextWithShadow(this.textRenderer, afterMatch, textX, textY, 0xFFFFFFFF);
-                        textX += this.textRenderer.getWidth(afterMatch);
+                        int remainingWidth = maxTextWidth - (textX - PADDING - 5 - this.textRenderer.getWidth(icon + " "));
+                        String displayAfter = afterMatch;
+                        if (this.textRenderer.getWidth(afterMatch) > remainingWidth) {
+                            displayAfter = truncateText(afterMatch, remainingWidth);
+                        }
+                        context.drawTextWithShadow(this.textRenderer, displayAfter, textX, textY, 0xFFFFFFFF);
+                        textX += this.textRenderer.getWidth(displayAfter);
                     }
                 } else {
-                    context.drawTextWithShadow(this.textRenderer, fileName, textX, textY, 0xFFFFFFFF);
-                    textX += this.textRenderer.getWidth(fileName);
+                    context.drawTextWithShadow(this.textRenderer, displayFileName, textX, textY, 0xFFFFFFFF);
+                    textX += this.textRenderer.getWidth(displayFileName);
                 }
             } else {
-                context.drawTextWithShadow(this.textRenderer, fileName, textX, textY, 0xFFFFFFFF);
-                textX += this.textRenderer.getWidth(fileName);
+                context.drawTextWithShadow(this.textRenderer, displayFileName, textX, textY, 0xFFFFFFFF);
+                textX += this.textRenderer.getWidth(displayFileName);
             }
 
-            if (!entry.isDirectory) {
+            if (!entry.isDirectory && !entry.file.getName().toLowerCase().endsWith(".litematic")) {
                 long sizeKB = entry.file.length() / 1024;
                 String sizeText = " (" + sizeKB + " KB)";
-                context.drawTextWithShadow(this.textRenderer, sizeText, textX, textY, 0xFFAAAAAA);
+                int remainingWidth = listRightEdge - textX - 5;
+                if (this.textRenderer.getWidth(sizeText) <= remainingWidth) {
+                    context.drawTextWithShadow(this.textRenderer, sizeText, textX, textY, 0xFFAAAAAA);
+                }
             }
 
             if (searchManager.isActive() && entry.relativePath != null && !entry.relativePath.isEmpty()) {
@@ -1375,7 +1502,7 @@ public class LocalFolderPage extends Screen {
             }
 
             if (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic")) {
-                int buttonWidth = 80;
+                int buttonWidth = showDetailPanel ? 25 : 80;
                 int buttonHeight = 16;
                 int buttonX = listRightEdge - buttonWidth - 5;
                 int buttonY = itemY + (ITEM_HEIGHT - buttonHeight) / 2;
@@ -1398,16 +1525,16 @@ public class LocalFolderPage extends Screen {
                 int buttonTextColor = 0xFFFFFFFF;
 
                 if (i == uploadingIndex) {
-                    buttonText = "Uploading...";
+                    buttonText = showDetailPanel ? "..." : "Uploading...";
                     buttonBgColor = 0xFF555555;
                 } else if (isCopied) {
-                    buttonText = "✓ Copied";
-                    buttonBgColor = 0xFF44AA44; // Green to indicate success
+                    buttonText = showDetailPanel ? "✓" : "✓ Copied";
+                    buttonBgColor = 0xFF44AA44;
                 } else if (buttonHovered) {
-                    buttonText = "📤 Share";
+                    buttonText = showDetailPanel ? "📤" : "📤 Share";
                     buttonBgColor = 0xFF4488FF;
                 } else {
-                    buttonText = "📤 Share";
+                    buttonText = showDetailPanel ? "📤" : "📤 Share";
                     buttonBgColor = 0xFF3366CC;
                 }
 
@@ -1435,6 +1562,12 @@ public class LocalFolderPage extends Screen {
                 int maxScroll = Math.max(0, entries.size() - maxVisibleItems);
                 scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
             }
+        }
+
+        if (showDetailPanel && detailPanel != null) {
+            int detailMouseX = popupActive ? -1 : mouseX;
+            int detailMouseY = popupActive ? -1 : mouseY;
+            detailPanel.render(context, detailMouseX, detailMouseY, delta);
         }
 
         if (activePopup != null) {
@@ -1525,7 +1658,8 @@ public class LocalFolderPage extends Screen {
 
         int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
         int listHeight = this.height - listY - PADDING * 2;
-        int listRightEdge = this.width - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
+        int leftPanelWidth = showDetailPanel ? this.width / 2 : this.width;
+        int listRightEdge = leftPanelWidth - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
         if (mouseX >= PADDING && mouseX < listRightEdge &&
             mouseY >= listY && mouseY < listY + listHeight) {
@@ -1565,6 +1699,8 @@ public class LocalFolderPage extends Screen {
                         currentDirectory = entry.file;
                         loadEntries();
                         scrollOffset = 0;
+                    } else if (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic") && selectionManager.isSelected(clickedIndex) && doubled && !shiftHeld && !ctrlHeld) {
+                        openDetailPanel(entry.file);
                     } else if (shiftHeld) {
                         selectionManager.selectRange(clickedIndex);
                     } else if (ctrlHeld) {
@@ -1589,6 +1725,14 @@ public class LocalFolderPage extends Screen {
                     updateSelectionButtons();
                     return true;
                 }
+            }
+        }
+
+        if (showDetailPanel && detailPanel != null) {
+            Double mouseXCoord = click.x();
+            if (mouseXCoord >= leftPanelWidth) {
+                detailPanel.mouseClicked(click, doubled);
+                return true;
             }
         }
 
@@ -1883,4 +2027,5 @@ public class LocalFolderPage extends Screen {
         goBack();
     }
 }
+
 
