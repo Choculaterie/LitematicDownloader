@@ -55,7 +55,7 @@ public class DirectoryPickerScreen extends Screen {
     }
 
     private int getListHeight() {
-        return this.height - getListY() - BUTTON_HEIGHT - PADDING * 3;
+        return this.height - getListY() - BUTTON_HEIGHT - PADDING * 2;
     }
 
     private int getListRightEdge() {
@@ -69,10 +69,7 @@ public class DirectoryPickerScreen extends Screen {
     private int getMaxScroll() {
         int contentHeight = directories.size() * ITEM_HEIGHT;
         int listHeight = getListHeight();
-        if (contentHeight <= listHeight) {
-            return 0;
-        }
-        return Math.max(0, directories.size() - getMaxVisibleItems());
+        return contentHeight <= listHeight ? 0 : directories.size() - listHeight / ITEM_HEIGHT;
     }
 
     @Override
@@ -114,9 +111,14 @@ public class DirectoryPickerScreen extends Screen {
         );
         this.addDrawableChild(upButton);
 
+        int listY = getListY();
+        int listHeight = getListHeight();
+        int listBottom = listY + listHeight;
+        int selectButtonY = listBottom + (this.height - listBottom - BUTTON_HEIGHT) / 2;
+
         CustomButton selectButton = new CustomButton(
                 this.width / 2 - selectButtonWidth / 2,
-                this.height - PADDING - BUTTON_HEIGHT - PADDING,
+                selectButtonY,
                 selectButtonWidth,
                 BUTTON_HEIGHT,
                 Text.of(selectLabel),
@@ -124,8 +126,6 @@ public class DirectoryPickerScreen extends Screen {
         );
         this.addDrawableChild(selectButton);
 
-        int listY = getListY();
-        int listHeight = getListHeight();
         scrollBar = new ScrollBar(this.width - PADDING - SCROLLBAR_WIDTH, listY, listHeight);
 
         int contentHeight = directories.size() * ITEM_HEIGHT;

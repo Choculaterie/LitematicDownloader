@@ -139,18 +139,15 @@ public class SettingsPage extends Screen {
     }
 
     private void openFileDialog() {
-        // Open custom directory picker screen
         if (this.client != null) {
             String startPath = DownloadSettings.getInstance().getAbsoluteDownloadPath();
             DirectoryPickerScreen picker = new DirectoryPickerScreen(
                     this,
                     startPath,
                     selectedPath -> {
-                        // Update the text field with selected path
                         if (downloadPathField != null) {
                             downloadPathField.setText(selectedPath);
                         }
-                        // Auto-save the selected path
                         if (selectedPath != null && !selectedPath.isEmpty()) {
                             DownloadSettings.getInstance().setDownloadPath(selectedPath);
                             System.out.println("Download path saved from directory picker: " + selectedPath);

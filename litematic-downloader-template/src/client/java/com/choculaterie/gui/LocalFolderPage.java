@@ -314,7 +314,7 @@ public class LocalFolderPage extends Screen {
         }
 
         int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
-        int listHeight = this.height - listY - PADDING * 2;
+        int listHeight = this.height - listY - PADDING;
 
         int rightPanelWidth = this.width - leftPanelWidth;
 
@@ -330,7 +330,7 @@ public class LocalFolderPage extends Screen {
         }
 
         int contentHeight = entries.size() * ITEM_HEIGHT;
-        int maxScroll = contentHeight <= listHeight ? 0 : entries.size() - listHeight / ITEM_HEIGHT;
+        int maxScroll = getMaxScroll();
         scrollBar.setScrollData(contentHeight, listHeight);
         scrollOffset = Math.max(0, Math.min(maxScroll, savedScrollOffset));
         if (maxScroll > 0) {
@@ -533,7 +533,7 @@ public class LocalFolderPage extends Screen {
                 toastManager.showSuccess("Created folder \"" + folderName + "\"");
             }
             closePopup();
-            loadEntries(); // Refresh the list
+            loadEntries();
         } else {
             if (activePopup != null) {
                 activePopup.setErrorMessage("Failed to create folder - check folder permissions");
@@ -881,7 +881,7 @@ public class LocalFolderPage extends Screen {
     }
 
     private int[] countFilesRecursively(File directory) {
-        int[] counts = new int[2]; // [0] = folders, [1] = files
+        int[] counts = new int[2];
 
         if (!directory.isDirectory()) {
             return counts;
@@ -894,12 +894,12 @@ public class LocalFolderPage extends Screen {
 
         for (File file : files) {
             if (file.isDirectory()) {
-                counts[0]++; // Count this folder
+                counts[0]++;
                 int[] subCounts = countFilesRecursively(file);
                 counts[0] += subCounts[0];
                 counts[1] += subCounts[1];
             } else {
-                counts[1]++; // Count this file
+                counts[1]++;
             }
         }
 
@@ -940,7 +940,7 @@ public class LocalFolderPage extends Screen {
                 boolean isEmpty = subFiles == null || subFiles.length == 0;
                 builder.append(indent).append(connector).append("📁 ").append(file.getName()).append("/\n");
 
-                if (!isEmpty && indent.length() < 12) { // Max 3 levels deep
+                if (!isEmpty && indent.length() < 12) {
                     String newIndent = indent + (isLast ? "    " : "│   ");
                     buildDeleteTree(file, builder, newIndent, false);
                 }
@@ -1137,15 +1137,22 @@ public class LocalFolderPage extends Screen {
         updateSelectionButtons();
     }
 
+    private int getMaxScroll() {
+        int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
+        int listHeight = this.height - listY - PADDING;
+        int contentHeight = entries.size() * ITEM_HEIGHT;
+        return contentHeight <= listHeight ? 0 : entries.size() - listHeight / ITEM_HEIGHT;
+    }
+
     private void updateScrollBar() {
         if (scrollBar != null) {
-            int listY = PADDING * 3 + BUTTON_HEIGHT + 18; // Account for search field
-            int listHeight = this.height - listY - PADDING * 2;
+            int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
+            int listHeight = this.height - listY - PADDING;
             int contentHeight = entries.size() * ITEM_HEIGHT;
 
             scrollBar.setScrollData(contentHeight, listHeight);
 
-            int maxScroll = contentHeight <= listHeight ? 0 : entries.size() - listHeight / ITEM_HEIGHT;
+            int maxScroll = getMaxScroll();
             scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
         }
     }
@@ -1169,10 +1176,10 @@ public class LocalFolderPage extends Screen {
             String basePath = baseDirectory.getCanonicalPath();
 
             while (dir != null) {
-                pathSegments.addFirst(dir); // Add at beginning
+                pathSegments.addFirst(dir);
                 String dirPath = dir.getCanonicalPath();
                 if (dirPath.equals(basePath)) {
-                    break; // Stop at base directory
+                    break;
                 }
                 dir = dir.getParentFile();
             }
@@ -1213,13 +1220,13 @@ public class LocalFolderPage extends Screen {
 
             int color;
             if (isDropTarget) {
-                color = 0xFF55FF55; // Green for drop target
+                color = 0xFF55FF55;
             } else if (isCurrent) {
-                color = 0xFFFFFFFF; // White for current
+                color = 0xFFFFFFFF;
             } else if (isHovered) {
-                color = 0xFF55AAFF; // Light blue when hovered
+                color = 0xFF55AAFF;
             } else {
-                color = 0xFF88CCFF; // Blue for clickable
+                color = 0xFF88CCFF;
             }
 
             if (isDropTarget) {
@@ -1306,7 +1313,7 @@ public class LocalFolderPage extends Screen {
 
                 if (isDragging) {
                     int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
-                    int listHeight = this.height - listY - PADDING * 2;
+                    int listHeight = this.height - listY - PADDING;
                     int leftPanelWidth = showDetailPanel ? this.width / 2 : this.width;
                     int listRightEdge = leftPanelWidth - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
@@ -1357,7 +1364,7 @@ public class LocalFolderPage extends Screen {
                 dragStartIndex = -1;
                 dropTargetIndex = -1;
                 dropTargetBreadcrumb = null;
-                preClickSelection.clear(); // Clear saved selection
+                preClickSelection.clear();
             }
         }
 
@@ -1380,7 +1387,7 @@ public class LocalFolderPage extends Screen {
         }
 
         int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
-        int listHeight = this.height - listY - PADDING * 2;
+        int listHeight = this.height - listY - PADDING;
         int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
 
         int leftPanelWidth = showDetailPanel ? this.width / 2 : this.width;
@@ -1390,7 +1397,7 @@ public class LocalFolderPage extends Screen {
 
         context.enableScissor(PADDING, listY, listRightEdge, listY + listHeight);
 
-        quickShareButtons.clear(); // Reset button positions each frame
+        quickShareButtons.clear();
 
         for (int i = scrollOffset; i < Math.min(entries.size(), scrollOffset + maxVisibleItems); i++) {
             FileEntry entry = entries.get(i);
@@ -1405,9 +1412,9 @@ public class LocalFolderPage extends Screen {
 
             int bgColor;
             if (isDropTarget) {
-                bgColor = 0xFF336633; // Green tint for valid drop target
+                bgColor = 0xFF336633;
             } else if (isBeingDragged) {
-                bgColor = 0xFF505050; // Lighter for items being dragged
+                bgColor = 0xFF505050;
             } else if (isSelected) {
                 bgColor = 0xFF404040;
             } else if (isHovered) {
@@ -1559,7 +1566,7 @@ public class LocalFolderPage extends Screen {
             boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, this.client.getWindow().getHandle());
 
             if (scrollChanged) {
-                int maxScroll = Math.max(0, entries.size() - maxVisibleItems);
+                int maxScroll = getMaxScroll();
                 scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
             }
         }
@@ -1612,7 +1619,7 @@ public class LocalFolderPage extends Screen {
 
         if (activePopup != null) {
             activePopup.mouseClicked(mouseX, mouseY, button);
-            return true; // Always consume click when popup is active
+            return true;
         }
 
         if (button == 0 && toastManager != null) {
@@ -1657,7 +1664,7 @@ public class LocalFolderPage extends Screen {
         }
 
         int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
-        int listHeight = this.height - listY - PADDING * 2;
+        int listHeight = this.height - listY - PADDING;
         int leftPanelWidth = showDetailPanel ? this.width / 2 : this.width;
         int listRightEdge = leftPanelWidth - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
@@ -1666,7 +1673,7 @@ public class LocalFolderPage extends Screen {
 
             for (QuickShareButton qsButton : quickShareButtons) {
                 if (qsButton.isHovered(mouseX, mouseY)) {
-                    if (button == 0 && uploadingIndex == -1) { // Left click and not currently uploading
+                    if (button == 0 && uploadingIndex == -1) {
                         handleQuickShare(qsButton.entryIndex);
                         return true;
                     }
@@ -1676,7 +1683,7 @@ public class LocalFolderPage extends Screen {
             int clickedIndex = scrollOffset + (int)((mouseY - listY) / ITEM_HEIGHT);
 
             if (clickedIndex >= 0 && clickedIndex < entries.size()) {
-                if (button == 0) { // Left click
+                if (button == 0) {
                     FileEntry entry = entries.get(clickedIndex);
 
                     long windowHandle = this.client != null ? this.client.getWindow().getHandle() : 0;
@@ -1751,10 +1758,13 @@ public class LocalFolderPage extends Screen {
             return true;
         }
 
-        int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
-        int listHeight = this.height - listY - PADDING * 2;
-        int contentHeight = entries.size() * ITEM_HEIGHT;
-        int maxScroll = contentHeight <= listHeight ? 0 : entries.size() - listHeight / ITEM_HEIGHT;
+        if (showDetailPanel && detailPanel != null) {
+            if (detailPanel.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
+                return true;
+            }
+        }
+
+        int maxScroll = getMaxScroll();
 
         scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int)verticalAmount));
 
