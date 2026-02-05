@@ -25,24 +25,24 @@ public class ScrollBar implements Drawable {
         this.y = y;
         this.height = height;
     }
-    
+
     public void setScrollData(double contentHeight, double visibleHeight) {
         this.contentHeight = contentHeight;
         this.visibleHeight = visibleHeight;
     }
-    
+
     public void setScrollPercentage(double percentage) {
         this.scrollPercentage = Math.max(0.0, Math.min(1.0, percentage));
     }
-    
+
     public double getScrollPercentage() {
         return scrollPercentage;
     }
-    
+
     public boolean isVisible() {
         return contentHeight > visibleHeight;
     }
-    
+
     public boolean isDragging() {
         return isDragging;
     }
@@ -63,17 +63,15 @@ public class ScrollBar implements Drawable {
         double handleHeight = getHandleHeight();
         double handleY = getHandleY();
         return mouseX >= x && mouseX < x + UITheme.Dimensions.SCROLLBAR_WIDTH &&
-               mouseY >= handleY && mouseY < handleY + handleHeight;
+                mouseY >= handleY && mouseY < handleY + handleHeight;
     }
 
     private boolean isMouseOverTrack(int mouseX, int mouseY) {
         return mouseX >= x && mouseX < x + UITheme.Dimensions.SCROLLBAR_WIDTH &&
-               mouseY >= y && mouseY < y + height;
+                mouseY >= y && mouseY < y + height;
     }
 
     public boolean updateAndRender(DrawContext context, int mouseX, int mouseY, float delta, long windowHandle) {
-        if (!isVisible()) return false;
-
         boolean isMouseDown = GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
 
         double handleHeight = getHandleHeight();
@@ -123,25 +121,28 @@ public class ScrollBar implements Drawable {
     }
 
     private void drawScrollBar(DrawContext context, double handleHeight) {
-        context.fill(x, y, x + UITheme.Dimensions.SCROLLBAR_WIDTH, y + height, UITheme.Colors.SCROLLBAR_BG);
+        context.fill(x, y, x + UITheme.Dimensions.SCROLLBAR_WIDTH, y + height, UITheme.Colors.PANEL_BG);
 
-        double handleY = getHandleY();
-        int handleColor = (isHovered || isDragging) ? UITheme.Colors.SCROLLBAR_THUMB_HOVER : UITheme.Colors.SCROLLBAR_THUMB;
-        context.fill(x, (int)handleY, x + UITheme.Dimensions.SCROLLBAR_WIDTH, (int)(handleY + handleHeight), handleColor);
+        if (isVisible()) {
+            double handleY = getHandleY();
+            int handleColor = (isHovered || isDragging) ? UITheme.Colors.SCROLLBAR_THUMB_HOVER
+                    : UITheme.Colors.SCROLLBAR_THUMB;
+            context.fill(x, (int) handleY, x + UITheme.Dimensions.SCROLLBAR_WIDTH, (int) (handleY + handleHeight),
+                    handleColor);
+        }
     }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        if (!isVisible()) return;
-
         isHovered = isMouseOverHandle(mouseX, mouseY);
         drawScrollBar(context, getHandleHeight());
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (!isVisible() || button != 0) return false;
+        if (!isVisible() || button != 0)
+            return false;
 
-        if (isMouseOverHandle((int)mouseX, (int)mouseY)) {
+        if (isMouseOverHandle((int) mouseX, (int) mouseY)) {
             isDragging = true;
             dragStartY = mouseY;
             dragStartScroll = scrollPercentage;
@@ -150,7 +151,7 @@ public class ScrollBar implements Drawable {
 
         return false;
     }
-    
+
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0 && isDragging) {
             isDragging = false;
@@ -158,9 +159,10 @@ public class ScrollBar implements Drawable {
         }
         return false;
     }
-    
+
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-        if (!isDragging) return false;
+        if (!isDragging)
+            return false;
 
         double deltaYMouse = mouseY - dragStartY;
         double deltaScroll = deltaYMouse / getMaxHandleY();

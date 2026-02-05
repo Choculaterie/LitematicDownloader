@@ -4,6 +4,7 @@ import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.gui.localfolder.FileOperationsManager;
 import com.choculaterie.gui.localfolder.LocalFolderSearchManager;
 import com.choculaterie.gui.localfolder.LocalFolderSelectionManager;
+import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.gui.widget.ConfirmPopup;
 import com.choculaterie.gui.widget.CustomButton;
 import com.choculaterie.gui.widget.CustomTextField;
@@ -95,7 +96,10 @@ public class LocalFolderPage extends Screen {
     }
 
     private static class FileAction {
-        enum Type { MOVE, DELETE, RENAME, CREATE_FOLDER }
+        enum Type {
+            MOVE, DELETE, RENAME, CREATE_FOLDER
+        }
+
         final Type type;
         final List<FileOperation> operations;
 
@@ -237,8 +241,7 @@ public class LocalFolderPage extends Screen {
 
         this.addDrawableChild(new CustomButton(
                 currentX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
-                Text.of("←"), button -> goBack()
-        ));
+                Text.of("←"), button -> goBack()));
         currentX += BUTTON_HEIGHT + PADDING;
 
         if (!showDetailPanel) {
@@ -254,41 +257,37 @@ public class LocalFolderPage extends Screen {
 
             this.addDrawableChild(new CustomButton(
                     currentX, PADDING, newFolderWidth, BUTTON_HEIGHT,
-                    Text.of(newFolderLabel), button -> openNewFolderPopup()
-            ));
+                    Text.of(newFolderLabel), button -> openNewFolderPopup()));
             currentX += newFolderWidth + PADDING;
 
             renameButton = new CustomButton(
                     currentX, PADDING, renameWidth, BUTTON_HEIGHT,
-                    Text.of(renameLabel), button -> openRenamePopup()
-            );
+                    Text.of(renameLabel), button -> openRenamePopup());
             renameButton.active = false;
             this.addDrawableChild(renameButton);
             currentX += renameWidth + PADDING;
 
             deleteButton = new CustomButton(
                     currentX, PADDING, deleteWidth, BUTTON_HEIGHT,
-                    Text.of(deleteLabel), button -> handleDeleteClick()
-            );
+                    Text.of(deleteLabel), button -> handleDeleteClick());
             deleteButton.active = false;
             this.addDrawableChild(deleteButton);
             currentX += deleteWidth + PADDING;
 
             this.addDrawableChild(new CustomButton(
                     currentX, PADDING, openFolderWidth, BUTTON_HEIGHT,
-                    Text.of(openFolderLabel), button -> openInFileExplorer()
-            ));
+                    Text.of(openFolderLabel), button -> openInFileExplorer()));
             currentX += openFolderWidth + PADDING;
 
             int settingsX = this.width - PADDING - BUTTON_HEIGHT;
             this.addDrawableChild(new CustomButton(
                     settingsX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
-                    Text.of("⚙"), button -> openSettings()
-            ));
+                    Text.of("⚙"), button -> openSettings()));
 
             int searchWidth = settingsX - currentX - PADDING;
             if (this.client != null && searchWidth > 30) {
-                searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT, Text.of("Search"));
+                searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT,
+                        Text.of("Search"));
                 searchField.setPlaceholder(Text.of("Search..."));
                 searchField.setOnChanged(this::onSearchChanged);
                 searchField.setOnClearPressed(this::onSearchCleared);
@@ -300,7 +299,8 @@ public class LocalFolderPage extends Screen {
         } else {
             int searchWidth = leftPanelWidth - currentX - PADDING * 2;
             if (this.client != null && searchWidth > 30) {
-                searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT, Text.of("Search"));
+                searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT,
+                        Text.of("Search"));
                 searchField.setPlaceholder(Text.of("Search..."));
                 searchField.setOnChanged(this::onSearchChanged);
                 searchField.setOnClearPressed(this::onSearchCleared);
@@ -322,10 +322,12 @@ public class LocalFolderPage extends Screen {
 
         if (showDetailPanel) {
             if (detailPanel == null) {
-                detailPanel = new LitematicDetailPanel(leftPanelWidth, PADDING, rightPanelWidth - PADDING, this.height - PADDING * 2);
+                detailPanel = new LitematicDetailPanel(leftPanelWidth, PADDING, rightPanelWidth - PADDING,
+                        this.height - PADDING * 2);
                 detailPanel.setOnClose(this::closeDetailPanel);
             } else {
-                detailPanel.setDimensions(leftPanelWidth, PADDING, rightPanelWidth - PADDING, this.height - PADDING * 2);
+                detailPanel.setDimensions(leftPanelWidth, PADDING, rightPanelWidth - PADDING,
+                        this.height - PADDING * 2);
             }
         }
 
@@ -354,7 +356,8 @@ public class LocalFolderPage extends Screen {
             return;
         }
 
-        if (showDetailPanel && detailPanel != null && detailPanel.getFile() != null && detailPanel.getFile().equals(file)) {
+        if (showDetailPanel && detailPanel != null && detailPanel.getFile() != null
+                && detailPanel.getFile().equals(file)) {
             closeDetailPanel();
             return;
         }
@@ -363,7 +366,8 @@ public class LocalFolderPage extends Screen {
         if (detailPanel == null) {
             int leftPanelWidth = this.width / 2;
             int rightPanelWidth = this.width - leftPanelWidth;
-            detailPanel = new LitematicDetailPanel(leftPanelWidth, PADDING, rightPanelWidth - PADDING, this.height - PADDING * 2);
+            detailPanel = new LitematicDetailPanel(leftPanelWidth, PADDING, rightPanelWidth - PADDING,
+                    this.height - PADDING * 2);
             detailPanel.setOnClose(this::closeDetailPanel);
         }
         detailPanel.setFile(file);
@@ -410,88 +414,88 @@ public class LocalFolderPage extends Screen {
         }
 
         ChoculaterieNetworkManager.uploadLitematic(entry.file)
-            .thenAccept(response -> {
-                String shortUrl = response.shortUrl();
-                if (shortUrl == null || shortUrl.isEmpty()) {
+                .thenAccept(response -> {
+                    String shortUrl = response.shortUrl();
+                    if (shortUrl == null || shortUrl.isEmpty()) {
+                        if (client != null) {
+                            client.execute(() -> {
+                                if (toastManager != null) {
+                                    toastManager.showError("Upload failed: No URL returned");
+                                }
+                                uploadingIndex = -1;
+                            });
+                        }
+                        System.err.println("Upload failed: No URL returned");
+                        return;
+                    }
+
                     if (client != null) {
                         client.execute(() -> {
-                            if (toastManager != null) {
-                                toastManager.showError("Upload failed: No URL returned");
+                            try {
+                                if (client.keyboard != null) {
+                                    client.keyboard.setClipboard(shortUrl);
+                                    if (toastManager != null) {
+                                        toastManager.showSuccess("Link copied to clipboard!");
+                                    }
+                                    System.out.println("Quick share URL copied: " + shortUrl);
+                                    copiedIndex = entryIndex;
+                                    copiedTimestamp = System.currentTimeMillis();
+                                } else {
+                                    StringSelection selection = new StringSelection(shortUrl);
+                                    Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+                                    if (toastManager != null) {
+                                        toastManager.showSuccess("Link copied to clipboard!");
+                                    }
+                                    System.out.println("Quick share URL copied (AWT): " + shortUrl);
+                                    copiedIndex = entryIndex;
+                                    copiedTimestamp = System.currentTimeMillis();
+                                }
+                            } catch (Exception e) {
+                                if (toastManager != null) {
+                                    toastManager.showError("Failed to copy to clipboard");
+                                }
+                                System.err.println("Failed to copy to clipboard: " + e.getMessage());
+                                e.printStackTrace();
                             }
                             uploadingIndex = -1;
                         });
                     }
-                    System.err.println("Upload failed: No URL returned");
-                    return;
-                }
+                })
+                .exceptionally(error -> {
+                    String errorMessage = error.getMessage();
+                    String userMessage;
 
-                if (client != null) {
-                    client.execute(() -> {
-                        try {
-                            if (client.keyboard != null) {
-                                client.keyboard.setClipboard(shortUrl);
-                                if (toastManager != null) {
-                                    toastManager.showSuccess("Link copied to clipboard!");
-                                }
-                                System.out.println("Quick share URL copied: " + shortUrl);
-                                copiedIndex = entryIndex;
-                                copiedTimestamp = System.currentTimeMillis();
-                            } else {
-                                StringSelection selection = new StringSelection(shortUrl);
-                                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
-                                if (toastManager != null) {
-                                    toastManager.showSuccess("Link copied to clipboard!");
-                                }
-                                System.out.println("Quick share URL copied (AWT): " + shortUrl);
-                                copiedIndex = entryIndex;
-                                copiedTimestamp = System.currentTimeMillis();
-                            }
-                        } catch (Exception e) {
-                            if (toastManager != null) {
-                                toastManager.showError("Failed to copy to clipboard");
-                            }
-                            System.err.println("Failed to copy to clipboard: " + e.getMessage());
-                            e.printStackTrace();
+                    if (errorMessage != null) {
+                        if (errorMessage.contains("UnknownHostException") ||
+                                errorMessage.contains("ConnectException") ||
+                                errorMessage.contains("NoRouteToHostException")) {
+                            userMessage = "Upload failed: No internet connection";
+                        } else if (errorMessage.contains("SocketTimeoutException")) {
+                            userMessage = "Upload failed: Connection timeout";
+                        } else if (errorMessage.contains("HTTP error code: 413")) {
+                            userMessage = "Upload failed: File too large";
+                        } else if (errorMessage.contains("HTTP error code:")) {
+                            userMessage = "Upload failed: Server error";
+                        } else {
+                            userMessage = "Upload failed: " + errorMessage;
                         }
-                        uploadingIndex = -1;
-                    });
-                }
-            })
-            .exceptionally(error -> {
-                String errorMessage = error.getMessage();
-                String userMessage;
-
-                if (errorMessage != null) {
-                    if (errorMessage.contains("UnknownHostException") ||
-                        errorMessage.contains("ConnectException") ||
-                        errorMessage.contains("NoRouteToHostException")) {
-                        userMessage = "Upload failed: No internet connection";
-                    } else if (errorMessage.contains("SocketTimeoutException")) {
-                        userMessage = "Upload failed: Connection timeout";
-                    } else if (errorMessage.contains("HTTP error code: 413")) {
-                        userMessage = "Upload failed: File too large";
-                    } else if (errorMessage.contains("HTTP error code:")) {
-                        userMessage = "Upload failed: Server error";
                     } else {
-                        userMessage = "Upload failed: " + errorMessage;
+                        userMessage = "Upload failed: Unknown error";
                     }
-                } else {
-                    userMessage = "Upload failed: Unknown error";
-                }
 
-                String fullError = "Quick Share Error: " + errorMessage;
-                if (error.getCause() != null) {
-                    fullError += "\nCause: " + error.getCause().toString();
-                }
+                    String fullError = "Quick Share Error: " + errorMessage;
+                    if (error.getCause() != null) {
+                        fullError += "\nCause: " + error.getCause().toString();
+                    }
 
-                if (toastManager != null) {
-                    toastManager.showError(userMessage, fullError);
-                }
-                System.err.println("Quick share failed: " + errorMessage);
-                error.printStackTrace();
-                uploadingIndex = -1;
-                return null;
-            });
+                    if (toastManager != null) {
+                        toastManager.showError(userMessage, fullError);
+                    }
+                    System.err.println("Quick share failed: " + errorMessage);
+                    error.printStackTrace();
+                    uploadingIndex = -1;
+                    return null;
+                });
     }
 
     private void openNewFolderPopup() {
@@ -506,8 +510,7 @@ public class LocalFolderPage extends Screen {
                 this,
                 "Create New Folder",
                 this::createNewFolder,
-                this::closePopup
-        );
+                this::closePopup);
     }
 
     private void createNewFolder(String folderName) {
@@ -572,8 +575,7 @@ public class LocalFolderPage extends Screen {
                 "Rename",
                 "Rename",
                 newName -> renameFile(entry.file, newName),
-                this::closePopup
-        );
+                this::closePopup);
         activePopup.setText(currentName);
     }
 
@@ -628,8 +630,10 @@ public class LocalFolderPage extends Screen {
         long windowHandle = this.client != null ? this.client.getWindow().getHandle() : 0;
         boolean shiftHeld = false;
         if (windowHandle != 0) {
-            shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                       org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+            shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                    org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                    org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                            org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
         }
 
         if (shiftHeld) {
@@ -646,7 +650,8 @@ public class LocalFolderPage extends Screen {
 
                 if (entry.isDirectory) {
                     StringBuilder messageBuilder = new StringBuilder();
-                    messageBuilder.append("Are you sure you want to delete \"").append(entry.file.getName()).append("\"?\n\n");
+                    messageBuilder.append("Are you sure you want to delete \"").append(entry.file.getName())
+                            .append("\"?\n\n");
                     messageBuilder.append("Contents:\n");
                     buildDeleteTree(entry.file, messageBuilder, "", true);
                     message = messageBuilder.toString();
@@ -655,7 +660,6 @@ public class LocalFolderPage extends Screen {
                 }
             } else {
                 title = "Delete " + selectionManager.getSelectionCount() + " items?";
-
 
                 boolean hasFolders = false;
                 for (int idx : selected) {
@@ -667,7 +671,8 @@ public class LocalFolderPage extends Screen {
 
                 if (hasFolders) {
                     StringBuilder messageBuilder = new StringBuilder();
-                    messageBuilder.append("Are you sure you want to delete ").append(selectionManager.getSelectionCount()).append(" selected items?\n\n");
+                    messageBuilder.append("Are you sure you want to delete ")
+                            .append(selectionManager.getSelectionCount()).append(" selected items?\n\n");
                     messageBuilder.append("Items to delete:\n");
 
                     List<FileEntry> selectedEntries = new ArrayList<>();
@@ -677,8 +682,10 @@ public class LocalFolderPage extends Screen {
                         }
                     }
                     selectedEntries.sort((a, b) -> {
-                        if (a.isDirectory && !b.isDirectory) return -1;
-                        if (!a.isDirectory && b.isDirectory) return 1;
+                        if (a.isDirectory && !b.isDirectory)
+                            return -1;
+                        if (!a.isDirectory && b.isDirectory)
+                            return 1;
                         return a.file.getName().compareToIgnoreCase(b.file.getName());
                     });
 
@@ -701,7 +708,8 @@ public class LocalFolderPage extends Screen {
                     }
                     message = messageBuilder.toString();
                 } else {
-                    message = "Are you sure you want to delete " + selectionManager.getSelectionCount() + " selected items?";
+                    message = "Are you sure you want to delete " + selectionManager.getSelectionCount()
+                            + " selected items?";
                 }
             }
 
@@ -716,8 +724,7 @@ public class LocalFolderPage extends Screen {
                         deleteSelectedFiles();
                         closePopup();
                     },
-                    this::closePopup
-            );
+                    this::closePopup);
         }
     }
 
@@ -773,17 +780,22 @@ public class LocalFolderPage extends Screen {
                 }
             } else if (successCount == 0) {
                 if (failCount == 1) {
-                    toastManager.showError("Failed to delete \"" + failedNames.getFirst() + "\" - file may be in use or protected");
+                    toastManager.showError(
+                            "Failed to delete \"" + failedNames.getFirst() + "\" - file may be in use or protected");
                 } else if (failCount <= 3) {
-                    toastManager.showError("Failed to delete: " + String.join(", ", failedNames) + " - files may be in use or protected");
+                    toastManager.showError("Failed to delete: " + String.join(", ", failedNames)
+                            + " - files may be in use or protected");
                 } else {
-                    toastManager.showError("Failed to delete " + failCount + " items - files may be in use or protected");
+                    toastManager
+                            .showError("Failed to delete " + failCount + " items - files may be in use or protected");
                 }
             } else {
                 if (failCount == 1) {
-                    toastManager.showError("Deleted " + successCount + " items, failed to delete \"" + failedNames.getFirst() + "\"");
+                    toastManager.showError(
+                            "Deleted " + successCount + " items, failed to delete \"" + failedNames.getFirst() + "\"");
                 } else {
-                    toastManager.showError("Deleted " + successCount + " items, failed to delete " + failCount + " items");
+                    toastManager
+                            .showError("Deleted " + successCount + " items, failed to delete " + failCount + " items");
                 }
             }
         }
@@ -849,20 +861,24 @@ public class LocalFolderPage extends Screen {
             } else if (successCount == 0) {
                 if (conflictCount > 0 && otherFailCount == 0) {
                     if (conflictCount == 1) {
-                        toastManager.showError("\"" + conflictNames.getFirst() + "\" already exists in " + targetFolder.getName());
+                        toastManager.showError(
+                                "\"" + conflictNames.getFirst() + "\" already exists in " + targetFolder.getName());
                     } else if (conflictCount <= 3) {
-                        toastManager.showError("Items already exist in " + targetFolder.getName() + ": " + String.join(", ", conflictNames));
+                        toastManager.showError("Items already exist in " + targetFolder.getName() + ": "
+                                + String.join(", ", conflictNames));
                     } else {
                         toastManager.showError(conflictCount + " items already exist in " + targetFolder.getName());
                     }
                 } else if (otherFailCount > 0 && conflictCount == 0) {
                     if (otherFailCount == 1) {
-                        toastManager.showError("Failed to move \"" + otherFailNames.getFirst() + "\" - check file permissions");
+                        toastManager.showError(
+                                "Failed to move \"" + otherFailNames.getFirst() + "\" - check file permissions");
                     } else {
                         toastManager.showError("Failed to move " + otherFailCount + " items - check file permissions");
                     }
                 } else {
-                    toastManager.showError("Failed to move " + totalFailCount + " items (" + conflictCount + " already exist, " + otherFailCount + " other errors)");
+                    toastManager.showError("Failed to move " + totalFailCount + " items (" + conflictCount
+                            + " already exist, " + otherFailCount + " other errors)");
                 }
             } else {
                 String errorDetail;
@@ -907,7 +923,8 @@ public class LocalFolderPage extends Screen {
     }
 
     private void buildDeleteTree(File directory, StringBuilder builder, String indent, boolean showCount) {
-        if (!directory.isDirectory()) return;
+        if (!directory.isDirectory())
+            return;
 
         File[] files = directory.listFiles();
         if (files == null || files.length == 0) {
@@ -916,8 +933,10 @@ public class LocalFolderPage extends Screen {
         }
 
         Arrays.sort(files, (a, b) -> {
-            if (a.isDirectory() && !b.isDirectory()) return -1;
-            if (!a.isDirectory() && b.isDirectory()) return 1;
+            if (a.isDirectory() && !b.isDirectory())
+                return -1;
+            if (!a.isDirectory() && b.isDirectory())
+                return 1;
             return a.getName().compareToIgnoreCase(b.getName());
         });
 
@@ -957,7 +976,8 @@ public class LocalFolderPage extends Screen {
 
             builder.append("\n");
             if (totalFolders > 0) {
-                builder.append("Total: ").append(totalFolders).append(" folder(s), ").append(totalFiles).append(" file(s)");
+                builder.append("Total: ").append(totalFolders).append(" folder(s), ").append(totalFiles)
+                        .append(" file(s)");
             } else {
                 builder.append("Total: ").append(totalFiles).append(" file(s)");
             }
@@ -1024,8 +1044,10 @@ public class LocalFolderPage extends Screen {
         searchRecursively(baseDirectory, "");
 
         entries.sort((a, b) -> {
-            if (a.isDirectory && !b.isDirectory) return -1;
-            if (!a.isDirectory && b.isDirectory) return 1;
+            if (a.isDirectory && !b.isDirectory)
+                return -1;
+            if (!a.isDirectory && b.isDirectory)
+                return 1;
             return a.file.getName().compareToIgnoreCase(b.file.getName());
         });
 
@@ -1119,8 +1141,10 @@ public class LocalFolderPage extends Screen {
             File[] files = currentDirectory.listFiles();
             if (files != null) {
                 Arrays.sort(files, (a, b) -> {
-                    if (a.isDirectory() && !b.isDirectory()) return -1;
-                    if (!a.isDirectory() && b.isDirectory()) return 1;
+                    if (a.isDirectory() && !b.isDirectory())
+                        return -1;
+                    if (!a.isDirectory() && b.isDirectory())
+                        return 1;
                     return a.getName().compareToIgnoreCase(b.getName());
                 });
 
@@ -1153,11 +1177,9 @@ public class LocalFolderPage extends Screen {
             scrollBar.setScrollData(contentHeight, listHeight);
 
             int maxScroll = getMaxScroll();
-            scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
+            scrollOffset = (int) (scrollBar.getScrollPercentage() * maxScroll);
         }
     }
-
-
 
     private void renderBreadcrumb(DrawContext context, int mouseX, int mouseY) {
         breadcrumbSegments.clear();
@@ -1210,13 +1232,13 @@ public class LocalFolderPage extends Screen {
             int segmentWidth = this.textRenderer.getWidth(segmentName);
 
             boolean isHovered = activePopup == null &&
-                              mouseX >= currentX && mouseX < currentX + segmentWidth &&
-                              mouseY >= breadcrumbY - 2 && mouseY < breadcrumbY + 12;
+                    mouseX >= currentX && mouseX < currentX + segmentWidth &&
+                    mouseY >= breadcrumbY - 2 && mouseY < breadcrumbY + 12;
 
             boolean isCurrent = (i == pathSegments.size() - 1);
 
             boolean isDropTarget = isDragging && dropTargetBreadcrumb != null &&
-                                  dropTargetBreadcrumb.equals(segment);
+                    dropTargetBreadcrumb.equals(segment);
 
             int color;
             if (isDropTarget) {
@@ -1259,15 +1281,21 @@ public class LocalFolderPage extends Screen {
         if (this.client != null && this.client.getWindow() != null) {
             long windowHandle = this.client.getWindow().getHandle();
             boolean searchFocused = searchField != null && searchField.isFocused();
-            boolean popupActive = activePopup != null || confirmPopup != null;
+            boolean detailPopupActive = showDetailPanel && detailPanel != null && detailPanel.hasPopup();
+            boolean popupActive = activePopup != null || confirmPopup != null || detailPopupActive;
 
             if (!searchFocused && !popupActive) {
-                boolean ctrlHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                                   org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-                boolean shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                                    org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean ctrlHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                        org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                        org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                                org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                        org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                        org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                                org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
 
-                boolean isDeleteDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean isDeleteDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                        org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
                 if (isDeleteDown && !wasDeleteKeyPressed && selectionManager.hasSelection()) {
                     if (shiftHeld) {
                         deleteSelectedFiles();
@@ -1277,19 +1305,22 @@ public class LocalFolderPage extends Screen {
                 }
                 wasDeleteKeyPressed = isDeleteDown;
 
-                boolean isZDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_Z) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean isZDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                        org.lwjgl.glfw.GLFW.GLFW_KEY_Z) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
                 if (isZDown && !wasZKeyPressed && ctrlHeld) {
                     performUndo();
                 }
                 wasZKeyPressed = isZDown;
 
-                boolean isYDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_Y) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean isYDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                        org.lwjgl.glfw.GLFW.GLFW_KEY_Y) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
                 if (isYDown && !wasYKeyPressed && ctrlHeld) {
                     performRedo();
                 }
                 wasYKeyPressed = isYDown;
 
-                boolean isADown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_A) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean isADown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                        org.lwjgl.glfw.GLFW.GLFW_KEY_A) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
                 if (isADown && !wasAKeyPressed && ctrlHeld) {
                     selectAll();
                 }
@@ -1299,7 +1330,8 @@ public class LocalFolderPage extends Screen {
 
         if (dragStartIndex != -1 && this.client != null && this.client.getWindow() != null) {
             long windowHandle = this.client.getWindow().getHandle();
-            boolean mouseButtonPressed = org.lwjgl.glfw.GLFW.glfwGetMouseButton(windowHandle, org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+            boolean mouseButtonPressed = org.lwjgl.glfw.GLFW.glfwGetMouseButton(windowHandle,
+                    org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
 
             if (mouseButtonPressed) {
                 if (!isDragging) {
@@ -1331,10 +1363,10 @@ public class LocalFolderPage extends Screen {
                     }
 
                     if (dropTargetBreadcrumb == null &&
-                        mouseX >= PADDING && mouseX < listRightEdge &&
-                        mouseY >= listY && mouseY < listY + listHeight) {
+                            mouseX >= PADDING && mouseX < listRightEdge &&
+                            mouseY >= listY && mouseY < listY + listHeight) {
 
-                        int hoveredIndex = scrollOffset + (int)((mouseY - listY) / ITEM_HEIGHT);
+                        int hoveredIndex = scrollOffset + (int) ((mouseY - listY) / ITEM_HEIGHT);
 
                         if (hoveredIndex >= 0 && hoveredIndex < entries.size()) {
                             FileEntry hoveredEntry = entries.get(hoveredIndex);
@@ -1368,13 +1400,15 @@ public class LocalFolderPage extends Screen {
             }
         }
 
-        boolean popupActive = activePopup != null || confirmPopup != null;
-        int renderMouseX = popupActive ? -1 : mouseX;
-        int renderMouseY = popupActive ? -1 : mouseY;
+        boolean overlayPopupActive = activePopup != null || confirmPopup != null;
+        boolean detailPopupActive = showDetailPanel && detailPanel != null && detailPanel.hasPopup();
+        boolean listBlocked = overlayPopupActive || detailPopupActive;
+        int renderMouseX = listBlocked ? -1 : mouseX;
+        int renderMouseY = listBlocked ? -1 : mouseY;
 
         super.render(context, renderMouseX, renderMouseY, delta);
 
-        if (searchField != null && !popupActive) {
+        if (searchField != null && !listBlocked) {
             searchField.render(context, mouseX, mouseY, delta);
         }
 
@@ -1382,7 +1416,8 @@ public class LocalFolderPage extends Screen {
             renderBreadcrumb(context, mouseX, mouseY);
         } else {
             int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT + 18 - 14;
-            String searchInfo = "Found " + entries.size() + " result" + (entries.size() != 1 ? "s" : "") + " for \"" + searchManager.getSearchQuery() + "\"";
+            String searchInfo = "Found " + entries.size() + " result" + (entries.size() != 1 ? "s" : "") + " for \""
+                    + searchManager.getSearchQuery() + "\"";
             context.drawTextWithShadow(this.textRenderer, searchInfo, PADDING, breadcrumbY, 0xFFAAAAFF);
         }
 
@@ -1403,11 +1438,12 @@ public class LocalFolderPage extends Screen {
             FileEntry entry = entries.get(i);
             int itemY = listY + (i - scrollOffset) * ITEM_HEIGHT;
 
-            boolean isHovered = !popupActive &&
-                              mouseX >= PADDING && mouseX < listRightEdge &&
-                              mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
+            boolean isHovered = !listBlocked &&
+                    mouseX >= PADDING && mouseX < listRightEdge &&
+                    mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
             boolean isSelected = selectionManager.isSelected(i);
-            boolean isDropTarget = isDragging && entry.isDirectory && i == dropTargetIndex && !selectionManager.isSelected(i);
+            boolean isDropTarget = isDragging && entry.isDirectory && i == dropTargetIndex
+                    && !selectionManager.isSelected(i);
             boolean isBeingDragged = isDragging && selectionManager.isSelected(i);
 
             int bgColor;
@@ -1427,7 +1463,8 @@ public class LocalFolderPage extends Screen {
             String icon = entry.isDirectory ? "📁" : "📄";
             String fileName = entry.file.getName();
             int textX = PADDING + 5;
-            int textY = itemY + (searchManager.isActive() && entry.relativePath != null && !entry.relativePath.isEmpty() ? 4 : 8);
+            int textY = itemY
+                    + (searchManager.isActive() && entry.relativePath != null && !entry.relativePath.isEmpty() ? 4 : 8);
 
             context.drawTextWithShadow(this.textRenderer, icon + " ", textX, textY, 0xFFFFFFFF);
             textX += this.textRenderer.getWidth(icon + " ");
@@ -1477,7 +1514,8 @@ public class LocalFolderPage extends Screen {
 
                     String afterMatch = fileName.substring(searchIndex + queryLen.length());
                     if (!afterMatch.isEmpty()) {
-                        int remainingWidth = maxTextWidth - (textX - PADDING - 5 - this.textRenderer.getWidth(icon + " "));
+                        int remainingWidth = maxTextWidth
+                                - (textX - PADDING - 5 - this.textRenderer.getWidth(icon + " "));
                         String displayAfter = afterMatch;
                         if (this.textRenderer.getWidth(afterMatch) > remainingWidth) {
                             displayAfter = truncateText(afterMatch, remainingWidth);
@@ -1505,7 +1543,8 @@ public class LocalFolderPage extends Screen {
 
             if (searchManager.isActive() && entry.relativePath != null && !entry.relativePath.isEmpty()) {
                 String pathDisplay = "📍 " + entry.relativePath;
-                context.drawTextWithShadow(this.textRenderer, pathDisplay, PADDING + 5 + this.textRenderer.getWidth(icon + " "), itemY + 15, 0xFF888888);
+                context.drawTextWithShadow(this.textRenderer, pathDisplay,
+                        PADDING + 5 + this.textRenderer.getWidth(icon + " "), itemY + 15, 0xFF888888);
             }
 
             if (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic")) {
@@ -1516,12 +1555,12 @@ public class LocalFolderPage extends Screen {
 
                 quickShareButtons.add(new QuickShareButton(buttonX, buttonY, buttonWidth, buttonHeight, i));
 
-                boolean buttonHovered = !popupActive &&
-                                       mouseX >= buttonX && mouseX < buttonX + buttonWidth &&
-                                       mouseY >= buttonY && mouseY < buttonY + buttonHeight;
+                boolean buttonHovered = !listBlocked &&
+                        mouseX >= buttonX && mouseX < buttonX + buttonWidth &&
+                        mouseY >= buttonY && mouseY < buttonY + buttonHeight;
 
                 boolean isCopied = i == copiedIndex &&
-                                  (System.currentTimeMillis() - copiedTimestamp) < COPIED_DISPLAY_DURATION;
+                        (System.currentTimeMillis() - copiedTimestamp) < COPIED_DISPLAY_DURATION;
 
                 if (i == copiedIndex && !isCopied) {
                     copiedIndex = -1;
@@ -1549,9 +1588,11 @@ public class LocalFolderPage extends Screen {
 
                 int borderColor = buttonHovered ? 0xFF66AAFF : 0xFF4477DD;
                 context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + 1, borderColor);
-                context.fill(buttonX, buttonY + buttonHeight - 1, buttonX + buttonWidth, buttonY + buttonHeight, borderColor);
+                context.fill(buttonX, buttonY + buttonHeight - 1, buttonX + buttonWidth, buttonY + buttonHeight,
+                        borderColor);
                 context.fill(buttonX, buttonY, buttonX + 1, buttonY + buttonHeight, borderColor);
-                context.fill(buttonX + buttonWidth - 1, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, borderColor);
+                context.fill(buttonX + buttonWidth - 1, buttonY, buttonX + buttonWidth, buttonY + buttonHeight,
+                        borderColor);
 
                 int btnTextWidth = this.textRenderer.getWidth(buttonText);
                 int btnTextX = buttonX + (buttonWidth - btnTextWidth) / 2;
@@ -1563,17 +1604,18 @@ public class LocalFolderPage extends Screen {
         context.disableScissor();
 
         if (scrollBar != null && scrollBar.isVisible() && this.client != null) {
-            boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, this.client.getWindow().getHandle());
+            boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta,
+                    this.client.getWindow().getHandle());
 
             if (scrollChanged) {
                 int maxScroll = getMaxScroll();
-                scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
+                scrollOffset = (int) (scrollBar.getScrollPercentage() * maxScroll);
             }
         }
 
         if (showDetailPanel && detailPanel != null) {
-            int detailMouseX = popupActive ? -1 : mouseX;
-            int detailMouseY = popupActive ? -1 : mouseY;
+            int detailMouseX = overlayPopupActive ? -1 : mouseX;
+            int detailMouseY = overlayPopupActive ? -1 : mouseY;
             detailPanel.render(context, detailMouseX, detailMouseY, delta);
         }
 
@@ -1586,17 +1628,21 @@ public class LocalFolderPage extends Screen {
         }
 
         if (isDragging && selectionManager.hasSelection()) {
-            String dragText = selectionManager.getSelectionCount() + " item" + (selectionManager.getSelectionCount() > 1 ? "s" : "");
+            String dragText = selectionManager.getSelectionCount() + " item"
+                    + (selectionManager.getSelectionCount() > 1 ? "s" : "");
             int textWidth = this.textRenderer.getWidth(dragText);
             int cursorX = mouseX + 10;
             int cursorY = mouseY + 10;
 
-            context.fill(cursorX - 2, cursorY - 2, cursorX + textWidth + 2, cursorY + this.textRenderer.fontHeight + 2, 0xCC000000);
+            context.fill(cursorX - 2, cursorY - 2, cursorX + textWidth + 2, cursorY + this.textRenderer.fontHeight + 2,
+                    0xCC000000);
 
             context.fill(cursorX - 2, cursorY - 2, cursorX + textWidth + 2, cursorY - 1, 0xFF888888);
-            context.fill(cursorX - 2, cursorY + this.textRenderer.fontHeight + 1, cursorX + textWidth + 2, cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
+            context.fill(cursorX - 2, cursorY + this.textRenderer.fontHeight + 1, cursorX + textWidth + 2,
+                    cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
             context.fill(cursorX - 2, cursorY - 2, cursorX - 1, cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
-            context.fill(cursorX + textWidth + 1, cursorY - 2, cursorX + textWidth + 2, cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
+            context.fill(cursorX + textWidth + 1, cursorY - 2, cursorX + textWidth + 2,
+                    cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
 
             context.drawText(this.textRenderer, dragText, cursorX, cursorY, 0xFFFFFFFF, false);
         }
@@ -1620,6 +1666,12 @@ public class LocalFolderPage extends Screen {
         if (activePopup != null) {
             activePopup.mouseClicked(mouseX, mouseY, button);
             return true;
+        }
+
+        if (showDetailPanel && detailPanel != null) {
+            if (detailPanel.mouseClicked(click, doubled)) {
+                return true;
+            }
         }
 
         if (button == 0 && toastManager != null) {
@@ -1669,7 +1721,7 @@ public class LocalFolderPage extends Screen {
         int listRightEdge = leftPanelWidth - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
 
         if (mouseX >= PADDING && mouseX < listRightEdge &&
-            mouseY >= listY && mouseY < listY + listHeight) {
+                mouseY >= listY && mouseY < listY + listHeight) {
 
             for (QuickShareButton qsButton : quickShareButtons) {
                 if (qsButton.isHovered(mouseX, mouseY)) {
@@ -1680,7 +1732,7 @@ public class LocalFolderPage extends Screen {
                 }
             }
 
-            int clickedIndex = scrollOffset + (int)((mouseY - listY) / ITEM_HEIGHT);
+            int clickedIndex = scrollOffset + (int) ((mouseY - listY) / ITEM_HEIGHT);
 
             if (clickedIndex >= 0 && clickedIndex < entries.size()) {
                 if (button == 0) {
@@ -1690,13 +1742,18 @@ public class LocalFolderPage extends Screen {
                     boolean shiftHeld = false;
                     boolean ctrlHeld = false;
                     if (windowHandle != 0) {
-                        shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                                   org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-                        ctrlHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                                  org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                        shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                                org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                                org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                                        org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                        ctrlHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                                org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
+                                org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
+                                        org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
                     }
 
-                    if (entry.isDirectory && selectionManager.isSelected(clickedIndex) && doubled && !shiftHeld && !ctrlHeld) {
+                    if (entry.isDirectory && selectionManager.isSelected(clickedIndex) && doubled && !shiftHeld
+                            && !ctrlHeld) {
                         if (searchManager.isActive()) {
                             searchManager.clearSearch();
                             if (searchField != null) {
@@ -1706,7 +1763,8 @@ public class LocalFolderPage extends Screen {
                         currentDirectory = entry.file;
                         loadEntries();
                         scrollOffset = 0;
-                    } else if (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic") && selectionManager.isSelected(clickedIndex) && doubled && !shiftHeld && !ctrlHeld) {
+                    } else if (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic")
+                            && selectionManager.isSelected(clickedIndex) && doubled && !shiftHeld && !ctrlHeld) {
                         openDetailPanel(entry.file);
                     } else if (shiftHeld) {
                         selectionManager.selectRange(clickedIndex);
@@ -1759,17 +1817,16 @@ public class LocalFolderPage extends Screen {
         }
 
         if (showDetailPanel && detailPanel != null) {
-            if (detailPanel.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)) {
-                return true;
-            }
+            detailPanel.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+            return true;
         }
 
         int maxScroll = getMaxScroll();
 
-        scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int)verticalAmount));
+        scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int) verticalAmount));
 
         if (scrollBar != null && maxScroll > 0) {
-            scrollBar.setScrollPercentage((double)scrollOffset / maxScroll);
+            scrollBar.setScrollPercentage((double) scrollOffset / maxScroll);
         }
 
         return true;
@@ -1874,7 +1931,8 @@ public class LocalFolderPage extends Screen {
         for (FileOperation op : action.operations) {
             if (op.destination.exists()) {
                 boolean success = op.destination.renameTo(op.source);
-                if (!success) allSuccess = false;
+                if (!success)
+                    allSuccess = false;
             } else {
                 allSuccess = false;
             }
@@ -1887,7 +1945,8 @@ public class LocalFolderPage extends Screen {
         for (FileOperation op : action.operations) {
             if (op.source.exists()) {
                 boolean success = op.source.renameTo(op.destination);
-                if (!success) allSuccess = false;
+                if (!success)
+                    allSuccess = false;
             } else {
                 allSuccess = false;
             }
@@ -1939,7 +1998,8 @@ public class LocalFolderPage extends Screen {
     }
 
     private boolean undoRename(FileAction action) {
-        if (action.operations.isEmpty()) return false;
+        if (action.operations.isEmpty())
+            return false;
         FileOperation op = action.operations.getFirst();
         if (op.destination.exists()) {
             return op.destination.renameTo(op.source);
@@ -1948,7 +2008,8 @@ public class LocalFolderPage extends Screen {
     }
 
     private boolean redoRename(FileAction action) {
-        if (action.operations.isEmpty()) return false;
+        if (action.operations.isEmpty())
+            return false;
         FileOperation op = action.operations.getFirst();
         if (op.source.exists()) {
             return op.source.renameTo(op.destination);
@@ -1957,7 +2018,8 @@ public class LocalFolderPage extends Screen {
     }
 
     private boolean undoCreateFolder(FileAction action) {
-        if (action.operations.isEmpty()) return false;
+        if (action.operations.isEmpty())
+            return false;
         FileOperation op = action.operations.getFirst();
         if (op.destination.exists() && op.destination.isDirectory()) {
             File[] contents = op.destination.listFiles();
@@ -1974,7 +2036,8 @@ public class LocalFolderPage extends Screen {
     }
 
     private boolean redoCreateFolder(FileAction action) {
-        if (action.operations.isEmpty()) return false;
+        if (action.operations.isEmpty())
+            return false;
         FileOperation op = action.operations.getFirst();
         if (!op.destination.exists()) {
             return op.destination.mkdir();
@@ -1999,7 +2062,8 @@ public class LocalFolderPage extends Screen {
     }
 
     private void cleanupTrashFiles(FileAction action) {
-        if (action.type != FileAction.Type.DELETE) return;
+        if (action.type != FileAction.Type.DELETE)
+            return;
 
         for (FileOperation op : action.operations) {
             if (op.destination != null && op.destination.exists()) {
@@ -2013,7 +2077,6 @@ public class LocalFolderPage extends Screen {
         }
     }
 
-
     @Override
     public boolean shouldPause() {
         return false;
@@ -2021,6 +2084,14 @@ public class LocalFolderPage extends Screen {
 
     @Override
     public boolean shouldCloseOnEsc() {
+        if (detailPanel != null && detailPanel.hasPopup()) {
+            detailPanel.closePopup();
+            return false;
+        }
+        if (showDetailPanel) {
+            closeDetailPanel();
+            return false;
+        }
         if (activePopup != null) {
             activePopup = null;
             return false;
@@ -2037,5 +2108,3 @@ public class LocalFolderPage extends Screen {
         goBack();
     }
 }
-
-

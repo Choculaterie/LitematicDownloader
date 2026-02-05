@@ -2,6 +2,7 @@ package com.choculaterie.gui.widget;
 
 import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.util.LitematicParser;
+import com.choculaterie.util.LitematicBlockReplacer;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
@@ -37,8 +38,9 @@ public class LitematicDetailPanel implements Drawable, Element {
     private boolean parseFailed = false;
     private int scrollOffset = 0;
     private ScrollBar scrollBar;
+    private BlockReplacementPopup replacementPopup;
 
-    private static final int ITEM_HEIGHT = 20;
+    private static final int ITEM_HEIGHT = 24;
     private static final int HEADER_HEIGHT = 58;
 
     public LitematicDetailPanel(int x, int y, int width, int height) {
@@ -76,8 +78,7 @@ public class LitematicDetailPanel implements Drawable, Element {
                     if (onClose != null) {
                         onClose.run();
                     }
-                }
-        );
+                });
         closeButton.setRenderAsXIcon(true);
     }
 
@@ -85,7 +86,7 @@ public class LitematicDetailPanel implements Drawable, Element {
         int listY = y + HEADER_HEIGHT;
         int listHeight = height - HEADER_HEIGHT - UITheme.Dimensions.PADDING;
         scrollBar = new ScrollBar(x + width - UITheme.Dimensions.SCROLLBAR_WIDTH - UITheme.Dimensions.PADDING,
-                                   listY, listHeight);
+                listY, listHeight);
 
         int contentHeight = blockCounts.size() * ITEM_HEIGHT;
         scrollBar.setScrollData(contentHeight, listHeight);
@@ -134,12 +135,32 @@ public class LitematicDetailPanel implements Drawable, Element {
         return litematicFile != null;
     }
 
+    public boolean hasPopup() {
+        return replacementPopup != null;
+    }
+
+    public boolean closePopup() {
+        if (replacementPopup != null) {
+            replacementPopup = null;
+            return true;
+        }
+        return false;
+    }
+
     public void clear() {
         this.litematicFile = null;
+        this.blockCounts.clear();
+        this.scrollOffset = 0;
+        this.isParsing = false;
+        this.parseFailed = false;
+        this.replacementPopup = null;
     }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        int renderMouseX = replacementPopup != null ? -1 : mouseX;
+        int renderMouseY = replacementPopup != null ? -1 : mouseY;
+
         context.fill(x, y, x + width, y + height, UITheme.Colors.PANEL_BG);
 
         context.fill(x, y, x + 1, y + height, UITheme.Colors.PANEL_BORDER);
@@ -148,7 +169,7 @@ public class LitematicDetailPanel implements Drawable, Element {
         context.fill(x, y + height - 1, x + width, y + height, UITheme.Colors.PANEL_BORDER);
 
         if (closeButton != null) {
-            closeButton.render(context, mouseX, mouseY, delta);
+            closeButton.render(context, renderMouseX, renderMouseY, delta);
         }
 
         if (litematicFile == null) {
@@ -159,8 +180,7 @@ public class LitematicDetailPanel implements Drawable, Element {
                     emptyText,
                     x + (width - textWidth) / 2,
                     y + height / 2 - 4,
-                    0xFF888888
-            );
+                    0xFF888888);
             return;
         }
 
@@ -173,8 +193,7 @@ public class LitematicDetailPanel implements Drawable, Element {
                 fileName,
                 contentX,
                 contentY,
-                0xFFFFFFFF
-        );
+                0xFFFFFFFF);
         contentY += 15;
 
         long sizeKB = litematicFile.length() / 1024;
@@ -184,8 +203,7 @@ public class LitematicDetailPanel implements Drawable, Element {
                 sizeText,
                 contentX,
                 contentY,
-                0xFFAAAAAA
-        );
+                0xFFAAAAAA);
         contentY += 15;
 
         if (isParsing) {
@@ -194,8 +212,7 @@ public class LitematicDetailPanel implements Drawable, Element {
                     "Parsing blocks...",
                     contentX,
                     contentY,
-                    0xFFFFAA00
-            );
+                    0xFFFFAA00);
             return;
         }
 
@@ -205,8 +222,7 @@ public class LitematicDetailPanel implements Drawable, Element {
                     "Failed to parse file",
                     contentX,
                     contentY,
-                    0xFFFF0000
-            );
+                    0xFFFF0000);
             return;
         }
 
@@ -216,8 +232,7 @@ public class LitematicDetailPanel implements Drawable, Element {
                     "No blocks found",
                     contentX,
                     contentY,
-                    0xFF888888
-            );
+                    0xFF888888);
             return;
         }
 
@@ -227,8 +242,7 @@ public class LitematicDetailPanel implements Drawable, Element {
                 blocksHeader,
                 contentX,
                 contentY,
-                0xFFAAAAAA
-        );
+                0xFFAAAAAA);
 
         int listY = y + HEADER_HEIGHT;
         int listHeight = height - HEADER_HEIGHT - UITheme.Dimensions.PADDING;
@@ -243,19 +257,19 @@ public class LitematicDetailPanel implements Drawable, Element {
             LitematicParser.BlockCount blockCount = blockCounts.get(i);
             int itemY = listY + (i - scrollOffset) * ITEM_HEIGHT;
 
-            boolean isHovered = mouseX >= contentX && mouseX < listRightEdge &&
-                               mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
+            boolean isHovered = renderMouseX >= contentX && renderMouseX < listRightEdge &&
+                    renderMouseY >= itemY && renderMouseY < itemY + ITEM_HEIGHT;
             int bgColor = isHovered ? 0xFF2A2A2A : 0xFF1A1A1A;
             context.fill(contentX + 2, itemY + 2, listRightEdge - 2, itemY + ITEM_HEIGHT - 2, bgColor);
 
             ItemStack itemStack = getItemStackForBlock(blockCount.blockId);
             if (itemStack != null && !itemStack.isEmpty()) {
-                context.drawItem(itemStack, contentX + 4, itemY + 2);
+                context.drawItem(itemStack, contentX + 4, itemY + 4);
             }
 
             String blockName = LitematicParser.getSimpleBlockName(blockCount.blockId);
             int textX = contentX + 24;
-            int textY = itemY + 6;
+            int textY = itemY + 8;
 
             int maxTextWidth = listRightEdge - textX - 70;
             if (client.textRenderer.getWidth(blockName) > maxTextWidth) {
@@ -277,17 +291,23 @@ public class LitematicDetailPanel implements Drawable, Element {
 
             String countText = "x" + blockCount.count;
             int countWidth = client.textRenderer.getWidth(countText);
-            context.drawTextWithShadow(client.textRenderer, countText, listRightEdge - countWidth - 5, textY, 0xFFAAFF00);
+            context.drawTextWithShadow(client.textRenderer, countText, listRightEdge - countWidth - 5, textY,
+                    0xFFAAFF00);
         }
 
         context.disableScissor();
 
         if (scrollBar != null && scrollBar.isVisible() && client != null) {
-            boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, client.getWindow().getHandle());
+            boolean scrollChanged = scrollBar.updateAndRender(context, renderMouseX, renderMouseY, delta,
+                    client.getWindow().getHandle());
             if (scrollChanged) {
                 int maxScroll = getMaxScroll();
-                scrollOffset = (int)(scrollBar.getScrollPercentage() * maxScroll);
+                scrollOffset = (int) (scrollBar.getScrollPercentage() * maxScroll);
             }
+        }
+
+        if (replacementPopup != null) {
+            replacementPopup.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -316,12 +336,59 @@ public class LitematicDetailPanel implements Drawable, Element {
 
     @Override
     public boolean mouseClicked(Click click, boolean doubled) {
+        if (replacementPopup != null) {
+            if (replacementPopup.mouseClicked(click.x(), click.y(), 0)) {
+                return true;
+            }
+            return true;
+        }
+
         if (closeButton != null) {
             if (closeButton.mouseClicked(click, doubled)) {
                 return true;
             }
         }
+
+        int listY = y + HEADER_HEIGHT;
+        int listHeight = height - HEADER_HEIGHT - UITheme.Dimensions.PADDING;
+        int listRightEdge = x + width - UITheme.Dimensions.PADDING - UITheme.Dimensions.SCROLLBAR_WIDTH - 2;
+        int contentX = x + UITheme.Dimensions.PADDING;
+
+        if (click.x() >= contentX && click.x() < listRightEdge &&
+                click.y() >= listY && click.y() < listY + listHeight) {
+            int clickedIndex = scrollOffset + (int) ((click.y() - listY) / ITEM_HEIGHT);
+            if (clickedIndex >= 0 && clickedIndex < blockCounts.size()) {
+                LitematicParser.BlockCount blockCount = blockCounts.get(clickedIndex);
+                openReplacementPopup(blockCount.blockId);
+                return true;
+            }
+        }
+
         return false;
+    }
+
+    private void openReplacementPopup(String blockId) {
+        if (client == null)
+            return;
+
+        replacementPopup = new BlockReplacementPopup(
+                client.getWindow().getScaledWidth(),
+                client.getWindow().getScaledHeight(),
+                blockId);
+
+        replacementPopup.setOnBlockSelected((oldBlockId, newBlockId) -> {
+            if (litematicFile != null) {
+                boolean success = LitematicBlockReplacer.replaceBlock(litematicFile, oldBlockId, newBlockId);
+                if (success) {
+                    setFile(litematicFile);
+                }
+            }
+            replacementPopup = null;
+        });
+
+        replacementPopup.setOnCancel(() -> {
+            replacementPopup = null;
+        });
     }
 
     @Override
@@ -333,15 +400,19 @@ public class LitematicDetailPanel implements Drawable, Element {
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (replacementPopup != null) {
+            return replacementPopup.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        }
+
         if (mouseX < x || mouseX > x + width || mouseY < y || mouseY > y + height) {
             return false;
         }
 
         int maxScroll = getMaxScroll();
-        scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int)verticalAmount));
+        scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int) verticalAmount));
 
         if (scrollBar != null && maxScroll > 0) {
-            scrollBar.setScrollPercentage((double)scrollOffset / maxScroll);
+            scrollBar.setScrollPercentage((double) scrollOffset / maxScroll);
         }
 
         return true;
@@ -349,10 +420,10 @@ public class LitematicDetailPanel implements Drawable, Element {
 
     private boolean isMouseOverButton(CustomButton button, double mouseX, double mouseY) {
         return button != null &&
-               mouseX >= button.getX() &&
-               mouseX < button.getX() + button.getWidth() &&
-               mouseY >= button.getY() &&
-               mouseY < button.getY() + button.getHeight();
+                mouseX >= button.getX() &&
+                mouseX < button.getX() + button.getWidth() &&
+                mouseY >= button.getY() &&
+                mouseY < button.getY() + button.getHeight();
     }
 
     @Override
