@@ -56,6 +56,7 @@ public class DownloadSettings {
 		setDefault("excludedVendors", "");
 		setDefault("dismissedModMessageId", -1);
 		setDefault("useChoculaterieAPI", false);
+		setDefault("dismissedQuickShareLinks", "");
 	}
 
 	private void setDefault(String key, Object value) {
@@ -180,6 +181,24 @@ public class DownloadSettings {
 
 	public void setUseChoculaterieAPI(boolean enabled) {
 		set("useChoculaterieAPI", enabled);
+	}
+
+	public boolean isQuickShareLinkDismissed(String url) {
+		String dismissed = config.get("dismissedQuickShareLinks").getAsString();
+		if (dismissed.isEmpty()) return false;
+		for (String link : dismissed.split(",")) {
+			if (link.equals(url)) return true;
+		}
+		return false;
+	}
+
+	public void dismissQuickShareLink(String url) {
+		String dismissed = config.get("dismissedQuickShareLinks").getAsString();
+		if (dismissed.isEmpty()) {
+			set("dismissedQuickShareLinks", url);
+		} else if (!isQuickShareLinkDismissed(url)) {
+			set("dismissedQuickShareLinks", dismissed + "," + url);
+		}
 	}
 
 	private File getConfigFile() {

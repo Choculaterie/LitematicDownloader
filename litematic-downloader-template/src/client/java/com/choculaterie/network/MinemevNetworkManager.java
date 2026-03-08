@@ -19,7 +19,7 @@ import java.util.concurrent.CompletableFuture;
 
 public class MinemevNetworkManager {
 	private static final String MINEMEV_BASE_URL = "https://www.minemev.com/api";
-	private static final String CHOCULATERIE_BASE_URL = "https://choculaterie.com/api/FallbackModAPI";
+	private static final String CHOCULATERIE_BASE_URL = "https://api.choculaterie.com/api/FallbackModAPI";
 
 	private static String getBaseUrl() {
 		return DownloadSettings.getInstance().isUseChoculaterieAPI() ? CHOCULATERIE_BASE_URL : MINEMEV_BASE_URL;

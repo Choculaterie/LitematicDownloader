@@ -271,10 +271,39 @@ public class CustomTextField extends TextFieldWidget {
 		context.drawTextWithShadow(client.textRenderer, xSymbol, xX, xY, clearColor);
 	}
 
+	private boolean wasCtrlVDown = false;
+	private boolean wasCtrlADown = false;
+
 	private void handleSpecialKeys(long windowHandle) {
 		long currentTime = System.currentTimeMillis();
 		String currentText = this.getText();
 		int cursorPos = this.getCursor();
+
+		boolean isCtrlDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS ||
+				GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+
+		boolean isVDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_V) == GLFW.GLFW_PRESS;
+		if (isCtrlDown && isVDown && !wasCtrlVDown) {
+			String clipboard = GLFW.glfwGetClipboardString(windowHandle);
+			if (clipboard != null && !clipboard.isEmpty()) {
+				String newText = currentText.substring(0, cursorPos) + clipboard + currentText.substring(cursorPos);
+				if (newText.length() <= 256) {
+					this.setText(newText);
+					this.setCursor(cursorPos + clipboard.length(), false);
+					if (onChanged != null) {
+						onChanged.run();
+					}
+				}
+			}
+		}
+		wasCtrlVDown = isCtrlDown && isVDown;
+
+		boolean isADown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_A) == GLFW.GLFW_PRESS;
+		if (isCtrlDown && isADown && !wasCtrlADown) {
+			this.setCursor(0, false);
+			this.setCursor(currentText.length(), true);
+		}
+		wasCtrlADown = isCtrlDown && isADown;
 
 		boolean isBackspaceDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_BACKSPACE) == GLFW.GLFW_PRESS;
 		if (backspaceState.shouldTrigger(currentTime, isBackspaceDown) && cursorPos > 0) {

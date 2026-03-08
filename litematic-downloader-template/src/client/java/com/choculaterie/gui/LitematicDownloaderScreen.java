@@ -18,11 +18,23 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 
+import org.lwjgl.glfw.GLFW;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 public class LitematicDownloaderScreen extends Screen {
     private static final int SEARCH_BAR_HEIGHT = 20;
     private static final int BUTTON_HEIGHT = 20;
     private static final int PADDING = 10;
     private static final int ITEMS_PER_PAGE = 20;
+    private static final int CLIPBOARD_BANNER_HEIGHT = 16;
+    private static final Pattern QUICK_SHARE_PATTERN = Pattern.compile(
+            "https?://(?:www\\.)?choculaterie\\.com/qs/([A-Za-z0-9_-]+)");
 
     private CustomTextField searchField;
     private PostListWidget postList;
@@ -46,6 +58,16 @@ public class LitematicDownloaderScreen extends Screen {
     private boolean noResultsFound = false;
     private boolean showFilterPanel = false;
     private boolean initialized = false;
+    private String clipboardQuickShareUrl = null;
+    private boolean clipboardBannerDismissed = false;
+    private BannerState bannerState = BannerState.NONE;
+    private String bannerSuccessFilename = null;
+    private long bannerSuccessTime = 0;
+    private static final long BANNER_SUCCESS_DURATION_MS = 2500;
+
+    private enum BannerState {
+        NONE, DETECTED, DOWNLOADING, SUCCESS
+    }
 
     public LitematicDownloaderScreen() {
         super(Text.of("Litematic Downloader"));
@@ -105,7 +127,10 @@ public class LitematicDownloaderScreen extends Screen {
         );
         this.addDrawableChild(searchButton);
 
-        int listY = PADDING + SEARCH_BAR_HEIGHT + PADDING;
+        checkClipboardForQuickShare();
+
+        int bannerOffset = isClipboardBannerVisible() ? CLIPBOARD_BANNER_HEIGHT + 2 : 0;
+        int listY = PADDING + SEARCH_BAR_HEIGHT + PADDING + bannerOffset;
         int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 2;
         int listWidth = leftPanelWidth - PADDING * 2;
 
@@ -193,6 +218,50 @@ public class LitematicDownloaderScreen extends Screen {
         }
     }
 
+    private void checkClipboardForQuickShare() {
+        try {
+            long windowHandle = client != null && client.getWindow() != null ? client.getWindow().getHandle() : 0;
+            if (windowHandle == 0) return;
+            String clipboard = GLFW.glfwGetClipboardString(windowHandle);
+            if (clipboard != null) {
+                String trimmed = clipboard.trim();
+                Matcher matcher = QUICK_SHARE_PATTERN.matcher(trimmed);
+                if (matcher.find() && !DownloadSettings.getInstance().isQuickShareLinkDismissed(trimmed)) {
+                    clipboardQuickShareUrl = trimmed;
+                    clipboardBannerDismissed = false;
+                    bannerState = BannerState.DETECTED;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private boolean isClipboardBannerVisible() {
+        return bannerState == BannerState.DETECTED
+                || bannerState == BannerState.DOWNLOADING
+                || bannerState == BannerState.SUCCESS;
+    }
+
+    private void updateListPosition() {
+        if (postList == null) return;
+        int leftPanelWidth = this.width / 2;
+        int bannerOffset = isClipboardBannerVisible() ? CLIPBOARD_BANNER_HEIGHT + 2 : 0;
+        int listY = PADDING + SEARCH_BAR_HEIGHT + PADDING + bannerOffset;
+        int listHeight = this.height - listY - BUTTON_HEIGHT - PADDING * 2;
+        int listWidth = leftPanelWidth - PADDING * 2;
+        postList.setDimensions(PADDING, listY, listWidth, listHeight);
+    }
+
+    private void clearClipboard() {
+        try {
+            long windowHandle = client != null && client.getWindow() != null ? client.getWindow().getHandle() : 0;
+            if (windowHandle != 0) {
+                GLFW.glfwSetClipboardString(windowHandle, "");
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     private void fetchModMessage() {
         ChoculaterieNetworkManager.getModMessage()
             .thenAccept(message -> {
@@ -239,9 +308,166 @@ public class LitematicDownloaderScreen extends Screen {
         currentSearchQuery = searchField.getText().trim();
         currentPage = 1;
 
+        Matcher matcher = QUICK_SHARE_PATTERN.matcher(currentSearchQuery);
+        if (matcher.find()) {
+            String code = matcher.group(1);
+            handleQuickShareDownload(code);
+            return;
+        }
+
         detailPanel.clear();
 
         loadPage();
+    }
+
+    private void handleQuickShareDownload(String code) {
+        isLoading = true;
+        searchButton.active = false;
+
+        if (toastManager != null) {
+            toastManager.showInfo("Downloading quick-share: " + code + "...");
+        }
+
+        ChoculaterieNetworkManager.downloadQuickShare(code)
+                .thenAccept(result -> {
+                    if (this.client != null) {
+                        this.client.execute(() -> {
+                            try {
+                                Path schematicsPath = Paths.get(DownloadSettings.getInstance().getAbsoluteDownloadPath());
+                                File schematicsDir = schematicsPath.toFile();
+                                if (!schematicsDir.exists()) {
+                                    schematicsDir.mkdirs();
+                                }
+
+                                String fileName = result.filename();
+                                if (!fileName.endsWith(".litematic")) {
+                                    fileName += ".litematic";
+                                }
+
+                                File outputFile = new File(schematicsDir, fileName);
+
+                                int counter = 1;
+                                while (outputFile.exists()) {
+                                    String baseName = fileName.substring(0, fileName.lastIndexOf(".litematic"));
+                                    outputFile = new File(schematicsDir, baseName + "_" + counter + ".litematic");
+                                    counter++;
+                                }
+
+                                try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                                    fos.write(result.data());
+                                }
+
+                                String savedName = outputFile.getName();
+                                System.out.println("[QuickShare] Saved to: " + outputFile.getAbsolutePath());
+
+                                isLoading = false;
+                                searchButton.active = true;
+                                searchField.setText("");
+
+                                if (toastManager != null) {
+                                    toastManager.showSuccess("Downloaded: " + savedName);
+                                }
+                            } catch (Exception e) {
+                                isLoading = false;
+                                searchButton.active = true;
+                                System.err.println("[QuickShare] Failed to save file: " + e.getMessage());
+                                if (toastManager != null) {
+                                    toastManager.showError("Failed to save file: " + e.getMessage());
+                                }
+                            }
+                        });
+                    }
+                })
+                .exceptionally(throwable -> {
+                    if (this.client != null) {
+                        this.client.execute(() -> {
+                            isLoading = false;
+                            searchButton.active = true;
+
+                            String errorMessage = throwable.getCause() != null
+                                    ? throwable.getCause().getMessage()
+                                    : throwable.getMessage();
+
+                            System.err.println("[QuickShare] Download failed: " + errorMessage);
+                            if (toastManager != null) {
+                                toastManager.showError("Quick-share download failed: " + errorMessage);
+                            }
+                        });
+                };
+                    return null;
+                });
+    }
+
+    private void performQuickShareFromBanner() {
+        Matcher matcher = QUICK_SHARE_PATTERN.matcher(clipboardQuickShareUrl);
+        if (!matcher.find()) return;
+        String code = matcher.group(1);
+
+        ChoculaterieNetworkManager.downloadQuickShare(code)
+                .thenAccept(result -> {
+                    if (this.client != null) {
+                        this.client.execute(() -> {
+                            try {
+                                Path schematicsPath = Paths.get(DownloadSettings.getInstance().getAbsoluteDownloadPath());
+                                File schematicsDir = schematicsPath.toFile();
+                                if (!schematicsDir.exists()) {
+                                    schematicsDir.mkdirs();
+                                }
+
+                                String fileName = result.filename();
+                                if (!fileName.endsWith(".litematic")) {
+                                    fileName += ".litematic";
+                                }
+
+                                File outputFile = new File(schematicsDir, fileName);
+
+                                int counter = 1;
+                                while (outputFile.exists()) {
+                                    String baseName = fileName.substring(0, fileName.lastIndexOf(".litematic"));
+                                    outputFile = new File(schematicsDir, baseName + "_" + counter + ".litematic");
+                                    counter++;
+                                }
+
+                                try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                                    fos.write(result.data());
+                                }
+
+                                bannerSuccessFilename = outputFile.getName();
+                                bannerSuccessTime = System.currentTimeMillis();
+                                bannerState = BannerState.SUCCESS;
+                                searchField.setText("");
+                                System.out.println("[QuickShare] Saved to: " + outputFile.getAbsolutePath());
+                            } catch (Exception e) {
+                                bannerState = BannerState.NONE;
+                                clipboardBannerDismissed = true;
+                                updateListPosition();
+                                System.err.println("[QuickShare] Failed to save file: " + e.getMessage());
+                                if (toastManager != null) {
+                                    toastManager.showError("Failed to save file: " + e.getMessage());
+                                }
+                            }
+                        });
+                    }
+                })
+                .exceptionally(throwable -> {
+                    if (this.client != null) {
+                        this.client.execute(() -> {
+                            bannerState = BannerState.NONE;
+                            clipboardBannerDismissed = true;
+                            updateListPosition();
+
+                            String errorMessage = throwable.getCause() != null
+                                    ? throwable.getCause().getMessage()
+                                    : throwable.getMessage();
+
+                            System.err.println("[QuickShare] Download failed: " + errorMessage);
+                            if (toastManager != null) {
+                                toastManager.showError("Quick-share download failed: " + errorMessage);
+                            }
+                        });
+                    }
+                    return null;
+                });
     }
 
     private void loadPage() {
@@ -455,6 +681,51 @@ public class LitematicDownloaderScreen extends Screen {
             loadingSpinner.render(context, listMouseX, listMouseY, delta);
         }
 
+        if (isClipboardBannerVisible()) {
+            if (bannerState == BannerState.SUCCESS
+                    && System.currentTimeMillis() - bannerSuccessTime > BANNER_SUCCESS_DURATION_MS) {
+                bannerState = BannerState.NONE;
+                clipboardBannerDismissed = true;
+                updateListPosition();
+            } else {
+                int bannerX = PADDING;
+                int bannerY = PADDING + SEARCH_BAR_HEIGHT + 2;
+                int leftPanelW = this.width / 2;
+                int bannerWidth = leftPanelW - PADDING * 2;
+                int textY2 = bannerY + (CLIPBOARD_BANNER_HEIGHT - 8) / 2;
+
+                if (bannerState == BannerState.SUCCESS) {
+                    context.fill(bannerX, bannerY, bannerX + bannerWidth, bannerY + CLIPBOARD_BANNER_HEIGHT, 0xFF2A5F2A);
+                    context.fill(bannerX, bannerY, bannerX + 2, bannerY + CLIPBOARD_BANNER_HEIGHT, 0xFF44FF44);
+                    String successText = "✓ Downloaded: " + bannerSuccessFilename;
+                    if (this.textRenderer.getWidth(successText) > bannerWidth - 8) {
+                        successText = "✓ Downloaded";
+                    }
+                    context.drawTextWithShadow(this.textRenderer, successText, bannerX + 6, textY2, 0xFFFFFFFF);
+                } else {
+                    context.fill(bannerX, bannerY, bannerX + bannerWidth, bannerY + CLIPBOARD_BANNER_HEIGHT, 0xFF2A3A5F);
+                    context.fill(bannerX, bannerY, bannerX + 2, bannerY + CLIPBOARD_BANNER_HEIGHT, 0xFF4488FF);
+                    String bannerText;
+                    if (bannerState == BannerState.DOWNLOADING) {
+                        bannerText = "📋 Downloading quick-share...";
+                    } else {
+                        bannerText = "📋 Quick-share link detected, click to download";
+                        if (this.textRenderer.getWidth(bannerText) > bannerWidth - 20) {
+                            bannerText = "📋 Quick-share, click to download";
+                        }
+                    }
+                    context.drawTextWithShadow(this.textRenderer, bannerText, bannerX + 6, textY2, 0xFFFFFFFF);
+                    if (bannerState == BannerState.DETECTED) {
+                        String dismissText = "✕";
+                        int dismissX = bannerX + bannerWidth - this.textRenderer.getWidth(dismissText) - 4;
+                        boolean hoverDismiss = mouseX >= dismissX && mouseX < bannerX + bannerWidth
+                                && mouseY >= bannerY && mouseY < bannerY + CLIPBOARD_BANNER_HEIGHT;
+                        context.drawTextWithShadow(this.textRenderer, dismissText, dismissX, textY2, hoverDismiss ? 0xFFFFFFFF : 0xFFAAAAAA);
+                    }
+                }
+            }
+        }
+
         if (noResultsFound) {
             String noResultsText = "No results found :(";
             int textWidth = this.textRenderer.getWidth(noResultsText);
@@ -546,6 +817,30 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
+        if (button == 0 && bannerState == BannerState.DETECTED) {
+            int bannerX = PADDING;
+            int bannerY = PADDING + SEARCH_BAR_HEIGHT + 2;
+            int leftPanelW = this.width / 2;
+            int bannerWidth = leftPanelW - PADDING * 2;
+            if (mouseX >= bannerX && mouseX < bannerX + bannerWidth
+                    && mouseY >= bannerY && mouseY < bannerY + CLIPBOARD_BANNER_HEIGHT) {
+                String dismissText = "✕";
+                int dismissX = bannerX + bannerWidth - this.textRenderer.getWidth(dismissText) - 4;
+                if (mouseX >= dismissX) {
+                    DownloadSettings.getInstance().dismissQuickShareLink(clipboardQuickShareUrl);
+                    bannerState = BannerState.NONE;
+                    clipboardBannerDismissed = true;
+                    updateListPosition();
+                } else {
+                    bannerState = BannerState.DOWNLOADING;
+                    searchField.setText(clipboardQuickShareUrl);
+                    clearClipboard();
+                    performQuickShareFromBanner();
+                }
+                return true;
+            }
+        }
+
         if (button == 0 && searchField != null) {
             if (searchField.isMouseOver(mouseX, mouseY)) {
                 searchField.setFocused(true);
@@ -604,7 +899,7 @@ public class LitematicDownloaderScreen extends Screen {
             return false;
         }
         if (detailPanel != null && detailPanel.hasImageViewerOpen()) {
-            detailPanel.keyPressed(256, 0, 0); // 256 = GLFW_KEY_ESCAPE
+            detailPanel.keyPressed(256, 0, 0);
             return false;
         }
         return super.shouldCloseOnEsc();

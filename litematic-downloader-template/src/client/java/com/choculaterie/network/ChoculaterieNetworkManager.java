@@ -1,6 +1,7 @@
 package com.choculaterie.network;
 
 import com.choculaterie.models.ModMessage;
+import com.choculaterie.models.QuickShareDownloadResult;
 import com.choculaterie.models.QuickShareResponse;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -13,15 +14,63 @@ import java.nio.file.Files;
 import java.util.concurrent.CompletableFuture;
 
 public class ChoculaterieNetworkManager {
-	private static final String BASE_URL = "https://choculaterie.com/api/LitematicDownloaderModAPI";
+	private static final String BASE_URL = "https://api.choculaterie.com/api/LitematicDownloaderModAPI";
 	private static final String UPLOAD_ENDPOINT = BASE_URL + "/upload";
 	private static final String MESSAGE_ENDPOINT = BASE_URL + "/GetModMessage";
+	private static final String QS_BACKEND_BASE = "https://backend.choculaterie.com/qs/";
 
 	private static final Gson GSON = new Gson();
 	private static final int TIMEOUT_STANDARD = 10000;
 	private static final int TIMEOUT_UPLOAD = 30000;
 	private static final String BOUNDARY = "----WebKitFormBoundary" + System.currentTimeMillis();
 	private static final String LITEMATIC_EXTENSION = ".litematic";
+
+	public static CompletableFuture<QuickShareDownloadResult> downloadQuickShare(String code) {
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				String downloadUrl = QS_BACKEND_BASE + code + "/litematic";
+				System.out.println("[QuickShare] Downloading from: " + downloadUrl);
+
+				URL url = new URL(downloadUrl);
+				HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+				try {
+					conn.setRequestMethod("GET");
+					conn.setConnectTimeout(TIMEOUT_STANDARD);
+					conn.setReadTimeout(TIMEOUT_UPLOAD);
+					conn.setRequestProperty("User-Agent", "LitematicDownloader/1.0");
+
+					int responseCode = conn.getResponseCode();
+					if (responseCode != HttpURLConnection.HTTP_OK) {
+						if (responseCode == 404) {
+							throw new IOException("Quick-share link not found or has no file attached");
+						}
+						throw new IOException("HTTP error: " + responseCode);
+					}
+
+					String filename = code + ".litematic";
+
+					byte[] data;
+					try (InputStream is = conn.getInputStream();
+						 ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+						byte[] buffer = new byte[8192];
+						int bytesRead;
+						while ((bytesRead = is.read(buffer)) != -1) {
+							baos.write(buffer, 0, bytesRead);
+						}
+						data = baos.toByteArray();
+					}
+
+					System.out.println("[QuickShare] Downloaded " + data.length + " bytes, filename: " + filename);
+					return new QuickShareDownloadResult(data, filename);
+				} finally {
+					conn.disconnect();
+				}
+			} catch (IOException e) {
+				throw new RuntimeException("Failed to download quick-share file", e);
+			}
+		});
+	}
 
 	public static CompletableFuture<QuickShareResponse> uploadLitematic(File file) {
 		return CompletableFuture.supplyAsync(() -> {
