@@ -27,6 +27,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.net.URI;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -660,7 +663,10 @@ public class PostDetailPanel implements Drawable, Element {
                 System.out.println("[Download] Starting download from: " + downloadUrl);
                 System.out.println("[Download] File: " + file.getDefaultFileName());
 
-                String encodedUrl = downloadUrl.replace(" ", "%20");
+                int lastSlash = downloadUrl.lastIndexOf('/');
+                String base = downloadUrl.substring(0, lastSlash + 1);
+                String filename = URLDecoder.decode(downloadUrl.substring(lastSlash + 1), StandardCharsets.UTF_8);
+                String encodedUrl = base + URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
 
                 HttpClient httpClient = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(30))

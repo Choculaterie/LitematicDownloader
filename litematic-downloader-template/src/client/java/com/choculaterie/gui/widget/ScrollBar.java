@@ -121,9 +121,9 @@ public class ScrollBar implements Drawable {
     }
 
     private void drawScrollBar(DrawContext context, double handleHeight) {
+        context.fill(x, y, x + UITheme.Dimensions.SCROLLBAR_WIDTH, y + height, UITheme.Colors.PANEL_BG);
+
         if (isVisible()) {
-            context.fill(x, y, x + UITheme.Dimensions.SCROLLBAR_WIDTH, y + height, UITheme.Colors.PANEL_BG);
-            
             double handleY = getHandleY();
             int handleColor = (isHovered || isDragging) ? UITheme.Colors.SCROLLBAR_THUMB_HOVER
                     : UITheme.Colors.SCROLLBAR_THUMB;
