@@ -1,17 +1,17 @@
 package com.choculaterie.gui.widget;
 
 import com.choculaterie.gui.theme.UITheme;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Button;
 
-public class CustomButton extends ButtonWidget {
+public class CustomButton extends Button {
     private boolean renderAsXIcon = false;
     private boolean renderAsDownloadIcon = false;
 
-    public CustomButton(int x, int y, int width, int height, net.minecraft.text.Text message, PressAction onPress) {
-        super(x, y, width, height, message, onPress, DEFAULT_NARRATION_SUPPLIER);
+    public CustomButton(int x, int y, int width, int height, net.minecraft.network.chat.Component message, Button.OnPress onPress) {
+        super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
     }
 
     public void setRenderAsXIcon(boolean renderAsXIcon) {
@@ -23,7 +23,7 @@ public class CustomButton extends ButtonWidget {
     }
 
     @Override
-    protected void drawIcon(DrawContext context, int mouseX, int mouseY, float delta) {
+    protected void extractContents(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         int bgColor = getBackgroundColor(mouseX, mouseY);
         drawBackground(context, bgColor);
         drawBorder(context);
@@ -41,12 +41,12 @@ public class CustomButton extends ButtonWidget {
         return isHovered ? UITheme.Colors.BUTTON_BG_HOVER : UITheme.Colors.BUTTON_BG;
     }
 
-    private void drawBackground(DrawContext context, int color) {
+    private void drawBackground(GuiGraphicsExtractor context, int color) {
         context.fill(this.getX(), this.getY(), this.getX() + this.getWidth(),
                     this.getY() + this.getHeight(), color);
     }
 
-    private void drawBorder(DrawContext context) {
+    private void drawBorder(GuiGraphicsExtractor context) {
         int x1 = this.getX();
         int y1 = this.getY();
         int x2 = x1 + this.getWidth();
@@ -60,8 +60,8 @@ public class CustomButton extends ButtonWidget {
         context.fill(x2 - borderWidth, y1, x2, y2, borderColor);
     }
 
-    private void drawText(DrawContext context) {
-        TextRenderer tr = MinecraftClient.getInstance().textRenderer;
+    private void drawText(GuiGraphicsExtractor context) {
+        Font tr = Minecraft.getInstance().font;
         int textColor = this.active ? UITheme.Colors.TEXT_PRIMARY : UITheme.Colors.TEXT_DISABLED;
 
         String text = getDisplayText();
@@ -69,7 +69,7 @@ public class CustomButton extends ButtonWidget {
         int centerX = this.getX() + this.getWidth() / 2;
         int centerY = this.getY() + (this.getHeight() - UITheme.Typography.TEXT_HEIGHT) / 2 + yOffset;
 
-        context.drawCenteredTextWithShadow(tr, text, centerX, centerY, textColor);
+        context.centeredText(tr, text, centerX, centerY, textColor);
     }
 
     private String getDisplayText() {

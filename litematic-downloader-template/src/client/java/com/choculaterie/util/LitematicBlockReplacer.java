@@ -12,34 +12,34 @@ public class LitematicBlockReplacer {
 
     public static boolean replaceBlock(File litematicFile, String oldBlockId, String newBlockId) {
         try (FileInputStream fis = new FileInputStream(litematicFile)) {
-            NbtCompound root = NbtIo.readCompressed(fis, NbtSizeTracker.ofUnlimitedBytes());
+            CompoundTag root = NbtIo.readCompressed(fis, NbtAccounter.unlimitedHeap());
 
             if (!root.contains("Regions")) {
                 return false;
             }
 
-            NbtCompound regions = root.getCompound("Regions").orElse(new NbtCompound());
+            CompoundTag regions = root.getCompound("Regions").orElse(new CompoundTag());
             boolean wasReplaced = false;
 
-            for (String regionName : regions.getKeys()) {
-                NbtCompound region = regions.getCompound(regionName).orElse(new NbtCompound());
+            for (String regionName : regions.keySet()) {
+                CompoundTag region = regions.getCompound(regionName).orElse(new CompoundTag());
 
                 if (!region.contains("BlockStatePalette")) {
                     continue;
                 }
 
-                NbtList palette = region.getList("BlockStatePalette").orElse(new NbtList());
+                ListTag palette = region.getList("BlockStatePalette").orElse(new ListTag());
 
                 for (int i = 0; i < palette.size(); i++) {
-                    NbtCompound blockState = palette.getCompound(i).orElse(new NbtCompound());
+                    CompoundTag blockState = palette.getCompound(i).orElse(new CompoundTag());
                     if (blockState.contains("Name")) {
                         String blockName = blockState.getString("Name").orElse("");
                         if (blockName.equals(oldBlockId)) {
-                            NbtCompound newBlockState = new NbtCompound();
+                            CompoundTag newBlockState = new CompoundTag();
                             newBlockState.putString("Name", newBlockId);
 
                             if (blockState.contains("Properties")) {
-                                NbtCompound properties = blockState.getCompound("Properties").orElse(new NbtCompound());
+                                CompoundTag properties = blockState.getCompound("Properties").orElse(new CompoundTag());
                                 newBlockState.put("Properties", properties);
                             }
 

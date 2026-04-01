@@ -8,9 +8,9 @@
 		"Choculat"
 	],
 	"contact": {
-		"homepage": "https://github.com/HenriSaumure/LitematicDownloader",
-		"sources": "https://github.com/HenriSaumure/LitematicDownloader",
-		"issues": "https://github.com/HenriSaumure/LitematicDownloader/issues"
+		"homepage": "https://choculaterie.com/",
+		"sources": "https://github.com/Choculaterie/LitematicDownloader",
+		"issues": "https://github.com/Choculaterie/LitematicDownloader/issues"
 	},
 	"license": "MIT",
 	"icon": "assets/litematic-downloader/icon.png",
@@ -24,9 +24,9 @@
 		]
 	},
 	"depends": {
-		"fabricloader": ">=0.17.3",
-        "minecraft": "1.21.11",
-		"java": ">=21",
+		"fabricloader": ">=0.18.5",
+        "minecraft": "26.1",
+		"java": ">=25",
 		"fabric-api": "*"
 	},
 	"suggests": {

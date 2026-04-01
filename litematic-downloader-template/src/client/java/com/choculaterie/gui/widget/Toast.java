@@ -1,8 +1,8 @@
 package com.choculaterie.gui.widget;
 
 import com.choculaterie.gui.theme.UITheme;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.network.chat.Component;
 
 public class Toast {
     public enum Type {
@@ -60,10 +60,10 @@ public class Toast {
         this.hasCopyButton = hasCopyButton;
         this.copyText = copyText != null ? copyText : message;
 
-        closeButton = new CustomButton(0, 0, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE, Text.of("×"), btn -> {});
+        closeButton = new CustomButton(0, 0, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE, Component.literal("×"), btn -> {});
 
         if (hasCopyButton) {
-            copyButton = new CustomButton(0, 0, COPY_BUTTON_WIDTH, COPY_BUTTON_HEIGHT, Text.of("Copy"), btn -> {});
+            copyButton = new CustomButton(0, 0, COPY_BUTTON_WIDTH, COPY_BUTTON_HEIGHT, Component.literal("Copy"), btn -> {});
         }
     }
 
@@ -83,7 +83,7 @@ public class Toast {
         }
     }
 
-    public boolean render(DrawContext context, net.minecraft.client.font.TextRenderer textRenderer) {
+    public boolean render(GuiGraphicsExtractor context, net.minecraft.client.gui.Font textRenderer) {
         long now = System.currentTimeMillis();
         long elapsed = getEffectiveElapsedTime(now);
         long displayDuration = getDisplayDuration();
@@ -169,7 +169,7 @@ public class Toast {
         return hasCopyButton ? TOAST_HEIGHT + TOAST_EXTRA_HEIGHT : TOAST_HEIGHT;
     }
 
-    private void renderToastBackground(DrawContext context, int currentX, int toastHeight, int alpha) {
+    private void renderToastBackground(GuiGraphicsExtractor context, int currentX, int toastHeight, int alpha) {
         int bgColor = UITheme.Colors.BUTTON_BG_DISABLED;
         int bgColorWithAlpha = (alpha << 24) | (bgColor & 0x00FFFFFF);
         context.fill(currentX, yPosition, currentX + TOAST_WIDTH, yPosition + toastHeight, bgColorWithAlpha);
@@ -185,11 +185,11 @@ public class Toast {
         context.fill(currentX + TOAST_WIDTH - UITheme.Dimensions.BORDER_WIDTH, yPosition, currentX + TOAST_WIDTH, yPosition + toastHeight, topBorderColorWithAlpha);
     }
 
-    private void renderIcon(DrawContext context, net.minecraft.client.font.TextRenderer textRenderer, int currentX, int alpha) {
+    private void renderIcon(GuiGraphicsExtractor context, net.minecraft.client.gui.Font textRenderer, int currentX, int alpha) {
         String icon = getTypeIcon();
         int iconColor = getAccentColor();
         int iconColorWithAlpha = (alpha << 24) | (iconColor & 0x00FFFFFF);
-        context.drawText(
+        context.text(
                 textRenderer,
                 icon,
                 currentX + UITheme.Typography.LINE_HEIGHT,
@@ -208,7 +208,7 @@ public class Toast {
         };
     }
 
-    private void renderMessage(DrawContext context, net.minecraft.client.font.TextRenderer textRenderer, int currentX, int alpha) {
+    private void renderMessage(GuiGraphicsExtractor context, net.minecraft.client.gui.Font textRenderer, int currentX, int alpha) {
         int textX = currentX + 28;
         int textY = yPosition + UITheme.Typography.TEXT_HEIGHT;
         int maxTextWidth = TOAST_WIDTH - 40;
@@ -218,7 +218,7 @@ public class Toast {
         int textColor = UITheme.Colors.TEXT_PRIMARY;
         int textColorWithAlpha = (alpha << 24) | (textColor & 0x00FFFFFF);
 
-        context.drawText(
+        context.text(
                 textRenderer,
                 displayText,
                 textX,
@@ -228,14 +228,14 @@ public class Toast {
         );
     }
 
-    private String truncateText(net.minecraft.client.font.TextRenderer textRenderer, String text, int maxWidth) {
+    private String truncateText(net.minecraft.client.gui.Font textRenderer, String text, int maxWidth) {
         String displayText = text;
-        int textWidth = textRenderer.getWidth(displayText);
+        int textWidth = textRenderer.width(displayText);
 
         if (textWidth > maxWidth) {
             while (textWidth > maxWidth - UITheme.Dimensions.PADDING && displayText.length() > 3) {
                 displayText = displayText.substring(0, displayText.length() - 1);
-                textWidth = textRenderer.getWidth(displayText + "...");
+                textWidth = textRenderer.width(displayText + "...");
             }
             displayText += "...";
         }
@@ -243,7 +243,7 @@ public class Toast {
         return displayText;
     }
 
-    private void renderCloseButton(DrawContext context, int currentX) {
+    private void renderCloseButton(GuiGraphicsExtractor context, int currentX) {
         if (closeButton != null) {
             int closeButtonX = currentX + TOAST_WIDTH - CLOSE_BUTTON_SIZE - BUTTON_SPACING;
             int closeButtonY = yPosition + BUTTON_SPACING;
@@ -253,11 +253,11 @@ public class Toast {
             closeButton.setWidth(CLOSE_BUTTON_SIZE);
             closeButton.setHeight(CLOSE_BUTTON_SIZE);
 
-            closeButton.render(context, (int)mouseX, (int)mouseY, 0);
+            closeButton.extractRenderState(context, (int)mouseX, (int)mouseY, 0);
         }
     }
 
-    private void renderCopyButton(DrawContext context, int currentX, int toastHeight) {
+    private void renderCopyButton(GuiGraphicsExtractor context, int currentX, int toastHeight) {
         if (copyButton != null) {
             int buttonX = currentX + TOAST_WIDTH - COPY_BUTTON_WIDTH - UITheme.Dimensions.PADDING_SMALL - 3;
             int buttonY = yPosition + toastHeight - COPY_BUTTON_HEIGHT - 6;
@@ -267,7 +267,7 @@ public class Toast {
             copyButton.setWidth(COPY_BUTTON_WIDTH);
             copyButton.setHeight(COPY_BUTTON_HEIGHT);
 
-            copyButton.render(context, (int)mouseX, (int)mouseY, 0);
+            copyButton.extractRenderState(context, (int)mouseX, (int)mouseY, 0);
         }
     }
 

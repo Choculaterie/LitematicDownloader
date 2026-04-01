@@ -1,24 +1,24 @@
 package com.choculaterie.gui.widget;
 
 import com.choculaterie.gui.theme.UITheme;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
-public class CustomTextField extends TextFieldWidget {
+public class CustomTextField extends EditBox {
 	private static final long KEY_INITIAL_DELAY = 400;
 	private static final long KEY_REPEAT_DELAY = 50;
 	private static final int TEXT_PADDING = 4;
 	private static final long CURSOR_BLINK_MS = 500;
 	private static final int CLEAR_BUTTON_SIZE = UITheme.Dimensions.ICON_SMALL;
 
-	private final MinecraftClient client;
+	private final Minecraft client;
 	private Runnable onEnterPressed;
 	private Runnable onChanged;
 	private Runnable onClearPressed;
-	private Text placeholderText;
+	private Component placeholderText;
 
 	private boolean wasEnterDown = false;
 	private boolean wasClearButtonMouseDown = false;
@@ -61,16 +61,11 @@ public class CustomTextField extends TextFieldWidget {
 		}
 	}
 
-	public CustomTextField(MinecraftClient client, int x, int y, int width, int height, Text text) {
-		super(client.textRenderer, x, y, width, height, text);
+	public CustomTextField(Minecraft client, int x, int y, int width, int height, Component text) {
+		super(client.font, x, y, width, height, text);
 		this.client = client;
 		this.setMaxLength(256);
-		this.setDrawsBackground(false);
-		this.setFocusUnlocked(true);
-	}
-
-	@Override
-	public void write(String text) {
+		this.setBordered(false);
 	}
 
 	public void setOnEnterPressed(Runnable callback) {
@@ -97,7 +92,7 @@ public class CustomTextField extends TextFieldWidget {
 	}
 
 	private void installCharCallback() {
-		long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
+		long windowHandle = GLFW.glfwGetCurrentContext();
 		if (windowHandle != 0 && (!callbackInstalled || installedWindowHandle != windowHandle)) {
 			GLFW.glfwSetCharCallback(windowHandle, (window, codepoint) -> {
 				if (activeField != null && activeField.isFocused()) {
@@ -114,27 +109,25 @@ public class CustomTextField extends TextFieldWidget {
 			return;
 		}
 
-		String currentText = this.getText();
-		int cursorPos = this.getCursor();
+		String currentText = this.getValue();
+		int cursorPos = this.getCursorPosition();
 
 		if (currentText.length() < 256) {
 			String newText = currentText.substring(0, cursorPos) + c + currentText.substring(cursorPos);
-			this.setText(newText);
-			this.setCursor(cursorPos + 1, false);
+			this.setValue(newText);
+			this.setCursorPosition(cursorPos + 1);
 			if (onChanged != null) {
 				onChanged.run();
 			}
 		}
 	}
 
-	@Override
-	public void setPlaceholder(Text placeholder) {
-		super.setPlaceholder(placeholder);
+	public void setPlaceholder(Component placeholder) {
 		this.placeholderText = placeholder;
 	}
 
 	private boolean isOverClearButton(int mouseX, int mouseY) {
-		if (this.getText().isEmpty()) return false;
+		if (this.getValue().isEmpty()) return false;
 		int clearX = this.getX() + this.getWidth() - CLEAR_BUTTON_SIZE - 4;
 		int clearY = this.getY() + (this.getHeight() - CLEAR_BUTTON_SIZE) / 2;
 		return mouseX >= clearX && mouseX < clearX + CLEAR_BUTTON_SIZE &&
@@ -142,7 +135,7 @@ public class CustomTextField extends TextFieldWidget {
 	}
 
 	@Override
-	public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+	public void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
 		handleMouseInput(mouseX, mouseY);
 		handleKeyboardInput();
 
@@ -153,7 +146,7 @@ public class CustomTextField extends TextFieldWidget {
 	}
 
 	private void handleMouseInput(int mouseX, int mouseY) {
-		long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
+		long windowHandle = GLFW.glfwGetCurrentContext();
 		if (windowHandle == 0) {
 			wasClearButtonMouseDown = false;
 			return;
@@ -161,8 +154,8 @@ public class CustomTextField extends TextFieldWidget {
 
 		boolean isMouseDown = GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
 
-		if (!this.getText().isEmpty() && isMouseDown && !wasClearButtonMouseDown && isOverClearButton(mouseX, mouseY)) {
-			this.setText("");
+		if (!this.getValue().isEmpty() && isMouseDown && !wasClearButtonMouseDown && isOverClearButton(mouseX, mouseY)) {
+			this.setValue("");
 			if (onChanged != null) {
 				onChanged.run();
 			}
@@ -175,7 +168,7 @@ public class CustomTextField extends TextFieldWidget {
 	}
 
 	private void handleKeyboardInput() {
-		long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
+		long windowHandle = GLFW.glfwGetCurrentContext();
 		if (windowHandle == 0) return;
 
 		handleEnterKey(windowHandle);
@@ -196,13 +189,13 @@ public class CustomTextField extends TextFieldWidget {
 		wasEnterDown = isEnterDown;
 	}
 
-	private void drawBackground(DrawContext context) {
+	private void drawBackground(GuiGraphicsExtractor context) {
 		context.fill(this.getX(), this.getY(),
 				this.getX() + this.getWidth(), this.getY() + this.getHeight(),
 				UITheme.Colors.FIELD_BG);
 	}
 
-	private void drawBorder(DrawContext context) {
+	private void drawBorder(GuiGraphicsExtractor context) {
 		int borderColor = this.isFocused() ? UITheme.Colors.FIELD_BORDER_FOCUSED : UITheme.Colors.FIELD_BORDER;
 		int borderWidth = UITheme.Dimensions.BORDER_WIDTH;
 		int x = this.getX();
@@ -216,12 +209,12 @@ public class CustomTextField extends TextFieldWidget {
 		context.fill(x + width - borderWidth, y, x + width, y + height, borderColor);
 	}
 
-	private void drawTextContent(DrawContext context, int mouseX, int mouseY) {
+	private void drawTextContent(GuiGraphicsExtractor context, int mouseX, int mouseY) {
 		int textY = this.getY() + (this.getHeight() - UITheme.Typography.TEXT_HEIGHT) / 2;
 		int textX = this.getX() + TEXT_PADDING;
-		int maxTextWidth = this.getWidth() - TEXT_PADDING * 2 - (this.getText().isEmpty() ? 0 : CLEAR_BUTTON_SIZE + 4);
+		int maxTextWidth = this.getWidth() - TEXT_PADDING * 2 - (this.getValue().isEmpty() ? 0 : CLEAR_BUTTON_SIZE + 4);
 
-		String text = this.getText();
+		String text = this.getValue();
 		if (text.isEmpty() && !this.isFocused()) {
 			drawPlaceholder(context, textX, textY);
 		} else {
@@ -229,17 +222,17 @@ public class CustomTextField extends TextFieldWidget {
 		}
 	}
 
-	private void drawPlaceholder(DrawContext context, int x, int y) {
+	private void drawPlaceholder(GuiGraphicsExtractor context, int x, int y) {
 		if (placeholderText != null) {
-			context.drawTextWithShadow(client.textRenderer, placeholderText, x, y, UITheme.Colors.TEXT_MUTED);
+			context.text(client.font, placeholderText, x, y, UITheme.Colors.TEXT_MUTED);
 		}
 	}
 
-	private void drawActiveText(DrawContext context, String text, int textX, int textY, int maxTextWidth) {
+	private void drawActiveText(GuiGraphicsExtractor context, String text, int textX, int textY, int maxTextWidth) {
 		int color = this.isFocused() ? UITheme.Colors.TEXT_PRIMARY : UITheme.Colors.TEXT_SUBTITLE;
 
 		context.enableScissor(textX, this.getY(), textX + maxTextWidth, this.getY() + this.getHeight());
-		context.drawTextWithShadow(client.textRenderer, text, textX, textY, color);
+		context.text(client.font, text, textX, textY, color);
 		context.disableScissor();
 
 		if (this.isFocused() && this.isActive()) {
@@ -247,17 +240,17 @@ public class CustomTextField extends TextFieldWidget {
 		}
 	}
 
-	private void drawCursor(DrawContext context, String text, int textX, int textY) {
+	private void drawCursor(GuiGraphicsExtractor context, String text, int textX, int textY) {
 		if ((System.currentTimeMillis() / CURSOR_BLINK_MS) % 2 == 0) {
-			int cursorPos = this.getCursor();
+			int cursorPos = this.getCursorPosition();
 			String beforeCursor = text.substring(0, Math.min(cursorPos, text.length()));
-			int cursorX = textX + client.textRenderer.getWidth(beforeCursor);
+			int cursorX = textX + client.font.width(beforeCursor);
 			context.fill(cursorX, textY - 1, cursorX + UITheme.Dimensions.BORDER_WIDTH, textY + 9, UITheme.Colors.TEXT_PRIMARY);
 		}
 	}
 
-	private void drawClearButton(DrawContext context, int mouseX, int mouseY) {
-		if (this.getText().isEmpty()) return;
+	private void drawClearButton(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+		if (this.getValue().isEmpty()) return;
 
 		int clearX = this.getX() + this.getWidth() - CLEAR_BUTTON_SIZE - 4;
 		int clearY = this.getY() + (this.getHeight() - CLEAR_BUTTON_SIZE) / 2;
@@ -265,10 +258,10 @@ public class CustomTextField extends TextFieldWidget {
 		int clearColor = isHovered ? UITheme.Colors.TEXT_PRIMARY : UITheme.Colors.TEXT_MUTED;
 
 		String xSymbol = "✕";
-		int xWidth = client.textRenderer.getWidth(xSymbol);
+		int xWidth = client.font.width(xSymbol);
 		int xX = clearX + (CLEAR_BUTTON_SIZE - xWidth) / 2;
 		int xY = clearY + (CLEAR_BUTTON_SIZE - UITheme.Typography.TEXT_HEIGHT) / 2;
-		context.drawTextWithShadow(client.textRenderer, xSymbol, xX, xY, clearColor);
+		context.text(client.font, xSymbol, xX, xY, clearColor);
 	}
 
 	private boolean wasCtrlVDown = false;
@@ -276,8 +269,8 @@ public class CustomTextField extends TextFieldWidget {
 
 	private void handleSpecialKeys(long windowHandle) {
 		long currentTime = System.currentTimeMillis();
-		String currentText = this.getText();
-		int cursorPos = this.getCursor();
+		String currentText = this.getValue();
+		int cursorPos = this.getCursorPosition();
 
 		boolean isCtrlDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS ||
 				GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
@@ -288,8 +281,8 @@ public class CustomTextField extends TextFieldWidget {
 			if (clipboard != null && !clipboard.isEmpty()) {
 				String newText = currentText.substring(0, cursorPos) + clipboard + currentText.substring(cursorPos);
 				if (newText.length() <= 256) {
-					this.setText(newText);
-					this.setCursor(cursorPos + clipboard.length(), false);
+					this.setValue(newText);
+					this.setCursorPosition(cursorPos + clipboard.length());
 					if (onChanged != null) {
 						onChanged.run();
 					}
@@ -300,16 +293,15 @@ public class CustomTextField extends TextFieldWidget {
 
 		boolean isADown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_A) == GLFW.GLFW_PRESS;
 		if (isCtrlDown && isADown && !wasCtrlADown) {
-			this.setCursor(0, false);
-			this.setCursor(currentText.length(), true);
+			this.setCursorPosition(currentText.length());
 		}
 		wasCtrlADown = isCtrlDown && isADown;
 
 		boolean isBackspaceDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_BACKSPACE) == GLFW.GLFW_PRESS;
 		if (backspaceState.shouldTrigger(currentTime, isBackspaceDown) && cursorPos > 0) {
 			String newText = currentText.substring(0, cursorPos - 1) + currentText.substring(cursorPos);
-			this.setText(newText);
-			this.setCursor(cursorPos - 1, false);
+			this.setValue(newText);
+			this.setCursorPosition(cursorPos - 1);
 			if (onChanged != null) {
 				onChanged.run();
 			}
@@ -318,7 +310,7 @@ public class CustomTextField extends TextFieldWidget {
 		boolean isDeleteDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_DELETE) == GLFW.GLFW_PRESS;
 		if (deleteState.shouldTrigger(currentTime, isDeleteDown) && cursorPos < currentText.length()) {
 			String newText = currentText.substring(0, cursorPos) + currentText.substring(cursorPos + 1);
-			this.setText(newText);
+			this.setValue(newText);
 			if (onChanged != null) {
 				onChanged.run();
 			}
@@ -326,23 +318,23 @@ public class CustomTextField extends TextFieldWidget {
 
 		boolean isLeftDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_LEFT) == GLFW.GLFW_PRESS;
 		if (leftState.shouldTrigger(currentTime, isLeftDown) && cursorPos > 0) {
-			this.setCursor(cursorPos - 1, false);
+			this.setCursorPosition(cursorPos - 1);
 		}
 
 		boolean isRightDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_RIGHT) == GLFW.GLFW_PRESS;
 		if (rightState.shouldTrigger(currentTime, isRightDown) && cursorPos < currentText.length()) {
-			this.setCursor(cursorPos + 1, false);
+			this.setCursorPosition(cursorPos + 1);
 		}
 
 		boolean isHomeDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_HOME) == GLFW.GLFW_PRESS;
 		if (isHomeDown && !wasHomePressed) {
-			this.setCursor(0, false);
+			this.setCursorPosition(0);
 		}
 		wasHomePressed = isHomeDown;
 
 		boolean isEndDown = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_END) == GLFW.GLFW_PRESS;
 		if (isEndDown && !wasEndPressed) {
-			this.setCursor(currentText.length(), false);
+			this.setCursorPosition(currentText.length());
 		}
 		wasEndPressed = isEndDown;
 

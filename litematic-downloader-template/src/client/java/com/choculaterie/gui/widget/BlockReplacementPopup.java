@@ -1,21 +1,22 @@
 package com.choculaterie.gui.widget;
 
+import org.lwjgl.glfw.GLFW;
 import com.choculaterie.gui.theme.UITheme;
-import net.minecraft.block.Block;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
 
-public class BlockReplacementPopup implements Drawable {
-    private final MinecraftClient client;
+public class BlockReplacementPopup implements Renderable {
+    private final Minecraft client;
     private final int x;
     private final int y;
     private final int width;
@@ -38,7 +39,7 @@ public class BlockReplacementPopup implements Drawable {
     private static final int HEADER_HEIGHT = 90;
 
     public BlockReplacementPopup(int screenWidth, int screenHeight, String originalBlockId) {
-        this.client = MinecraftClient.getInstance();
+        this.client = Minecraft.getInstance();
         this.originalBlockId = originalBlockId;
 
         this.width = Math.min(400, screenWidth - 40);
@@ -57,9 +58,9 @@ public class BlockReplacementPopup implements Drawable {
                     y + UITheme.Dimensions.PADDING + UITheme.Typography.LINE_HEIGHT + UITheme.Dimensions.PADDING,
                     searchFieldWidth,
                     UITheme.Dimensions.BUTTON_HEIGHT,
-                    Text.of("Search"));
-            searchField.setPlaceholder(Text.of("Search blocks..."));
-            searchField.setOnChanged(() -> onSearchChanged(searchField.getText()));
+                    Component.literal("Search"));
+            searchField.setPlaceholder(Component.literal("Search blocks..."));
+            searchField.setOnChanged(() -> onSearchChanged(searchField.getValue()));
             searchField.setFocused(true);
         }
 
@@ -69,7 +70,7 @@ public class BlockReplacementPopup implements Drawable {
                 y + height - UITheme.Dimensions.PADDING - UITheme.Dimensions.BUTTON_HEIGHT,
                 buttonWidth,
                 UITheme.Dimensions.BUTTON_HEIGHT,
-                Text.of("Cancel"),
+                Component.literal("Cancel"),
                 btn -> {
                     if (onCancel != null) {
                         onCancel.run();
@@ -81,11 +82,11 @@ public class BlockReplacementPopup implements Drawable {
                 y + height - UITheme.Dimensions.PADDING - UITheme.Dimensions.BUTTON_HEIGHT,
                 buttonWidth,
                 UITheme.Dimensions.BUTTON_HEIGHT,
-                Text.of("Replace"),
+                Component.literal("Replace"),
                 btn -> {
                     if (selectedIndex >= 0 && selectedIndex < filteredBlocks.size()) {
                         Block selectedBlock = filteredBlocks.get(selectedIndex);
-                        String newBlockId = Registries.BLOCK.getId(selectedBlock).toString();
+                        String newBlockId = BuiltInRegistries.BLOCK.getKey(selectedBlock).toString();
                         if (onBlockSelected != null) {
                             onBlockSelected.accept(originalBlockId, newBlockId);
                         }
@@ -96,15 +97,17 @@ public class BlockReplacementPopup implements Drawable {
     }
 
     private void loadAllBlocks() {
-        for (Identifier id : Registries.BLOCK.getIds()) {
-            Block block = Registries.BLOCK.get(id);
-            if (block != null && !block.asItem().equals(net.minecraft.item.Items.AIR)) {
+        for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
+            var blockRef = BuiltInRegistries.BLOCK.get(id);
+            if (blockRef.isEmpty()) continue;
+            Block block = blockRef.get().value();
+            if (!block.asItem().equals(net.minecraft.world.item.Items.AIR)) {
                 allBlocks.add(block);
             }
         }
         allBlocks.sort((a, b) -> {
-            String nameA = Registries.BLOCK.getId(a).getPath();
-            String nameB = Registries.BLOCK.getId(b).getPath();
+            String nameA = BuiltInRegistries.BLOCK.getKey(a).getPath();
+            String nameB = BuiltInRegistries.BLOCK.getKey(b).getPath();
             return nameA.compareTo(nameB);
         });
     }
@@ -117,7 +120,7 @@ public class BlockReplacementPopup implements Drawable {
             filteredBlocks.addAll(allBlocks);
         } else {
             for (Block block : allBlocks) {
-                String blockName = Registries.BLOCK.getId(block).getPath();
+                String blockName = BuiltInRegistries.BLOCK.getKey(block).getPath();
                 if (blockName.contains(lowerSearch)) {
                     filteredBlocks.add(block);
                 }
@@ -155,8 +158,8 @@ public class BlockReplacementPopup implements Drawable {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight(),
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        context.fill(0, 0, client.getWindow().getGuiScaledWidth(), client.getWindow().getGuiScaledHeight(),
                 UITheme.Colors.OVERLAY_BG);
 
         context.fill(x, y, x + width, y + height, UITheme.Colors.BUTTON_BG_DISABLED);
@@ -169,15 +172,15 @@ public class BlockReplacementPopup implements Drawable {
                 UITheme.Colors.BUTTON_BORDER);
 
         String title = "Replace: " + getSimpleBlockName(originalBlockId);
-        context.drawCenteredTextWithShadow(
-                client.textRenderer,
+        context.centeredText(
+                client.font,
                 title,
                 x + width / 2,
                 y + UITheme.Dimensions.PADDING,
                 UITheme.Colors.TEXT_PRIMARY);
 
         if (searchField != null) {
-            searchField.render(context, mouseX, mouseY, delta);
+            searchField.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         int listY = y + HEADER_HEIGHT;
@@ -208,10 +211,10 @@ public class BlockReplacementPopup implements Drawable {
             context.fill(x + UITheme.Dimensions.PADDING + 2, itemY, listRightEdge - 2, itemY + ITEM_HEIGHT, bgColor);
 
             ItemStack itemStack = new ItemStack(block.asItem());
-            context.drawItem(itemStack, x + UITheme.Dimensions.PADDING + 4, itemY + 4);
+            context.item(itemStack, x + UITheme.Dimensions.PADDING + 4, itemY + 4);
 
-            String blockName = getSimpleBlockName(Registries.BLOCK.getId(block).toString());
-            context.drawTextWithShadow(client.textRenderer, blockName, x + UITheme.Dimensions.PADDING + 24, itemY + 8,
+            String blockName = getSimpleBlockName(BuiltInRegistries.BLOCK.getKey(block).toString());
+            context.text(client.font, blockName, x + UITheme.Dimensions.PADDING + 24, itemY + 8,
                     UITheme.Colors.TEXT_PRIMARY);
         }
 
@@ -219,7 +222,7 @@ public class BlockReplacementPopup implements Drawable {
 
         if (scrollBar != null && scrollBar.isVisible() && client != null) {
             boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta,
-                    client.getWindow().getHandle());
+                    GLFW.glfwGetCurrentContext());
             if (scrollChanged) {
                 int maxScroll = getMaxScroll();
                 scrollOffset = (int) (scrollBar.getScrollPercentage() * maxScroll);
@@ -231,11 +234,11 @@ public class BlockReplacementPopup implements Drawable {
         }
 
         if (cancelButton != null) {
-            cancelButton.render(context, mouseX, mouseY, delta);
+            cancelButton.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         if (replaceButton != null) {
-            replaceButton.render(context, mouseX, mouseY, delta);
+            replaceButton.extractRenderState(context, mouseX, mouseY, delta);
         }
     }
 
@@ -296,7 +299,7 @@ public class BlockReplacementPopup implements Drawable {
             if (isOverReplace) {
                 if (selectedIndex >= 0 && selectedIndex < filteredBlocks.size()) {
                     Block selectedBlock = filteredBlocks.get(selectedIndex);
-                    String newBlockId = Registries.BLOCK.getId(selectedBlock).toString();
+                    String newBlockId = BuiltInRegistries.BLOCK.getKey(selectedBlock).toString();
                     if (onBlockSelected != null) {
                         onBlockSelected.accept(originalBlockId, newBlockId);
                     }

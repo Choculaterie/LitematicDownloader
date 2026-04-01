@@ -1,11 +1,11 @@
 package com.choculaterie.gui.widget;
 
 import com.choculaterie.gui.theme.UITheme;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.RenderPipelines;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 public class ImageViewerWidget {
@@ -22,7 +22,7 @@ public class ImageViewerWidget {
     private final int originalImageWidth;
     private final int originalImageHeight;
     private final Runnable onClose;
-    private final MinecraftClient client;
+    private final Minecraft client;
     private final int currentImageIndex;
     private final int totalImages;
     private final Runnable onPrevious;
@@ -35,7 +35,7 @@ public class ImageViewerWidget {
     private CustomButton nextButton;
 
 
-    public ImageViewerWidget(MinecraftClient client, Identifier imageTexture,
+    public ImageViewerWidget(Minecraft client, Identifier imageTexture,
                             int originalImageWidth, int originalImageHeight,
                             int currentImageIndex, int totalImages,
                             Runnable onPrevious, Runnable onNext, Runnable onClose) {
@@ -49,7 +49,7 @@ public class ImageViewerWidget {
         this.onNext = onNext;
         this.onClose = onClose;
 
-        updateLayout(client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight());
+        updateLayout(client.getWindow().getGuiScaledWidth(), client.getWindow().getGuiScaledHeight());
     }
 
     public void updateLayout(int screenWidth, int screenHeight) {
@@ -69,7 +69,7 @@ public class ImageViewerWidget {
 
         if (closeButton == null) {
             closeButton = new CustomButton(closeX, closeY, UITheme.Dimensions.BUTTON_HEIGHT,
-                    UITheme.Dimensions.BUTTON_HEIGHT, Text.of("×"), btn -> onClose.run());
+                    UITheme.Dimensions.BUTTON_HEIGHT, Component.literal("×"), btn -> onClose.run());
             closeButton.setRenderAsXIcon(true);
         } else {
             setButtonBounds(closeButton, closeX, closeY, UITheme.Dimensions.BUTTON_HEIGHT, UITheme.Dimensions.BUTTON_HEIGHT);
@@ -78,14 +78,14 @@ public class ImageViewerWidget {
 
     private void updateNavigationButtons() {
         String indicator = String.format("%d / %d", currentImageIndex + 1, totalImages);
-        int indicatorWidth = client.textRenderer.getWidth(indicator);
+        int indicatorWidth = client.font.width(indicator);
         int indicatorX = (screenWidth - indicatorWidth) / 2;
         int navY = screenHeight - NAV_AREA_BOTTOM_OFFSET;
 
         int prevX = indicatorX - NAV_BUTTON_WIDTH - NAV_BUTTON_SPACING;
         if (prevButton == null) {
             prevButton = new CustomButton(prevX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT,
-                    Text.of("<"), btn -> onPrevious.run());
+                    Component.literal("<"), btn -> onPrevious.run());
         } else {
             setButtonBounds(prevButton, prevX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT);
         }
@@ -93,7 +93,7 @@ public class ImageViewerWidget {
         int nextX = indicatorX + indicatorWidth + NAV_BUTTON_SPACING;
         if (nextButton == null) {
             nextButton = new CustomButton(nextX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT,
-                    Text.of(">"), btn -> onNext.run());
+                    Component.literal(">"), btn -> onNext.run());
         } else {
             setButtonBounds(nextButton, nextX, navY, NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT);
         }
@@ -130,7 +130,7 @@ public class ImageViewerWidget {
         return new int[]{displayWidth, displayHeight};
     }
 
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, screenWidth, screenHeight, UITheme.Colors.OVERLAY_BG);
 
         renderImage(context);
@@ -140,10 +140,10 @@ public class ImageViewerWidget {
         }
 
         if (closeButton != null) {
-            closeButton.render(context, mouseX, mouseY, delta);
+            closeButton.extractRenderState(context, mouseX, mouseY, delta);
         }
     }
-    private void renderImage(DrawContext context) {
+    private void renderImage(GuiGraphicsExtractor context) {
         int[] dimensions = getScaledImageDimensions();
         int displayWidth = dimensions[0];
         int displayHeight = dimensions[1];
@@ -154,20 +154,13 @@ public class ImageViewerWidget {
         context.fill(0, 0, screenWidth, screenHeight, UITheme.Colors.PANEL_BG);
 
         if (imageTexture != null) {
-            context.drawTexture(
-                RenderPipelines.GUI_TEXTURED,
-                imageTexture,
-                imageX, imageY,
-                0, 0,
-                displayWidth, displayHeight,
-                displayWidth, displayHeight
-            );
+            context.blit(imageTexture, imageX, imageY, displayWidth, displayHeight, 0.0f, 0.0f, 1.0f, 1.0f);
         }
     }
 
-    private void renderNavigation(DrawContext context, int mouseX, int mouseY, float delta) {
+    private void renderNavigation(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         String pageText = String.format("%d / %d", currentImageIndex + 1, totalImages);
-        int textWidth = client.textRenderer.getWidth(pageText);
+        int textWidth = client.font.width(pageText);
         int textX = (screenWidth - textWidth) / 2;
         int textY = screenHeight - NAV_AREA_BOTTOM_OFFSET + TEXT_VERTICAL_OFFSET;
 
@@ -178,17 +171,17 @@ public class ImageViewerWidget {
 
         drawNavigationBackground(context, prevBtnX, navY, nextBtnX);
 
-        context.drawTextWithShadow(client.textRenderer, pageText, textX, textY, UITheme.Colors.TEXT_SUBTITLE);
+        context.text(client.font, pageText, textX, textY, UITheme.Colors.TEXT_SUBTITLE);
 
         if (prevButton != null) {
-            prevButton.render(context, mouseX, mouseY, delta);
+            prevButton.extractRenderState(context, mouseX, mouseY, delta);
         }
         if (nextButton != null) {
-            nextButton.render(context, mouseX, mouseY, delta);
+            nextButton.extractRenderState(context, mouseX, mouseY, delta);
         }
     }
 
-    private void drawNavigationBackground(DrawContext context, int prevBtnX, int navY, int nextBtnX) {
+    private void drawNavigationBackground(GuiGraphicsExtractor context, int prevBtnX, int navY, int nextBtnX) {
         int bgX = prevBtnX;
         int bgWidth = (nextBtnX + NAV_BUTTON_WIDTH) - prevBtnX;
         int bgY = navY;

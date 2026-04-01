@@ -1,32 +1,30 @@
 package com.choculaterie.gui.widget;
 
+import org.lwjgl.glfw.GLFW;
 import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.models.MinemevFileInfo;
 import com.choculaterie.models.MinemevPostDetailInfo;
 import com.choculaterie.models.MinemevPostInfo;
 import com.choculaterie.network.MinemevNetworkManager;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.RenderPipelines;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.Element;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.NativeImageBackedTexture;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import com.mojang.blaze3d.platform.NativeImage;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 
-import javax.imageio.ImageIO;
-import javax.imageio.ImageReader;
-import javax.imageio.stream.ImageInputStream;
-import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.net.URI;
+import javax.imageio.ImageIO;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -42,9 +40,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 
 
-public class PostDetailPanel implements Drawable, Element {
+public class PostDetailPanel implements Renderable, GuiEventListener {
     
     
     
@@ -73,7 +72,7 @@ public class PostDetailPanel implements Drawable, Element {
     private int originalImageHeight = 0;
     private final Map<String, int[]> imageDimensionsCache = new ConcurrentHashMap<>();
 
-    private final MinecraftClient client;
+    private final Minecraft client;
     private double scrollOffset = 0;
     private int contentHeight = 0;
 
@@ -100,7 +99,7 @@ public class PostDetailPanel implements Drawable, Element {
         this.y = y;
         this.width = width;
         this.height = height;
-        this.client = MinecraftClient.getInstance();
+        this.client = Minecraft.getInstance();
         this.imageLoadingSpinner = new LoadingSpinner(0, 0);
         int scrollBarYOffset = 30;
         this.scrollBar = new ScrollBar(x + width - 8, y + scrollBarYOffset, height - scrollBarYOffset);
@@ -117,7 +116,7 @@ public class PostDetailPanel implements Drawable, Element {
         if (schematicDropdown != null) {
             schematicDropdown.setPosition(x, y);
             if (schematicDropdown.isOpen()) {
-                schematicDropdown.close();
+                schematicDropdown.onClose();
             }
         }
     }
@@ -128,7 +127,7 @@ public class PostDetailPanel implements Drawable, Element {
 
     public void closeDropdown() {
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
-            schematicDropdown.close();
+            schematicDropdown.onClose();
         }
     }
 
@@ -187,7 +186,7 @@ public class PostDetailPanel implements Drawable, Element {
         int btnSpacing = compact ? 5 : 10;
 
         String indicator = String.format("%d / %d", currentImageIndex + 1, imageUrls.length);
-        int indicatorWidth = client.textRenderer.getWidth(indicator);
+        int indicatorWidth = client.font.width(indicator);
         int indicatorX = x + (width - indicatorWidth) / 2;
 
         int prevBtnX = indicatorX - btnWidth - btnSpacing;
@@ -195,7 +194,7 @@ public class PostDetailPanel implements Drawable, Element {
 
         if (prevImageButton == null) {
             prevImageButton = new CustomButton(prevBtnX, imageNavY, btnWidth, btnHeight,
-                    Text.of("<"), btn -> previousImage());
+                    Component.literal("<"), btn -> previousImage());
         } else {
             prevImageButton.setX(prevBtnX);
             prevImageButton.setY(imageNavY);
@@ -204,7 +203,7 @@ public class PostDetailPanel implements Drawable, Element {
 
         if (nextImageButton == null) {
             nextImageButton = new CustomButton(nextBtnX, imageNavY, btnWidth, btnHeight,
-                    Text.of(">"), btn -> nextImage());
+                    Component.literal(">"), btn -> nextImage());
         } else {
             nextImageButton.setX(nextBtnX);
             nextImageButton.setY(imageNavY);
@@ -313,7 +312,7 @@ public class PostDetailPanel implements Drawable, Element {
             if (!imageCache.containsKey(url)) {
                 new Thread(() -> {
                     try {
-                        loadImageSync(url);
+                        loadImageAsync(url);
                     } catch (Exception e) {
                         System.err.println("Failed to preload image: " + url);
                     }
@@ -323,9 +322,15 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     private void loadImage(String imageUrl) {
-        if (imageUrl == null || imageUrl.isEmpty()) return;
+        if (imageUrl == null || imageUrl.isEmpty()) {
+            System.out.println("[IMG] loadImage called with null/empty URL");
+            return;
+        }
+
+        System.out.println("[IMG] loadImage: " + imageUrl);
 
         if (imageCache.containsKey(imageUrl)) {
+            System.out.println("[IMG] Cache hit, assigning texture");
             currentImageTexture = imageCache.get(imageUrl);
             int[] dims = imageDimensionsCache.get(imageUrl);
             if (dims != null) {
@@ -338,40 +343,43 @@ public class PostDetailPanel implements Drawable, Element {
 
         isLoadingImage = true;
         loadingImageUrl = imageUrl;
+        System.out.println("[IMG] Starting background load thread");
 
         new Thread(() -> {
             try {
-                Identifier texId = loadImageSync(imageUrl);
-                if (client != null) {
-                    client.execute(() -> {
-                        if (imageUrl.equals(loadingImageUrl)) {
-                            currentImageTexture = texId;
-                            int[] dims = imageDimensionsCache.get(imageUrl);
-                            if (dims != null) {
-                                originalImageWidth = dims[0];
-                                originalImageHeight = dims[1];
-                            }
-                            isLoadingImage = false;
-                        }
-                    });
-                }
+                loadImageAsync(imageUrl);
             } catch (Exception e) {
+                System.err.println("[IMG] Exception in load thread: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                e.printStackTrace();
                 if (client != null) {
                     client.execute(() -> {
                         isLoadingImage = false;
-                        System.err.println("Failed to load image: " + e.getMessage());
                     });
                 }
             }
         }).start();
     }
 
-    private Identifier loadImageSync(String imageUrl) throws Exception {
+    private void loadImageAsync(String imageUrl) throws Exception {
         if (imageCache.containsKey(imageUrl)) {
-            return imageCache.get(imageUrl);
+            if (client != null) {
+                client.execute(() -> {
+                    if (imageUrl.equals(loadingImageUrl)) {
+                        currentImageTexture = imageCache.get(imageUrl);
+                        int[] dims = imageDimensionsCache.get(imageUrl);
+                        if (dims != null) {
+                            originalImageWidth = dims[0];
+                            originalImageHeight = dims[1];
+                        }
+                        isLoadingImage = false;
+                    }
+                });
+            }
+            return;
         }
 
         String encodedUrl = encodeImageUrl(imageUrl);
+        System.out.println("[IMG] Fetching: " + encodedUrl);
 
         HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -384,18 +392,21 @@ public class PostDetailPanel implements Drawable, Element {
             .build();
 
         HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        System.out.println("[IMG] HTTP status: " + response.statusCode() + ", body size: " + response.body().length);
 
         if (response.statusCode() != 200) {
             throw new Exception("HTTP error: " + response.statusCode());
         }
 
         byte[] imageData = response.body();
-        byte[] pngBytes = convertImageToPng(imageData);
+        System.out.println("[IMG] Raw bytes: " + imageData.length);
 
-        NativeImage nativeImage = NativeImage.read(new ByteArrayInputStream(pngBytes));
+        byte[] pngBytes = convertImageToPng(imageData);
+        NativeImage nativeImage = NativeImage.read(pngBytes);
 
         int imgWidth = nativeImage.getWidth();
         int imgHeight = nativeImage.getHeight();
+        System.out.println("[IMG] Decoded size: " + imgWidth + "x" + imgHeight + " format=" + nativeImage.format());
 
         if (imgWidth <= 0 || imgHeight <= 0) {
             nativeImage.close();
@@ -404,28 +415,49 @@ public class PostDetailPanel implements Drawable, Element {
 
         if (imgWidth > 4096 || imgHeight > 4096) {
             nativeImage.close();
-            throw new Exception("Image too large");
+            throw new Exception("Image too large: " + imgWidth + "x" + imgHeight);
         }
 
         imageDimensionsCache.put(imageUrl, new int[]{imgWidth, imgHeight});
 
         final NativeImage finalImage = nativeImage;
-        final String uniqueId = UUID.randomUUID().toString().replace("-", "");
-        final Identifier texId = Identifier.of("litematicdownloader", "textures/dynamic/" + uniqueId);
+        System.out.println("[IMG] Scheduling texture creation on render thread");
 
         if (client != null) {
             client.execute(() -> {
-                client.getTextureManager().registerTexture(
-                    texId,
-                    new NativeImageBackedTexture(() -> "minemev_image", finalImage)
-                );
+                System.out.println("[IMG] Creating DynamicTexture on render thread");
+                String uniqueId = "img_" + UUID.randomUUID().toString().replace("-", "");
+                DynamicTexture tex = new DynamicTexture(() -> "litematicdownloader:" + uniqueId, finalImage);
+                Identifier texId = Identifier.parse("litematicdownloader:" + uniqueId);
+                client.getTextureManager().register(texId, tex);
+                tex.upload();
                 imageCache.put(imageUrl, texId);
+                if (imageUrl.equals(loadingImageUrl)) {
+                    currentImageTexture = texId;
+                    int[] dims = imageDimensionsCache.get(imageUrl);
+                    if (dims != null) {
+                        originalImageWidth = dims[0];
+                        originalImageHeight = dims[1];
+                    }
+                    isLoadingImage = false;
+                    System.out.println("[IMG] currentImageTexture set, id=" + texId);
+                } else {
+                    System.out.println("[IMG] URL no longer active (loadingImageUrl=" + loadingImageUrl + "), skipping assign");
+                }
             });
+        } else {
+            System.err.println("[IMG] client is null, cannot create texture");
         }
+    }
 
-        Thread.sleep(50);
-
-        return texId;
+    private byte[] convertImageToPng(byte[] imageData) throws Exception {
+        BufferedImage bufferedImage = ImageIO.read(new ByteArrayInputStream(imageData));
+        if (bufferedImage == null) {
+            throw new Exception("Could not decode image (unsupported format)");
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(bufferedImage, "PNG", out);
+        return out.toByteArray();
     }
 
     private String encodeImageUrl(String url) {
@@ -442,48 +474,6 @@ public class PostDetailPanel implements Drawable, Element {
         }
     }
 
-    private byte[] convertImageToPng(byte[] imageData) throws Exception {
-        BufferedImage bufferedImage = null;
-
-        try (ImageInputStream iis = ImageIO.createImageInputStream(new ByteArrayInputStream(imageData))) {
-            Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
-            if (readers.hasNext()) {
-                ImageReader reader = readers.next();
-                try {
-                    reader.setInput(iis);
-                    bufferedImage = reader.read(0);
-                } finally {
-                    reader.dispose();
-                }
-            }
-        } catch (Exception e) {
-        }
-
-        if (bufferedImage == null) {
-            bufferedImage = ImageIO.read(new ByteArrayInputStream(imageData));
-        }
-
-        if (bufferedImage == null) {
-            throw new Exception("Failed to decode image");
-        }
-
-        if (bufferedImage.getType() != BufferedImage.TYPE_INT_RGB &&
-            bufferedImage.getType() != BufferedImage.TYPE_INT_ARGB) {
-            BufferedImage converted = new BufferedImage(
-                bufferedImage.getWidth(),
-                bufferedImage.getHeight(),
-                BufferedImage.TYPE_INT_ARGB
-            );
-            Graphics2D g2d = converted.createGraphics();
-            g2d.drawImage(bufferedImage, 0, 0, null);
-            g2d.dispose();
-            bufferedImage = converted;
-        }
-
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ImageIO.write(bufferedImage, "PNG", baos);
-        return baos.toByteArray();
-    }
 
     public void clear() {
         this.postInfo = null;
@@ -504,7 +494,7 @@ public class PostDetailPanel implements Drawable, Element {
         this.isLoadingFiles = false;
         this.downloadStatus = "";
         if (schematicDropdown != null) {
-            schematicDropdown.close();
+            schematicDropdown.onClose();
             schematicDropdown.setStatusMessage("");
         }
     }
@@ -513,7 +503,7 @@ public class PostDetailPanel implements Drawable, Element {
         if (postInfo == null || isLoadingFiles) return;
 
         if (schematicDropdown.isOpen()) {
-            schematicDropdown.close();
+            schematicDropdown.onClose();
             return;
         }
 
@@ -628,7 +618,7 @@ public class PostDetailPanel implements Drawable, Element {
 
         if ("WEBSITE_LINK".equals(item.getData())) {
             if (schematicDropdown != null) {
-                schematicDropdown.close();
+                schematicDropdown.onClose();
             }
             showRedirectConfirmation();
             return;
@@ -804,7 +794,7 @@ public class PostDetailPanel implements Drawable, Element {
     private void openRedirectUrl() {
         if (postInfo != null && postInfo.urlRedirect() != null && !postInfo.urlRedirect().isEmpty()) {
             try {
-                Util.getOperatingSystem().open(postInfo.urlRedirect());
+                Util.getPlatform().openUri(postInfo.urlRedirect());
             } catch (Exception e) {
                 System.err.println("[PostDetailPanel] ERROR - Failed to open URL: " + e.getMessage());
             }
@@ -817,7 +807,7 @@ public class PostDetailPanel implements Drawable, Element {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         int renderMouseX = mouseX;
         int renderMouseY = mouseY;
 
@@ -835,8 +825,8 @@ public class PostDetailPanel implements Drawable, Element {
 
         if (postInfo == null) {
             String text = "Select a schematic to view details";
-            int textWidth = client.textRenderer.getWidth(text);
-            context.drawTextWithShadow(client.textRenderer, text,
+            int textWidth = client.font.width(text);
+            context.text(client.font, text,
                 x + (width - textWidth) / 2, y + height / 2 - 4, UITheme.Colors.TEXT_SUBTITLE);
             return;
         }
@@ -851,7 +841,7 @@ public class PostDetailPanel implements Drawable, Element {
                     downloadBtnY,
                     downloadBtnSize,
                     downloadBtnSize,
-                    Text.of("⬇️"),
+                    Component.literal("⬇️"),
                     button -> onDownloadButtonClick()
             );
             downloadButton.setRenderAsDownloadIcon(true);
@@ -860,7 +850,7 @@ public class PostDetailPanel implements Drawable, Element {
             downloadButton.setY(downloadBtnY);
             downloadButton.active = !isLoadingFiles;
         }
-        downloadButton.render(context, renderMouseX, renderMouseY, delta);
+        downloadButton.extractRenderState(context, renderMouseX, renderMouseY, delta);
 
         int contentStartY = y + downloadBtnSize;
         context.enableScissor(x + 1, contentStartY, x + width, y + height);
@@ -886,22 +876,15 @@ public class PostDetailPanel implements Drawable, Element {
                 containerX + containerWidth / 2 - imageLoadingSpinner.getWidth() / 2,
                 containerY + containerHeight / 2 - imageLoadingSpinner.getHeight() / 2
             );
-            imageLoadingSpinner.render(context, mouseX, mouseY, delta);
+            imageLoadingSpinner.extractRenderState(context, mouseX, mouseY, delta);
         } else if (currentImageTexture != null) {
             context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, UITheme.Colors.PANEL_BG);
-            context.drawTexture(
-                RenderPipelines.GUI_TEXTURED,
-                currentImageTexture,
-                imageX, imageY,
-                0, 0,
-                actualImageWidth, actualImageHeight,
-                actualImageWidth, actualImageHeight
-            );
+            context.blit(currentImageTexture, imageX, imageY, actualImageWidth, actualImageHeight, 0.0f, 0.0f, 1.0f, 1.0f);
         } else {
             context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, UITheme.Colors.CONTAINER_BG);
             String noImg = isCompactMode() ? "..." : "No image";
-            int tw = client.textRenderer.getWidth(noImg);
-            context.drawTextWithShadow(client.textRenderer, noImg,
+            int tw = client.font.width(noImg);
+            context.text(client.font, noImg,
                 containerX + (containerWidth - tw) / 2, containerY + containerHeight / 2 - 4, UITheme.Colors.TEXT_SUBTITLE);
         }
 
@@ -910,20 +893,20 @@ public class PostDetailPanel implements Drawable, Element {
 
         if (imageUrls != null && imageUrls.length > 1) {
             String indicator = String.format("%d / %d", currentImageIndex + 1, imageUrls.length);
-            int indicatorWidth = client.textRenderer.getWidth(indicator);
+            int indicatorWidth = client.font.width(indicator);
             int indicatorX = x + (width - indicatorWidth) / 2;
             int btnY = currentY;
 
             updateCarouselButtons(btnY);
 
             if (prevImageButton != null) {
-                prevImageButton.render(context, renderMouseX, renderMouseY, delta);
+                prevImageButton.extractRenderState(context, renderMouseX, renderMouseY, delta);
             }
 
-            context.drawTextWithShadow(client.textRenderer, indicator, indicatorX, btnY + 4, UITheme.Colors.TEXT_SUBTITLE);
+            context.text(client.font, indicator, indicatorX, btnY + 4, UITheme.Colors.TEXT_SUBTITLE);
 
             if (nextImageButton != null) {
-                nextImageButton.render(context, renderMouseX, renderMouseY, delta);
+                nextImageButton.extractRenderState(context, renderMouseX, renderMouseY, delta);
             }
 
             currentY += 16 + UITheme.Dimensions.PADDING;
@@ -937,31 +920,31 @@ public class PostDetailPanel implements Drawable, Element {
         contentHeight += titleHeight + 8;
 
         String author = "By " + (postInfo.author() != null ? postInfo.author() : "Unknown");
-        context.drawTextWithShadow(client.textRenderer, author, x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+        context.text(client.font, author, x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 12;
         contentHeight += 12;
 
         String downloads = "Downloads: " + postInfo.downloads();
-        context.drawTextWithShadow(client.textRenderer, downloads, x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+        context.text(client.font, downloads, x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 16;
         contentHeight += 16;
 
         String[] tags = postInfo.tags();
         if (tags != null && tags.length > 0) {
-            context.drawTextWithShadow(client.textRenderer, "Tags:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+            context.text(client.font, "Tags:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
             currentY += 12;
             contentHeight += 12;
 
             int tagX = x + UITheme.Dimensions.PADDING;
             for (String tag : tags) {
-                int tagWidth = client.textRenderer.getWidth(tag) + 8;
+                int tagWidth = client.font.width(tag) + 8;
                 if (tagX + tagWidth > x + width - UITheme.Dimensions.PADDING) {
                     tagX = x + UITheme.Dimensions.PADDING;
                     currentY += 14;
                     contentHeight += 14;
                 }
                 context.fill(tagX, currentY, tagX + tagWidth, currentY + 12, TAG_BG_COLOR);
-                context.drawTextWithShadow(client.textRenderer, tag, tagX + 4, currentY + 2, UITheme.Colors.TEXT_TAG);
+                context.text(client.font, tag, tagX + 4, currentY + 2, UITheme.Colors.TEXT_TAG);
                 tagX += tagWidth + 4;
             }
             currentY += 16;
@@ -970,7 +953,7 @@ public class PostDetailPanel implements Drawable, Element {
 
         String[] versions = postInfo.versions();
         if (versions != null && versions.length > 0) {
-            context.drawTextWithShadow(client.textRenderer, "Versions:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+            context.text(client.font, "Versions:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
             currentY += 12;
             contentHeight += 12;
 
@@ -982,7 +965,7 @@ public class PostDetailPanel implements Drawable, Element {
             if (versions.length > 5) {
                 versionText.append("... (+").append(versions.length - 5).append(" more)");
             }
-            context.drawTextWithShadow(client.textRenderer, versionText.toString(),
+            context.text(client.font, versionText.toString(),
                 x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_TAG);
             currentY += 16;
             contentHeight += 16;
@@ -991,7 +974,7 @@ public class PostDetailPanel implements Drawable, Element {
         if (postDetail != null && postDetail.getDescription() != null && !postDetail.getDescription().isEmpty()) {
             currentY += 8;
             contentHeight += 8;
-            context.drawTextWithShadow(client.textRenderer, "Description:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+            context.text(client.font, "Description:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
             currentY += 12;
             contentHeight += 12;
 
@@ -1002,7 +985,7 @@ public class PostDetailPanel implements Drawable, Element {
             contentHeight += descHeight;
         } else if (isLoadingDetails) {
             currentY += 8;
-            context.drawTextWithShadow(client.textRenderer, "Loading details...", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+            context.text(client.font, "Loading details...", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
             currentY += 20;
             contentHeight += 20;
         }
@@ -1020,7 +1003,7 @@ public class PostDetailPanel implements Drawable, Element {
             if (redirectLinkButton == null) {
                 redirectLinkButton = new CustomButton(
                     btnX, btnY, btnWidth, btnHeight,
-                    Text.of("🔗 View on Website"),
+                    Component.literal("🔗 View on Website"),
                     button -> showRedirectConfirmation()
                 );
             } else {
@@ -1028,7 +1011,7 @@ public class PostDetailPanel implements Drawable, Element {
                 redirectLinkButton.setY(btnY);
             }
 
-            redirectLinkButton.render(context, renderMouseX, renderMouseY, delta);
+            redirectLinkButton.extractRenderState(context, renderMouseX, renderMouseY, delta);
             currentY += btnHeight + 8;
             contentHeight += btnHeight + 8;
         } else {
@@ -1040,11 +1023,11 @@ public class PostDetailPanel implements Drawable, Element {
         context.disableScissor();
 
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
-            schematicDropdown.render(context, mouseX, mouseY, delta);
+            schematicDropdown.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         if (confirmPopup != null) {
-            confirmPopup.render(context, mouseX, mouseY, delta);
+            confirmPopup.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         if (contentHeight > height) {
@@ -1052,13 +1035,13 @@ public class PostDetailPanel implements Drawable, Element {
             scrollBar.setScrollPercentage(scrollOffset / Math.max(1, contentHeight - height));
 
             if (client != null && client.getWindow() != null) {
-                long windowHandle = client.getWindow().getHandle();
+                long windowHandle = GLFW.glfwGetCurrentContext();
                 if (scrollBar.updateAndRender(context, mouseX, mouseY, delta, windowHandle)) {
                     double maxScroll = Math.max(0, contentHeight - height);
                     scrollOffset = scrollBar.getScrollPercentage() * maxScroll;
                 }
             } else {
-                scrollBar.render(context, mouseX, mouseY, delta);
+                scrollBar.extractRenderState(context, mouseX, mouseY, delta);
             }
         }
 
@@ -1068,13 +1051,13 @@ public class PostDetailPanel implements Drawable, Element {
         return imageViewer != null;
     }
 
-    public void renderImageViewer(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void renderImageViewer(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         if (imageViewer != null) {
             imageViewer.render(context, mouseX, mouseY, delta);
         }
     }
 
-    private void drawWrappedText(DrawContext context, String text, int textX, int textY, int maxWidth, int color) {
+    private void drawWrappedText(GuiGraphicsExtractor context, String text, int textX, int textY, int maxWidth, int color) {
         if (text == null || text.isEmpty()) return;
 
         int lineY = textY;
@@ -1092,10 +1075,10 @@ public class PostDetailPanel implements Drawable, Element {
 
             for (String word : words) {
                 String testLine = !line.isEmpty() ? line + " " + word : word;
-                int testWidth = client.textRenderer.getWidth(testLine);
+                int testWidth = client.font.width(testLine);
 
                 if (testWidth > maxWidth && !line.isEmpty()) {
-                    context.drawTextWithShadow(client.textRenderer, line.toString(), textX, lineY, color);
+                    context.text(client.font, line.toString(), textX, lineY, color);
                     line = new StringBuilder(word);
                     lineY += 10;
                 } else {
@@ -1104,7 +1087,7 @@ public class PostDetailPanel implements Drawable, Element {
             }
 
             if (!line.isEmpty()) {
-                context.drawTextWithShadow(client.textRenderer, line.toString(), textX, lineY, color);
+                context.text(client.font, line.toString(), textX, lineY, color);
                 lineY += 10;
             }
         }
@@ -1129,7 +1112,7 @@ public class PostDetailPanel implements Drawable, Element {
 
             for (String word : words) {
                 String testLine = !line.isEmpty() ? line + " " + word : word;
-                int testWidth = client.textRenderer.getWidth(testLine);
+                int testWidth = client.font.width(testLine);
 
                 if (testWidth > maxWidth && !line.isEmpty()) {
                     line = new StringBuilder(word);
@@ -1159,7 +1142,7 @@ public class PostDetailPanel implements Drawable, Element {
                 boolean handled = schematicDropdown.mouseClicked(mouseX, mouseY, button);
                 return handled;
             } else {
-                schematicDropdown.close();
+                schematicDropdown.onClose();
             }
         }
 
@@ -1270,8 +1253,8 @@ public class PostDetailPanel implements Drawable, Element {
 
     private void openImageViewer() {
         if (currentImageTexture != null && client != null && client.getWindow() != null) {
-            int screenWidth = client.getWindow().getScaledWidth();
-            int screenHeight = client.getWindow().getScaledHeight();
+            int screenWidth = client.getWindow().getGuiScaledWidth();
+            int screenHeight = client.getWindow().getGuiScaledHeight();
 
             int totalImages = (imageUrls != null) ? imageUrls.length : 1;
 

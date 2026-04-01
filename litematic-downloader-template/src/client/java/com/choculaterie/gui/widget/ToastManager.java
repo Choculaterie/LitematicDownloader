@@ -2,8 +2,8 @@ package com.choculaterie.gui.widget;
 
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.gui.theme.UITheme;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -11,11 +11,11 @@ import java.util.List;
 
 public class ToastManager {
 	private final List<Toast> toasts = new ArrayList<>();
-	private final MinecraftClient client;
+	private final Minecraft client;
 	private static final int TOP_PADDING = UITheme.Dimensions.PADDING;
 	private static final int TOAST_MIN_HEIGHT = 70;
 
-	public ToastManager(MinecraftClient client) {
+	public ToastManager(Minecraft client) {
 		this.client = client;
 	}
 
@@ -32,8 +32,8 @@ public class ToastManager {
 			return;
 		}
 
-		int screenWidth = client.getWindow().getScaledWidth();
-		int screenHeight = client.getWindow().getScaledHeight();
+		int screenWidth = client.getWindow().getGuiScaledWidth();
+		int screenHeight = client.getWindow().getGuiScaledHeight();
 		int yPosition = calculateToastPosition(screenHeight);
 
 		toasts.add(new Toast(message, type, screenWidth, yPosition, hasCopyButton, copyText));
@@ -59,7 +59,7 @@ public class ToastManager {
 		showToast(message, Toast.Type.WARNING);
 	}
 
-	public void render(DrawContext context, float delta, int mouseX, int mouseY) {
+	public void render(GuiGraphicsExtractor context, float delta, int mouseX, int mouseY) {
 		if (toasts.isEmpty()) {
 			return;
 		}
@@ -73,7 +73,7 @@ public class ToastManager {
 			Toast toast = iterator.next();
 			toast.setHovered(toast.isHovering(mouseX, mouseY));
 
-			if (toast.render(context, client.textRenderer)) {
+			if (toast.render(context, client.font)) {
 				iterator.remove();
 				toastRemoved = true;
 			}
@@ -159,8 +159,8 @@ public class ToastManager {
 	private boolean handleCopyButton(Toast toast, double mouseX, double mouseY) {
 		if (toast.isCopyButtonClicked(mouseX, mouseY)) {
 			String textToCopy = toast.getCopyText();
-			if (client.keyboard != null) {
-				client.keyboard.setClipboard(textToCopy);
+			if (client.keyboardHandler != null) {
+				client.keyboardHandler.setClipboard(textToCopy);
 				showSuccess("Error copied to clipboard!");
 				return true;
 			}

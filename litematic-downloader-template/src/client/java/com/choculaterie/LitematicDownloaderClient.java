@@ -4,25 +4,26 @@ import com.choculaterie.gui.LitematicDownloaderScreen;
 import com.choculaterie.keybind.ModKeybindings;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 public class LitematicDownloaderClient implements ClientModInitializer {
+
 	@Override
 	public void onInitializeClient() {
-		ModKeybindings.register();
+		ModKeybindings.initialize();
 		registerScreenToggleHandler();
 	}
 
 	private static void registerScreenToggleHandler() {
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			if (ModKeybindings.openMenuKey.wasPressed()) {
-				toggleLitematicDownloaderScreen(MinecraftClient.getInstance());
+			while (ModKeybindings.OPEN_MENU_KEY_BINDING.consumeClick()) {
+				toggleLitematicDownloaderScreen(client);
 			}
 		});
 	}
 
-	private static void toggleLitematicDownloaderScreen(MinecraftClient client) {
-		if (client.currentScreen instanceof LitematicDownloaderScreen) {
+	private static void toggleLitematicDownloaderScreen(Minecraft client) {
+		if (client.screen instanceof LitematicDownloaderScreen) {
 			client.setScreen(null);
 		} else {
 			client.setScreen(new LitematicDownloaderScreen());

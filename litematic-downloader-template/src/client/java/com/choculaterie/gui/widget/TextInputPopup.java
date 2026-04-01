@@ -1,19 +1,20 @@
 package com.choculaterie.gui.widget;
 
 import com.choculaterie.gui.theme.UITheme;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.Element;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-public class TextInputPopup implements Drawable, Element {
+public class TextInputPopup implements Renderable, GuiEventListener {
     private static final int POPUP_WIDTH = 300;
     private static final int POPUP_HEIGHT = 120;
     private static final String[] INVALID_CHARS = {"/", "\\", ":", "*", "?", "\"", "<", ">", "|"};
@@ -46,15 +47,15 @@ public class TextInputPopup implements Drawable, Element {
         this.onConfirm = onConfirm;
         this.onCancel = onCancel;
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        this.x = (client.getWindow().getScaledWidth() - POPUP_WIDTH) / 2;
-        this.y = (client.getWindow().getScaledHeight() - POPUP_HEIGHT) / 2;
+        Minecraft client = Minecraft.getInstance();
+        this.x = (client.getWindow().getGuiScaledWidth() - POPUP_WIDTH) / 2;
+        this.y = (client.getWindow().getGuiScaledHeight() - POPUP_HEIGHT) / 2;
 
         initWidgets();
     }
 
     private void initWidgets() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         int fieldY = y + UITheme.Dimensions.PADDING * 3;
 
         textField = new CustomTextField(
@@ -63,9 +64,9 @@ public class TextInputPopup implements Drawable, Element {
                 fieldY,
                 POPUP_WIDTH - UITheme.Dimensions.PADDING * 2,
                 UITheme.Dimensions.BUTTON_HEIGHT,
-                Text.of("")
+                Component.literal("")
         );
-        textField.setPlaceholder(Text.of("Enter name..."));
+        textField.setPlaceholder(Component.literal("Enter name..."));
         textField.setFocused(true);
         textField.setOnChanged(() -> errorMessage = "");
         textField.setOnEnterPressed(this::handleConfirm);
@@ -78,7 +79,7 @@ public class TextInputPopup implements Drawable, Element {
                 buttonY,
                 buttonWidth,
                 UITheme.Dimensions.BUTTON_HEIGHT,
-                Text.of("Cancel"),
+                Component.literal("Cancel"),
                 button -> onCancel.run()
         );
 
@@ -87,7 +88,7 @@ public class TextInputPopup implements Drawable, Element {
                 buttonY,
                 buttonWidth,
                 UITheme.Dimensions.BUTTON_HEIGHT,
-                Text.of(confirmButtonText),
+                Component.literal(confirmButtonText),
                 button -> handleConfirm()
         );
     }
@@ -98,18 +99,18 @@ public class TextInputPopup implements Drawable, Element {
 
     public void setText(String text) {
         if (textField != null) {
-            textField.setText(text);
+            textField.setValue(text);
         }
     }
 
-    private List<String> wrapText(String text, int maxWidth, MinecraftClient client) {
+    private List<String> wrapText(String text, int maxWidth, Minecraft client) {
         List<String> lines = new ArrayList<>();
         String[] words = text.split(" ");
         StringBuilder currentLine = new StringBuilder();
 
         for (String word : words) {
             String testLine = currentLine.isEmpty() ? word : currentLine + " " + word;
-            int width = client.textRenderer.getWidth(testLine);
+            int width = client.font.width(testLine);
 
             if (width <= maxWidth) {
                 if (!currentLine.isEmpty()) {
@@ -132,7 +133,7 @@ public class TextInputPopup implements Drawable, Element {
     }
 
     private void handleConfirm() {
-        String text = textField.getText().trim();
+        String text = textField.getValue().trim();
 
         if (text.isEmpty()) {
             setErrorMessage("Folder name cannot be empty");
@@ -174,10 +175,10 @@ public class TextInputPopup implements Drawable, Element {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         handleEscapeKey();
 
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
 
         drawOverlay(context, client);
         drawPopupBackground(context);
@@ -185,7 +186,7 @@ public class TextInputPopup implements Drawable, Element {
 
         if (textField != null) {
             textField.setFocused(true);
-            textField.render(context, mouseX, mouseY, delta);
+            textField.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         if (!errorMessage.isEmpty()) {
@@ -193,17 +194,17 @@ public class TextInputPopup implements Drawable, Element {
         }
 
         if (cancelButton != null) {
-            cancelButton.render(context, mouseX, mouseY, delta);
+            cancelButton.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         if (confirmButton != null) {
-            confirmButton.render(context, mouseX, mouseY, delta);
+            confirmButton.extractRenderState(context, mouseX, mouseY, delta);
         }
     }
 
     private void handleEscapeKey() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
+        Minecraft client = Minecraft.getInstance();
+        long windowHandle = GLFW.glfwGetCurrentContext();
 
         if (windowHandle != 0) {
             boolean escapePressed = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_ESCAPE) == GLFW.GLFW_PRESS;
@@ -216,11 +217,11 @@ public class TextInputPopup implements Drawable, Element {
         }
     }
 
-    private void drawOverlay(DrawContext context, MinecraftClient client) {
-        context.fill(0, 0, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight(), UITheme.Colors.OVERLAY_BG);
+    private void drawOverlay(GuiGraphicsExtractor context, Minecraft client) {
+        context.fill(0, 0, client.getWindow().getGuiScaledWidth(), client.getWindow().getGuiScaledHeight(), UITheme.Colors.OVERLAY_BG);
     }
 
-    private void drawPopupBackground(DrawContext context) {
+    private void drawPopupBackground(GuiGraphicsExtractor context) {
         context.fill(x, y, x + POPUP_WIDTH, y + POPUP_HEIGHT, UITheme.Colors.BUTTON_BG_DISABLED);
         context.fill(x, y, x + POPUP_WIDTH, y + UITheme.Dimensions.BORDER_WIDTH, UITheme.Colors.BUTTON_BORDER);
         context.fill(x, y + POPUP_HEIGHT - UITheme.Dimensions.BORDER_WIDTH, x + POPUP_WIDTH, y + POPUP_HEIGHT, UITheme.Colors.BUTTON_BORDER);
@@ -228,9 +229,9 @@ public class TextInputPopup implements Drawable, Element {
         context.fill(x + POPUP_WIDTH - UITheme.Dimensions.BORDER_WIDTH, y, x + POPUP_WIDTH, y + POPUP_HEIGHT, UITheme.Colors.BUTTON_BORDER);
     }
 
-    private void drawTitle(DrawContext context, MinecraftClient client) {
-        context.drawCenteredTextWithShadow(
-                client.textRenderer,
+    private void drawTitle(GuiGraphicsExtractor context, Minecraft client) {
+        context.centeredText(
+                client.font,
                 title,
                 x + POPUP_WIDTH / 2,
                 y + UITheme.Dimensions.PADDING,
@@ -238,13 +239,13 @@ public class TextInputPopup implements Drawable, Element {
         );
     }
 
-    private void drawErrorMessage(DrawContext context, MinecraftClient client) {
+    private void drawErrorMessage(GuiGraphicsExtractor context, Minecraft client) {
         List<String> wrappedError = wrapText(errorMessage, POPUP_WIDTH - UITheme.Dimensions.PADDING * 2, client);
         int errorY = y + UITheme.Dimensions.PADDING * 3 + 25;
 
         for (String line : wrappedError) {
-            context.drawCenteredTextWithShadow(
-                    client.textRenderer,
+            context.centeredText(
+                    client.font,
                     line,
                     x + POPUP_WIDTH / 2,
                     errorY,
@@ -282,22 +283,10 @@ public class TextInputPopup implements Drawable, Element {
         return mouseX >= x && mouseX <= x + POPUP_WIDTH && mouseY >= y && mouseY <= y + POPUP_HEIGHT;
     }
 
-    private boolean isMouseOverWidget(Element widget, double mouseX, double mouseY) {
-        if (widget == null) {
-            return false;
-        }
-
-        return switch (widget) {
-            case CustomTextField field -> mouseX >= field.getX() &&
-                                          mouseX < field.getX() + field.getWidth() &&
-                                          mouseY >= field.getY() &&
-                                          mouseY < field.getY() + field.getHeight();
-            case CustomButton button -> mouseX >= button.getX() &&
-                                        mouseX < button.getX() + button.getWidth() &&
-                                        mouseY >= button.getY() &&
-                                        mouseY < button.getY() + button.getHeight();
-            default -> false;
-        };
+    private boolean isMouseOverWidget(AbstractWidget widget, double mouseX, double mouseY) {
+        if (widget == null) return false;
+        return mouseX >= widget.getX() && mouseX < widget.getX() + widget.getWidth() &&
+               mouseY >= widget.getY() && mouseY < widget.getY() + widget.getHeight();
     }
 
     @Override

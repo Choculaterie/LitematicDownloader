@@ -1,18 +1,18 @@
 package com.choculaterie.gui.widget;
 
 import com.choculaterie.gui.theme.UITheme;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.Element;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class ConfirmPopup implements Drawable, Element {
+public class ConfirmPopup implements Renderable, GuiEventListener {
     private static final int POPUP_WIDTH = 400;
     private static final int MAX_MESSAGE_HEIGHT = 300;
 
@@ -50,12 +50,12 @@ public class ConfirmPopup implements Drawable, Element {
         this.onCancel = onCancel;
         this.confirmButtonText = confirmButtonText;
 
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
 
         this.wrappedMessage = wrapText(message, POPUP_WIDTH - UITheme.Dimensions.PADDING * 2, client);
 
-        int screenHeight = client.getWindow().getScaledHeight();
-        int screenWidth = client.getWindow().getScaledWidth();
+        int screenHeight = client.getWindow().getGuiScaledHeight();
+        int screenWidth = client.getWindow().getGuiScaledWidth();
 
         int verticalMargin = 40;
         int popupChrome = UITheme.Dimensions.PADDING + UITheme.Typography.LINE_HEIGHT + UITheme.Dimensions.PADDING + UITheme.Dimensions.PADDING + UITheme.Dimensions.BUTTON_HEIGHT + UITheme.Dimensions.PADDING;
@@ -80,7 +80,7 @@ public class ConfirmPopup implements Drawable, Element {
         initWidgets();
     }
 
-    private List<String> wrapText(String text, int maxWidth, MinecraftClient client) {
+    private List<String> wrapText(String text, int maxWidth, Minecraft client) {
         List<String> lines = new ArrayList<>();
 
         String[] paragraphs = text.split("\n");
@@ -96,7 +96,7 @@ public class ConfirmPopup implements Drawable, Element {
 
             for (String word : words) {
                 String testLine = currentLine.length() == 0 ? word : currentLine + " " + word;
-                int width = client.textRenderer.getWidth(testLine);
+                int width = client.font.width(testLine);
 
                 if (width <= maxWidth) {
                     if (currentLine.length() > 0) {
@@ -128,7 +128,7 @@ public class ConfirmPopup implements Drawable, Element {
                 buttonY,
                 buttonWidth,
                 UITheme.Dimensions.BUTTON_HEIGHT,
-                Text.of("Cancel"),
+                Component.literal("Cancel"),
                 button -> onCancel.run()
         );
 
@@ -137,15 +137,15 @@ public class ConfirmPopup implements Drawable, Element {
                 buttonY,
                 buttonWidth,
                 UITheme.Dimensions.BUTTON_HEIGHT,
-                Text.of(confirmButtonText),
+                Component.literal(confirmButtonText),
                 button -> onConfirm.run()
         );
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        long windowHandle = client.getWindow() != null ? client.getWindow().getHandle() : 0;
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        Minecraft client = Minecraft.getInstance();
+        long windowHandle = GLFW.glfwGetCurrentContext();
 
         if (windowHandle != 0) {
             boolean enterPressed = GLFW.glfwGetKey(windowHandle, GLFW.GLFW_KEY_ENTER) == GLFW.GLFW_PRESS ||
@@ -163,7 +163,7 @@ public class ConfirmPopup implements Drawable, Element {
             wasEscapePressed = escapePressed;
         }
 
-        context.fill(0, 0, client.getWindow().getScaledWidth(), client.getWindow().getScaledHeight(), UITheme.Colors.OVERLAY_BG);
+        context.fill(0, 0, client.getWindow().getGuiScaledWidth(), client.getWindow().getGuiScaledHeight(), UITheme.Colors.OVERLAY_BG);
 
         context.fill(x, y, x + POPUP_WIDTH, y + popupHeight, UITheme.Colors.BUTTON_BG_DISABLED);
 
@@ -172,8 +172,8 @@ public class ConfirmPopup implements Drawable, Element {
         context.fill(x, y, x + UITheme.Dimensions.BORDER_WIDTH, y + popupHeight, UITheme.Colors.BUTTON_BORDER);
         context.fill(x + POPUP_WIDTH - UITheme.Dimensions.BORDER_WIDTH, y, x + POPUP_WIDTH, y + popupHeight, UITheme.Colors.BUTTON_BORDER);
 
-        context.drawCenteredTextWithShadow(
-                client.textRenderer,
+        context.centeredText(
+                client.font,
                 title,
                 x + POPUP_WIDTH / 2,
                 y + UITheme.Dimensions.PADDING,
@@ -188,8 +188,8 @@ public class ConfirmPopup implements Drawable, Element {
         int messageY = messageAreaY - (int)scrollOffset;
         for (String line : wrappedMessage) {
             if (messageY + UITheme.Typography.LINE_HEIGHT >= messageAreaY && messageY < messageAreaY + messageAreaHeight) {
-                context.drawTextWithShadow(
-                        client.textRenderer,
+                context.text(
+                        client.font,
                         line,
                         x + UITheme.Dimensions.PADDING,
                         messageY,
@@ -203,7 +203,7 @@ public class ConfirmPopup implements Drawable, Element {
 
         if (scrollBar != null && client.getWindow() != null) {
             scrollBar.setScrollPercentage(scrollOffset / Math.max(1, actualMessageHeight - visibleMessageHeight));
-            boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, client.getWindow().getHandle());
+            boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, GLFW.glfwGetCurrentContext());
 
             if (scrollChanged || scrollBar.isDragging()) {
                 double maxScroll = actualMessageHeight - visibleMessageHeight;
@@ -212,10 +212,10 @@ public class ConfirmPopup implements Drawable, Element {
         }
 
         if (cancelButton != null) {
-            cancelButton.render(context, mouseX, mouseY, delta);
+            cancelButton.extractRenderState(context, mouseX, mouseY, delta);
         }
         if (confirmButton != null) {
-            confirmButton.render(context, mouseX, mouseY, delta);
+            confirmButton.extractRenderState(context, mouseX, mouseY, delta);
         }
     }
 

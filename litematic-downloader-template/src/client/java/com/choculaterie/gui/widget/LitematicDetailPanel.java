@@ -1,26 +1,27 @@
 package com.choculaterie.gui.widget;
 
+import org.lwjgl.glfw.GLFW;
 import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.util.LitematicParser;
 import com.choculaterie.util.LitematicBlockReplacer;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.Element;
-import net.minecraft.client.gui.Click;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class LitematicDetailPanel implements Drawable, Element {
+public class LitematicDetailPanel implements Renderable, GuiEventListener {
 
     private int x;
     private int y;
@@ -28,7 +29,7 @@ public class LitematicDetailPanel implements Drawable, Element {
     private int height;
 
     private File litematicFile;
-    private final MinecraftClient client;
+    private final Minecraft client;
 
     private CustomButton closeButton;
     private Runnable onClose;
@@ -48,7 +49,7 @@ public class LitematicDetailPanel implements Drawable, Element {
         this.y = y;
         this.width = width;
         this.height = height;
-        this.client = MinecraftClient.getInstance();
+        this.client = Minecraft.getInstance();
         updateCloseButton();
         updateScrollBar();
     }
@@ -73,7 +74,7 @@ public class LitematicDetailPanel implements Drawable, Element {
                 y,
                 closeButtonSize,
                 closeButtonSize,
-                net.minecraft.text.Text.of("X"),
+                net.minecraft.network.chat.Component.literal("X"),
                 btn -> {
                     if (onClose != null) {
                         onClose.run();
@@ -157,7 +158,7 @@ public class LitematicDetailPanel implements Drawable, Element {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         int renderMouseX = replacementPopup != null ? -1 : mouseX;
         int renderMouseY = replacementPopup != null ? -1 : mouseY;
 
@@ -169,14 +170,14 @@ public class LitematicDetailPanel implements Drawable, Element {
         context.fill(x, y + height - 1, x + width, y + height, UITheme.Colors.PANEL_BORDER);
 
         if (closeButton != null) {
-            closeButton.render(context, renderMouseX, renderMouseY, delta);
+            closeButton.extractRenderState(context, renderMouseX, renderMouseY, delta);
         }
 
         if (litematicFile == null) {
             String emptyText = "Select a litematic file";
-            int textWidth = client.textRenderer.getWidth(emptyText);
-            context.drawTextWithShadow(
-                    client.textRenderer,
+            int textWidth = client.font.width(emptyText);
+            context.text(
+                    client.font,
                     emptyText,
                     x + (width - textWidth) / 2,
                     y + height / 2 - 4,
@@ -188,8 +189,8 @@ public class LitematicDetailPanel implements Drawable, Element {
         int contentY = y + UITheme.Dimensions.PADDING;
 
         String fileName = litematicFile.getName();
-        context.drawTextWithShadow(
-                client.textRenderer,
+        context.text(
+                client.font,
                 fileName,
                 contentX,
                 contentY,
@@ -198,8 +199,8 @@ public class LitematicDetailPanel implements Drawable, Element {
 
         long sizeKB = litematicFile.length() / 1024;
         String sizeText = "Size: " + sizeKB + " KB";
-        context.drawTextWithShadow(
-                client.textRenderer,
+        context.text(
+                client.font,
                 sizeText,
                 contentX,
                 contentY,
@@ -207,8 +208,8 @@ public class LitematicDetailPanel implements Drawable, Element {
         contentY += 15;
 
         if (isParsing) {
-            context.drawTextWithShadow(
-                    client.textRenderer,
+            context.text(
+                    client.font,
                     "Parsing blocks...",
                     contentX,
                     contentY,
@@ -217,8 +218,8 @@ public class LitematicDetailPanel implements Drawable, Element {
         }
 
         if (parseFailed) {
-            context.drawTextWithShadow(
-                    client.textRenderer,
+            context.text(
+                    client.font,
                     "Failed to parse file",
                     contentX,
                     contentY,
@@ -227,8 +228,8 @@ public class LitematicDetailPanel implements Drawable, Element {
         }
 
         if (blockCounts.isEmpty()) {
-            context.drawTextWithShadow(
-                    client.textRenderer,
+            context.text(
+                    client.font,
                     "No blocks found",
                     contentX,
                     contentY,
@@ -237,8 +238,8 @@ public class LitematicDetailPanel implements Drawable, Element {
         }
 
         String blocksHeader = "Blocks (" + blockCounts.size() + " types):";
-        context.drawTextWithShadow(
-                client.textRenderer,
+        context.text(
+                client.font,
                 blocksHeader,
                 contentX,
                 contentY,
@@ -264,7 +265,7 @@ public class LitematicDetailPanel implements Drawable, Element {
 
             ItemStack itemStack = getItemStackForBlock(blockCount.blockId);
             if (itemStack != null && !itemStack.isEmpty()) {
-                context.drawItem(itemStack, contentX + 4, itemY + 4);
+                context.item(itemStack, contentX + 4, itemY + 4);
             }
 
             String blockName = LitematicParser.getSimpleBlockName(blockCount.blockId);
@@ -272,14 +273,14 @@ public class LitematicDetailPanel implements Drawable, Element {
             int textY = itemY + 8;
 
             int maxTextWidth = listRightEdge - textX - 70;
-            if (client.textRenderer.getWidth(blockName) > maxTextWidth) {
+            if (client.font.width(blockName) > maxTextWidth) {
                 String ellipsis = "...";
-                int ellipsisWidth = client.textRenderer.getWidth(ellipsis);
+                int ellipsisWidth = client.font.width(ellipsis);
                 int availableWidth = maxTextWidth - ellipsisWidth;
                 StringBuilder truncated = new StringBuilder();
                 for (int c = 0; c < blockName.length(); c++) {
                     String test = truncated.toString() + blockName.charAt(c);
-                    if (client.textRenderer.getWidth(test) > availableWidth) {
+                    if (client.font.width(test) > availableWidth) {
                         break;
                     }
                     truncated.append(blockName.charAt(c));
@@ -287,11 +288,11 @@ public class LitematicDetailPanel implements Drawable, Element {
                 blockName = truncated + ellipsis;
             }
 
-            context.drawTextWithShadow(client.textRenderer, blockName, textX, textY, 0xFFFFFFFF);
+            context.text(client.font, blockName, textX, textY, 0xFFFFFFFF);
 
             String countText = "x" + blockCount.count;
-            int countWidth = client.textRenderer.getWidth(countText);
-            context.drawTextWithShadow(client.textRenderer, countText, listRightEdge - countWidth - 5, textY,
+            int countWidth = client.font.width(countText);
+            context.text(client.font, countText, listRightEdge - countWidth - 5, textY,
                     0xFFAAFF00);
         }
 
@@ -299,7 +300,7 @@ public class LitematicDetailPanel implements Drawable, Element {
 
         if (scrollBar != null && scrollBar.isVisible() && client != null) {
             boolean scrollChanged = scrollBar.updateAndRender(context, renderMouseX, renderMouseY, delta,
-                    client.getWindow().getHandle());
+                    GLFW.glfwGetCurrentContext());
             if (scrollChanged) {
                 int maxScroll = getMaxScroll();
                 scrollOffset = (int) (scrollBar.getScrollPercentage() * maxScroll);
@@ -307,7 +308,7 @@ public class LitematicDetailPanel implements Drawable, Element {
         }
 
         if (replacementPopup != null) {
-            replacementPopup.render(context, mouseX, mouseY, delta);
+            replacementPopup.extractRenderState(context, mouseX, mouseY, delta);
         }
     }
 
@@ -318,8 +319,12 @@ public class LitematicDetailPanel implements Drawable, Element {
                 return new ItemStack(Items.BARRIER);
             }
 
-            Block block = Registries.BLOCK.get(identifier);
-            if (block == null || block == Blocks.AIR) {
+            var blockRef = BuiltInRegistries.BLOCK.get(identifier);
+            if (blockRef.isEmpty()) {
+                return new ItemStack(Items.BARRIER);
+            }
+            Block block = blockRef.get().value();
+            if (block == Blocks.AIR) {
                 return new ItemStack(Items.BARRIER);
             }
 
@@ -335,7 +340,7 @@ public class LitematicDetailPanel implements Drawable, Element {
     }
 
     @Override
-    public boolean mouseClicked(Click click, boolean doubled) {
+    public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
         if (replacementPopup != null) {
             if (replacementPopup.mouseClicked(click.x(), click.y(), 0)) {
                 return true;
@@ -372,8 +377,8 @@ public class LitematicDetailPanel implements Drawable, Element {
             return;
 
         replacementPopup = new BlockReplacementPopup(
-                client.getWindow().getScaledWidth(),
-                client.getWindow().getScaledHeight(),
+                client.getWindow().getGuiScaledWidth(),
+                client.getWindow().getGuiScaledHeight(),
                 blockId);
 
         replacementPopup.setOnBlockSelected((oldBlockId, newBlockId) -> {
@@ -392,7 +397,7 @@ public class LitematicDetailPanel implements Drawable, Element {
     }
 
     @Override
-    public boolean mouseReleased(Click click) {
+    public boolean mouseReleased(MouseButtonEvent click) {
         if (closeButton != null) {
             return closeButton.mouseReleased(click);
         }

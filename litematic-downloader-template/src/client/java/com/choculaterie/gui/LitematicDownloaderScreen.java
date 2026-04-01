@@ -14,9 +14,9 @@ import com.choculaterie.models.MinemevSearchResponse;
 import com.choculaterie.models.ModMessage;
 import com.choculaterie.network.MinemevNetworkManager;
 import com.choculaterie.network.ChoculaterieNetworkManager;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 
 import org.lwjgl.glfw.GLFW;
 
@@ -70,17 +70,17 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     public LitematicDownloaderScreen() {
-        super(Text.of("Litematic Downloader"));
+        super(Component.literal("Litematic Downloader"));
     }
 
     @Override
     protected void init() {
         super.init();
 
-        String previousSearchText = (searchField != null) ? searchField.getText() : "";
+        String previousSearchText = (searchField != null) ? searchField.getValue() : "";
 
-        if (this.client != null) {
-            toastManager = new ToastManager(this.client);
+        if (this.minecraft != null) {
+            toastManager = new ToastManager(this.minecraft);
         }
 
         int leftPanelWidth = this.width / 2;
@@ -99,22 +99,22 @@ public class LitematicDownloaderScreen extends Screen {
 
         loadingSpinner = new LoadingSpinner(leftPanelWidth / 2 - 16, this.height / 2 - 16);
 
-        if (this.client != null) {
+        if (this.minecraft != null) {
             searchField = new CustomTextField(
-                    this.client,
+                    this.minecraft,
                     PADDING,
                     PADDING,
                     searchBarWidth,
                     SEARCH_BAR_HEIGHT,
-                    Text.of("Search")
+                    Component.literal("Search")
             );
-            searchField.setPlaceholder(Text.of(isCompact ? "Search..." : "Search schematics..."));
+            searchField.setPlaceholder(Component.literal(isCompact ? "Search..." : "Search schematics..."));
             searchField.setOnEnterPressed(this::performSearch);
             searchField.setOnClearPressed(this::performSearch);
             if (!previousSearchText.isEmpty()) {
-                searchField.setText(previousSearchText);
+                searchField.setValue(previousSearchText);
             }
-            this.addDrawableChild(searchField);
+            this.addRenderableWidget(searchField);
         }
 
         searchButton = new CustomButton(
@@ -122,10 +122,10 @@ public class LitematicDownloaderScreen extends Screen {
                 PADDING,
                 searchButtonWidth,
                 SEARCH_BAR_HEIGHT,
-                Text.of(searchLabel),
+                Component.literal(searchLabel),
                 button -> performSearch()
         );
-        this.addDrawableChild(searchButton);
+        this.addRenderableWidget(searchButton);
 
         checkClipboardForQuickShare();
 
@@ -139,7 +139,7 @@ public class LitematicDownloaderScreen extends Screen {
         } else {
             postList.setDimensions(PADDING, listY, listWidth, listHeight);
         }
-        this.addDrawableChild(postList);
+        this.addRenderableWidget(postList);
 
         int rightPanelContentWidth = rightPanelWidth - PADDING;
         int rightPanelContentHeight = this.height - PADDING * 2;
@@ -159,7 +159,7 @@ public class LitematicDownloaderScreen extends Screen {
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,
-                Text.of("📁"),
+                Component.literal("📁"),
                 button -> openFolderPage()
         );
 
@@ -168,7 +168,7 @@ public class LitematicDownloaderScreen extends Screen {
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,
-                Text.of("⚙"),
+                Component.literal("⚙"),
                 button -> toggleFilterPanel()
         );
 
@@ -177,8 +177,8 @@ public class LitematicDownloaderScreen extends Screen {
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,
-                Text.of("X"),
-                button -> this.close()
+                Component.literal("X"),
+                button -> this.onClose()
         );
         closeButton.setRenderAsXIcon(true);
 
@@ -189,22 +189,22 @@ public class LitematicDownloaderScreen extends Screen {
                 bottomY,
                 paginationButtonWidth,
                 BUTTON_HEIGHT,
-                Text.of(prevLabel),
+                Component.literal(prevLabel),
                 button -> previousPage()
         );
         prevPageButton.active = false;
-        this.addDrawableChild(prevPageButton);
+        this.addRenderableWidget(prevPageButton);
 
         nextPageButton = new CustomButton(
                 leftPanelWidth - PADDING - paginationButtonWidth,
                 bottomY,
                 paginationButtonWidth,
                 BUTTON_HEIGHT,
-                Text.of(nextLabel),
+                Component.literal(nextLabel),
                 button -> nextPage()
         );
         nextPageButton.active = false;
-        this.addDrawableChild(nextPageButton);
+        this.addRenderableWidget(nextPageButton);
 
         modMessageBanner = new ModMessageBanner(0, 0, this.width);
         modMessageBanner.setOnDismiss(this::onModMessageDismissed);
@@ -220,7 +220,7 @@ public class LitematicDownloaderScreen extends Screen {
 
     private void checkClipboardForQuickShare() {
         try {
-            long windowHandle = client != null && client.getWindow() != null ? client.getWindow().getHandle() : 0;
+            long windowHandle = GLFW.glfwGetCurrentContext();
             if (windowHandle == 0) return;
             String clipboard = GLFW.glfwGetClipboardString(windowHandle);
             if (clipboard != null) {
@@ -254,7 +254,7 @@ public class LitematicDownloaderScreen extends Screen {
 
     private void clearClipboard() {
         try {
-            long windowHandle = client != null && client.getWindow() != null ? client.getWindow().getHandle() : 0;
+            long windowHandle = GLFW.glfwGetCurrentContext();
             if (windowHandle != 0) {
                 GLFW.glfwSetClipboardString(windowHandle, "");
             }
@@ -265,8 +265,8 @@ public class LitematicDownloaderScreen extends Screen {
     private void fetchModMessage() {
         ChoculaterieNetworkManager.getModMessage()
             .thenAccept(message -> {
-                if (this.client != null) {
-                    this.client.execute(() -> {
+                if (this.minecraft != null) {
+                    this.minecraft.execute(() -> {
                         if (message != null && message.hasMessage() && message.id() != null) {
                             int dismissedId = DownloadSettings.getInstance().getDismissedModMessageId();
                             if (message.id() != dismissedId) {
@@ -305,7 +305,7 @@ public class LitematicDownloaderScreen extends Screen {
 
         searchField.setFocused(false);
 
-        currentSearchQuery = searchField.getText().trim();
+        currentSearchQuery = searchField.getValue().trim();
         currentPage = 1;
 
         Matcher matcher = QUICK_SHARE_PATTERN.matcher(currentSearchQuery);
@@ -330,8 +330,8 @@ public class LitematicDownloaderScreen extends Screen {
 
         ChoculaterieNetworkManager.downloadQuickShare(code)
                 .thenAccept(result -> {
-                    if (this.client != null) {
-                        this.client.execute(() -> {
+                    if (this.minecraft != null) {
+                        this.minecraft.execute(() -> {
                             try {
                                 Path schematicsPath = Paths.get(DownloadSettings.getInstance().getAbsoluteDownloadPath());
                                 File schematicsDir = schematicsPath.toFile();
@@ -362,7 +362,7 @@ public class LitematicDownloaderScreen extends Screen {
 
                                 isLoading = false;
                                 searchButton.active = true;
-                                searchField.setText("");
+                                searchField.setValue("");
 
                                 if (toastManager != null) {
                                     toastManager.showSuccess("Downloaded: " + savedName);
@@ -379,8 +379,8 @@ public class LitematicDownloaderScreen extends Screen {
                     }
                 })
                 .exceptionally(throwable -> {
-                    if (this.client != null) {
-                        this.client.execute(() -> {
+                    if (this.minecraft != null) {
+                        this.minecraft.execute(() -> {
                             isLoading = false;
                             searchButton.active = true;
 
@@ -405,8 +405,8 @@ public class LitematicDownloaderScreen extends Screen {
 
         ChoculaterieNetworkManager.downloadQuickShare(code)
                 .thenAccept(result -> {
-                    if (this.client != null) {
-                        this.client.execute(() -> {
+                    if (this.minecraft != null) {
+                        this.minecraft.execute(() -> {
                             try {
                                 Path schematicsPath = Paths.get(DownloadSettings.getInstance().getAbsoluteDownloadPath());
                                 File schematicsDir = schematicsPath.toFile();
@@ -435,7 +435,7 @@ public class LitematicDownloaderScreen extends Screen {
                                 bannerSuccessFilename = outputFile.getName();
                                 bannerSuccessTime = System.currentTimeMillis();
                                 bannerState = BannerState.SUCCESS;
-                                searchField.setText("");
+                                searchField.setValue("");
                                 System.out.println("[QuickShare] Saved to: " + outputFile.getAbsolutePath());
                             } catch (Exception e) {
                                 bannerState = BannerState.NONE;
@@ -450,8 +450,8 @@ public class LitematicDownloaderScreen extends Screen {
                     }
                 })
                 .exceptionally(throwable -> {
-                    if (this.client != null) {
-                        this.client.execute(() -> {
+                    if (this.minecraft != null) {
+                        this.minecraft.execute(() -> {
                             bannerState = BannerState.NONE;
                             clipboardBannerDismissed = true;
                             updateListPosition();
@@ -488,8 +488,8 @@ public class LitematicDownloaderScreen extends Screen {
         MinemevNetworkManager.searchPostsAdvanced(currentSearchQuery, sort, 1, currentPage, tag, null, excludeVendor)
                 .thenAccept(this::handleSearchResponse)
                 .exceptionally(throwable -> {
-                    if (this.client != null) {
-                        this.client.execute(() -> {
+                    if (this.minecraft != null) {
+                        this.minecraft.execute(() -> {
                             isLoading = false;
                             searchButton.active = true;
                             updatePaginationButtons();
@@ -544,8 +544,8 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     private void handleSearchResponse(MinemevSearchResponse response) {
-        if (this.client != null) {
-            this.client.execute(() -> {
+        if (this.minecraft != null) {
+            this.minecraft.execute(() -> {
                 totalPages = response.totalPages();
                 totalItems = response.totalItems();
 
@@ -593,10 +593,10 @@ public class LitematicDownloaderScreen extends Screen {
         if (detailPanel != null) {
             detailPanel.closeDropdown();
         }
-        if (this.client != null) {
+        if (this.minecraft != null) {
             LocalFolderPage folderPage = new LocalFolderPage(this);
             folderPage.setOnApiToggleChanged(this::refreshPostList);
-            this.client.setScreen(folderPage);
+            this.minecraft.setScreen(folderPage);
         }
     }
 
@@ -615,7 +615,7 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         int leftPanelWidth = this.width / 2;
 
         context.fill(0, 0, this.width, this.height, 0xFF202020);
@@ -632,12 +632,12 @@ public class LitematicDownloaderScreen extends Screen {
         int detailMouseX = (mouseOverBanner || imageViewerOpen) ? -1 : mouseX;
         int detailMouseY = (mouseOverBanner || imageViewerOpen) ? -1 : mouseY;
 
-        super.render(context, listMouseX, listMouseY, delta);
+        super.extractRenderState(context, listMouseX, listMouseY, delta);
 
         if (showFilterPanel) {
-            sortFilterPanel.render(context, detailMouseX, detailMouseY, delta);
+            sortFilterPanel.extractRenderState(context, detailMouseX, detailMouseY, delta);
         } else {
-            detailPanel.render(context, detailMouseX, detailMouseY, delta);
+            detailPanel.extractRenderState(context, detailMouseX, detailMouseY, delta);
         }
 
         if (totalPages > 1 || totalItems > ITEMS_PER_PAGE) {
@@ -655,20 +655,20 @@ public class LitematicDownloaderScreen extends Screen {
             String mediumText = String.format("%d / %d", currentPage, Math.max(totalPages, 1));
             String shortText = String.format("%d/%d", currentPage, Math.max(totalPages, 1));
 
-            if (this.textRenderer.getWidth(fullText) <= availableWidth) {
+            if (this.font.width(fullText) <= availableWidth) {
                 pageText = fullText;
-            } else if (this.textRenderer.getWidth(mediumText) <= availableWidth) {
+            } else if (this.font.width(mediumText) <= availableWidth) {
                 pageText = mediumText;
-            } else if (this.textRenderer.getWidth(shortText) <= availableWidth) {
+            } else if (this.font.width(shortText) <= availableWidth) {
                 pageText = shortText;
             } else {
                 pageText = null;
             }
 
             if (pageText != null) {
-                int textWidth = this.textRenderer.getWidth(pageText);
-                context.drawTextWithShadow(
-                        this.textRenderer,
+                int textWidth = this.font.width(pageText);
+                context.text(
+                        this.font,
                         pageText,
                         (leftPanelWidth - textWidth) / 2,
                         this.height - BUTTON_HEIGHT / 2 - 4 - PADDING,
@@ -678,7 +678,7 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         if (isLoading) {
-            loadingSpinner.render(context, listMouseX, listMouseY, delta);
+            loadingSpinner.extractRenderState(context, listMouseX, listMouseY, delta);
         }
 
         if (isClipboardBannerVisible()) {
@@ -698,10 +698,10 @@ public class LitematicDownloaderScreen extends Screen {
                     context.fill(bannerX, bannerY, bannerX + bannerWidth, bannerY + CLIPBOARD_BANNER_HEIGHT, 0xFF2A5F2A);
                     context.fill(bannerX, bannerY, bannerX + 2, bannerY + CLIPBOARD_BANNER_HEIGHT, 0xFF44FF44);
                     String successText = "✓ Downloaded: " + bannerSuccessFilename;
-                    if (this.textRenderer.getWidth(successText) > bannerWidth - 8) {
+                    if (this.font.width(successText) > bannerWidth - 8) {
                         successText = "✓ Downloaded";
                     }
-                    context.drawTextWithShadow(this.textRenderer, successText, bannerX + 6, textY2, 0xFFFFFFFF);
+                    context.text(this.font, successText, bannerX + 6, textY2, 0xFFFFFFFF);
                 } else {
                     context.fill(bannerX, bannerY, bannerX + bannerWidth, bannerY + CLIPBOARD_BANNER_HEIGHT, 0xFF2A3A5F);
                     context.fill(bannerX, bannerY, bannerX + 2, bannerY + CLIPBOARD_BANNER_HEIGHT, 0xFF4488FF);
@@ -710,17 +710,17 @@ public class LitematicDownloaderScreen extends Screen {
                         bannerText = "📋 Downloading quick-share...";
                     } else {
                         bannerText = "📋 Quick-share link detected, click to download";
-                        if (this.textRenderer.getWidth(bannerText) > bannerWidth - 20) {
+                        if (this.font.width(bannerText) > bannerWidth - 20) {
                             bannerText = "📋 Quick-share, click to download";
                         }
                     }
-                    context.drawTextWithShadow(this.textRenderer, bannerText, bannerX + 6, textY2, 0xFFFFFFFF);
+                    context.text(this.font, bannerText, bannerX + 6, textY2, 0xFFFFFFFF);
                     if (bannerState == BannerState.DETECTED) {
                         String dismissText = "✕";
-                        int dismissX = bannerX + bannerWidth - this.textRenderer.getWidth(dismissText) - 4;
+                        int dismissX = bannerX + bannerWidth - this.font.width(dismissText) - 4;
                         boolean hoverDismiss = mouseX >= dismissX && mouseX < bannerX + bannerWidth
                                 && mouseY >= bannerY && mouseY < bannerY + CLIPBOARD_BANNER_HEIGHT;
-                        context.drawTextWithShadow(this.textRenderer, dismissText, dismissX, textY2, hoverDismiss ? 0xFFFFFFFF : 0xFFAAAAAA);
+                        context.text(this.font, dismissText, dismissX, textY2, hoverDismiss ? 0xFFFFFFFF : 0xFFAAAAAA);
                     }
                 }
             }
@@ -728,9 +728,9 @@ public class LitematicDownloaderScreen extends Screen {
 
         if (noResultsFound) {
             String noResultsText = "No results found :(";
-            int textWidth = this.textRenderer.getWidth(noResultsText);
-            context.drawTextWithShadow(
-                    this.textRenderer,
+            int textWidth = this.font.width(noResultsText);
+            context.text(
+                    this.font,
                     noResultsText,
                     (leftPanelWidth - textWidth) / 2,
                     this.height / 2 + 10,
@@ -739,19 +739,19 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         if (folderButton != null) {
-            folderButton.render(context, listMouseX, listMouseY, delta);
+            folderButton.extractRenderState(context, listMouseX, listMouseY, delta);
         }
 
         if (filterButton != null) {
-            filterButton.render(context, listMouseX, listMouseY, delta);
+            filterButton.extractRenderState(context, listMouseX, listMouseY, delta);
         }
 
         if (closeButton != null) {
-            closeButton.render(context, listMouseX, listMouseY, delta);
+            closeButton.extractRenderState(context, listMouseX, listMouseY, delta);
         }
 
         if (modMessageBanner != null && modMessageBanner.isVisible()) {
-            modMessageBanner.render(context, mouseX, mouseY, delta);
+            modMessageBanner.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         if (detailPanel != null && detailPanel.hasImageViewerOpen()) {
@@ -765,7 +765,7 @@ public class LitematicDownloaderScreen extends Screen {
 
 
     @Override
-    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+    public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent click, boolean doubled) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
@@ -793,7 +793,7 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         if (button == 0 && isMouseOverButton(closeButton, mouseX, mouseY)) {
-            this.close();
+            this.onClose();
             return true;
         }
 
@@ -825,7 +825,7 @@ public class LitematicDownloaderScreen extends Screen {
             if (mouseX >= bannerX && mouseX < bannerX + bannerWidth
                     && mouseY >= bannerY && mouseY < bannerY + CLIPBOARD_BANNER_HEIGHT) {
                 String dismissText = "✕";
-                int dismissX = bannerX + bannerWidth - this.textRenderer.getWidth(dismissText) - 4;
+                int dismissX = bannerX + bannerWidth - this.font.width(dismissText) - 4;
                 if (mouseX >= dismissX) {
                     DownloadSettings.getInstance().dismissQuickShareLink(clipboardQuickShareUrl);
                     bannerState = BannerState.NONE;
@@ -833,7 +833,7 @@ public class LitematicDownloaderScreen extends Screen {
                     updateListPosition();
                 } else {
                     bannerState = BannerState.DOWNLOADING;
-                    searchField.setText(clipboardQuickShareUrl);
+                    searchField.setValue(clipboardQuickShareUrl);
                     clearClipboard();
                     performQuickShareFromBanner();
                 }
@@ -888,7 +888,7 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     @Override
-    public boolean shouldPause() {
+    public boolean isPauseScreen() {
         return false;
     }
 
@@ -906,7 +906,7 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     @Override
-    public void close() {
-        super.close();
+    public void onClose() {
+        super.onClose();
     }
 }

@@ -1,12 +1,12 @@
 package com.choculaterie.gui.widget;
 
 import com.choculaterie.gui.theme.UITheme;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Button;
 
 import java.util.function.Consumer;
 
-public class ToggleButton extends ButtonWidget {
+public class ToggleButton extends Button {
 	private static final int TOGGLE_WIDTH = 40;
 	private static final int TOGGLE_HEIGHT = 20;
 	private static final int TRACK_PADDING = 2;
@@ -18,9 +18,9 @@ public class ToggleButton extends ButtonWidget {
 	private final Consumer<Boolean> onToggle;
 
 	public ToggleButton(int x, int y, boolean initialState, Consumer<Boolean> onToggle) {
-		super(x, y, TOGGLE_WIDTH, TOGGLE_HEIGHT, net.minecraft.text.Text.literal(" "),
+		super(x, y, TOGGLE_WIDTH, TOGGLE_HEIGHT, net.minecraft.network.chat.Component.literal(" "),
 			button -> ((ToggleButton) button).toggle(),
-			DEFAULT_NARRATION_SUPPLIER);
+			DEFAULT_NARRATION);
 		this.toggled = initialState;
 		this.onToggle = onToggle;
 	}
@@ -41,7 +41,7 @@ public class ToggleButton extends ButtonWidget {
 	}
 
 	@Override
-	protected void drawIcon(DrawContext context, int mouseX, int mouseY, float delta) {
+	protected void extractContents(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
 		boolean isHovered = isMouseOver(mouseX, mouseY);
 		int trackColor = getTrackColor(isHovered);
 		int trackY = getY() + TRACK_VERTICAL_PADDING;
@@ -59,7 +59,7 @@ public class ToggleButton extends ButtonWidget {
 		return isHovered ? UITheme.Colors.TOGGLE_OFF_HOVER : UITheme.Colors.BUTTON_BG_HOVER;
 	}
 
-	private void drawTrack(DrawContext context, int color, int trackY, int trackHeight) {
+	private void drawTrack(GuiGraphicsExtractor context, int color, int trackY, int trackHeight) {
 		context.fill(
 			getX() + TRACK_PADDING,
 			trackY,
@@ -74,7 +74,7 @@ public class ToggleButton extends ButtonWidget {
 			   mouseX < getX() + getWidth() && mouseY < getY() + getHeight();
 	}
 
-	private void drawBorder(DrawContext context, int trackY, int trackHeight) {
+	private void drawBorder(GuiGraphicsExtractor context, int trackY, int trackHeight) {
 		int x = getX();
 		int width = getWidth();
 		int borderWidth = UITheme.Dimensions.BORDER_WIDTH;
@@ -86,7 +86,7 @@ public class ToggleButton extends ButtonWidget {
 		context.fill(x + width - borderWidth, trackY, x + width, trackY + trackHeight, borderColor);
 	}
 
-	private void drawKnob(DrawContext context, int trackY, int trackHeight) {
+	private void drawKnob(GuiGraphicsExtractor context, int trackY, int trackHeight) {
 		int knobSize = trackHeight - KNOB_PADDING;
 		int knobX = toggled
 			? getX() + getWidth() - knobSize - KNOB_PADDING

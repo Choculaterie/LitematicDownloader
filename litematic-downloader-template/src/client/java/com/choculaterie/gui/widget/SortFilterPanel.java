@@ -3,11 +3,11 @@ package com.choculaterie.gui.widget;
 import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.network.MinemevNetworkManager;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.Element;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,14 +16,14 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
-public class SortFilterPanel implements Drawable, Element {
+public class SortFilterPanel implements Renderable, GuiEventListener {
 
     private int x;
     private int y;
     private int width;
     private int height;
 
-    private final MinecraftClient client;
+    private final Minecraft client;
     private double scrollOffset = 0;
     private int contentHeight = 0;
     private ScrollBar scrollBar;
@@ -48,12 +48,12 @@ public class SortFilterPanel implements Drawable, Element {
         this.y = y;
         this.width = width;
         this.height = height;
-        this.client = MinecraftClient.getInstance();
+        this.client = Minecraft.getInstance();
         this.scrollBar = new ScrollBar(x + width - UITheme.Dimensions.SCROLLBAR_WIDTH - UITheme.Dimensions.PADDING, y + 30, height - 60);
         loadSettings();
-        this.tagTextField = new CustomTextField(client, x + UITheme.Dimensions.PADDING, y + 100, width - UITheme.Dimensions.PADDING * 2 - 10, 18, Text.empty());
-        this.tagTextField.setPlaceholder(Text.of("Enter tag..."));
-        this.tagTextField.setText(tagFilter);
+        this.tagTextField = new CustomTextField(client, x + UITheme.Dimensions.PADDING, y + 100, width - UITheme.Dimensions.PADDING * 2 - 10, 18, Component.empty());
+        this.tagTextField.setPlaceholder(Component.literal("Enter tag..."));
+        this.tagTextField.setValue(tagFilter);
         initButtons();
         loadVendors();
     }
@@ -85,7 +85,7 @@ public class SortFilterPanel implements Drawable, Element {
                 y + height - UITheme.Dimensions.BUTTON_HEIGHT - UITheme.Dimensions.PADDING,
                 buttonWidth,
                 UITheme.Dimensions.BUTTON_HEIGHT,
-                Text.of(width < 150 ? "✓" : "Apply"),
+                Component.literal(width < 150 ? "✓" : "Apply"),
                 button -> applySettings()
         );
 
@@ -94,14 +94,14 @@ public class SortFilterPanel implements Drawable, Element {
                 y + height - UITheme.Dimensions.BUTTON_HEIGHT - UITheme.Dimensions.PADDING,
                 buttonWidth,
                 UITheme.Dimensions.BUTTON_HEIGHT,
-                Text.of(width < 150 ? "↺" : "Reset"),
+                Component.literal(width < 150 ? "↺" : "Reset"),
                 button -> resetSettings()
         );
     }
 
     private void applySettings() {
         if (tagTextField != null) {
-            tagFilter = tagTextField.getText();
+            tagFilter = tagTextField.getValue();
         }
         saveSettings();
         notifySettingsChanged();
@@ -197,7 +197,7 @@ public class SortFilterPanel implements Drawable, Element {
         }
     }
 
-    private void drawButtonBorder(DrawContext context, int x, int y, int width, int height) {
+    private void drawButtonBorder(GuiGraphicsExtractor context, int x, int y, int width, int height) {
         int borderWidth = UITheme.Dimensions.BORDER_WIDTH;
         int borderColor = UITheme.Colors.BUTTON_BORDER;
         context.fill(x, y, x + width, y + borderWidth, borderColor);
@@ -206,18 +206,18 @@ public class SortFilterPanel implements Drawable, Element {
         context.fill(x + width - borderWidth, y, x + width, y + height, borderColor);
     }
 
-    private void drawCenteredButtonText(DrawContext context, String text, int x, int y, int width, int height) {
-        int textWidth = client.textRenderer.getWidth(text);
-        context.drawTextWithShadow(client.textRenderer, text, x + (width - textWidth) / 2, y + 5, UITheme.Colors.TEXT_PRIMARY);
+    private void drawCenteredButtonText(GuiGraphicsExtractor context, String text, int x, int y, int width, int height) {
+        int textWidth = client.font.width(text);
+        context.text(client.font, text, x + (width - textWidth) / 2, y + 5, UITheme.Colors.TEXT_PRIMARY);
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         context.fill(x, y, x + width, y + height, UITheme.Colors.PANEL_BG_SECONDARY);
         context.fill(x, y, x + 1, y + height, UITheme.Colors.BUTTON_BORDER);
         boolean isCompact = width < 180;
         String title = isCompact ? "Filters" : "Sort & Filter";
-        context.drawTextWithShadow(client.textRenderer, title, x + UITheme.Dimensions.PADDING, y + UITheme.Dimensions.PADDING, UITheme.Colors.TEXT_PRIMARY);
+        context.text(client.font, title, x + UITheme.Dimensions.PADDING, y + UITheme.Dimensions.PADDING, UITheme.Colors.TEXT_PRIMARY);
         int contentStartY = y + 30;
         context.enableScissor(x + 1, contentStartY, x + width - UITheme.Dimensions.SCROLLBAR_WIDTH, y + height - 40);
 
@@ -231,12 +231,12 @@ public class SortFilterPanel implements Drawable, Element {
         context.disableScissor();
         int visibleHeight = height - 70;
         scrollBar.setScrollData(contentHeight, visibleHeight);
-        scrollBar.render(context, mouseX, mouseY, delta);
+        scrollBar.extractRenderState(context, mouseX, mouseY, delta);
         renderBottomButtons(context, mouseX, mouseY, delta);
     }
 
-    private int renderSortSection(DrawContext context, int mouseX, int mouseY, int currentY, boolean isCompact) {
-        context.drawTextWithShadow(client.textRenderer, "Sort By:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+    private int renderSortSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY, boolean isCompact) {
+        context.text(client.font, "Sort By:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 14;
         contentHeight += 14;
         int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10) : (width - UITheme.Dimensions.PADDING * 2 - 10) / 2;
@@ -274,8 +274,8 @@ public class SortFilterPanel implements Drawable, Element {
         return currentY;
     }
 
-    private int renderPaginationSection(DrawContext context, int mouseX, int mouseY, int currentY, boolean isCompact) {
-        context.drawTextWithShadow(client.textRenderer, "Items per page:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+    private int renderPaginationSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY, boolean isCompact) {
+        context.text(client.font, "Items per page:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 14;
         contentHeight += 14;
         int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10) / 2 : (width - UITheme.Dimensions.PADDING * 2 - 10) / 4;
@@ -302,14 +302,14 @@ public class SortFilterPanel implements Drawable, Element {
         return currentY;
     }
 
-    private int renderTagSection(DrawContext context, int mouseX, int mouseY, int currentY, boolean isCompact) {
-        context.drawTextWithShadow(client.textRenderer, "Tag Filter:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+    private int renderTagSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY, boolean isCompact) {
+        context.text(client.font, "Tag Filter:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 14;
         contentHeight += 14;
         if (tagTextField != null) {
             tagTextField.setPosition(x + UITheme.Dimensions.PADDING, currentY);
             tagTextField.setWidth(width - UITheme.Dimensions.PADDING * 2 - UITheme.Dimensions.SCROLLBAR_WIDTH - UITheme.Dimensions.PADDING);
-            tagTextField.render(context, mouseX, mouseY, 0);
+            tagTextField.extractRenderState(context, mouseX, mouseY, 0);
         }
 
         currentY += 22;
@@ -319,17 +319,17 @@ public class SortFilterPanel implements Drawable, Element {
         return currentY;
     }
 
-    private int renderVendorSection(DrawContext context, int mouseX, int mouseY, int currentY, boolean isCompact) {
-        context.drawTextWithShadow(client.textRenderer, "Vendors:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+    private int renderVendorSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY, boolean isCompact) {
+        context.text(client.font, "Vendors:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 14;
         contentHeight += 14;
 
         if (isLoadingVendors) {
-            context.drawTextWithShadow(client.textRenderer, "Loading...", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+            context.text(client.font, "Loading...", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
             currentY += 14;
             contentHeight += 14;
         } else if (availableVendors.length == 0) {
-            context.drawTextWithShadow(client.textRenderer, "No vendors", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+            context.text(client.font, "No vendors", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
             currentY += 14;
             contentHeight += 14;
         } else {
@@ -338,8 +338,8 @@ public class SortFilterPanel implements Drawable, Element {
                 ToggleButton toggle = vendorToggles.get(i);
                 toggle.setX(x + UITheme.Dimensions.PADDING);
                 toggle.setY(currentY);
-                toggle.render(context, mouseX, mouseY, 0);
-                context.drawTextWithShadow(client.textRenderer, vendor, x + UITheme.Dimensions.PADDING + 45, currentY + 6, UITheme.Colors.TEXT_PRIMARY);
+                toggle.extractRenderState(context, mouseX, mouseY, 0);
+                context.text(client.font, vendor, x + UITheme.Dimensions.PADDING + 45, currentY + 6, UITheme.Colors.TEXT_PRIMARY);
 
                 currentY += 24;
                 contentHeight += 24;
@@ -351,7 +351,7 @@ public class SortFilterPanel implements Drawable, Element {
         return currentY;
     }
 
-    private void renderBottomButtons(DrawContext context, int mouseX, int mouseY, float delta) {
+    private void renderBottomButtons(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         int buttonY = y + height - 30;
         int buttonWidth = (width - UITheme.Dimensions.PADDING * 3) / 2;
 
@@ -359,14 +359,14 @@ public class SortFilterPanel implements Drawable, Element {
             applyButton.setX(x + UITheme.Dimensions.PADDING);
             applyButton.setY(buttonY);
             applyButton.setWidth(buttonWidth);
-            applyButton.render(context, mouseX, mouseY, delta);
+            applyButton.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         if (resetButton != null) {
             resetButton.setX(x + UITheme.Dimensions.PADDING * 2 + buttonWidth);
             resetButton.setY(buttonY);
             resetButton.setWidth(buttonWidth);
-            resetButton.render(context, mouseX, mouseY, delta);
+            resetButton.extractRenderState(context, mouseX, mouseY, delta);
         }
     }
 
@@ -379,7 +379,7 @@ public class SortFilterPanel implements Drawable, Element {
             return false;
         }
         if (applyButton != null && isOverButton(applyButton, mouseX, mouseY)) {
-            tagFilter = tagTextField != null ? tagTextField.getText() : "";
+            tagFilter = tagTextField != null ? tagTextField.getValue() : "";
             saveSettings();
             notifySettingsChanged();
             return true;
@@ -481,7 +481,7 @@ public class SortFilterPanel implements Drawable, Element {
         tagFilter = "";
         versionFilter = "all";
         if (tagTextField != null) {
-            tagTextField.setText("");
+            tagTextField.setValue("");
         }
         for (ToggleButton toggle : vendorToggles) {
             toggle.setToggled(true);

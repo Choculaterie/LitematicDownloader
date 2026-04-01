@@ -1,9 +1,9 @@
 package com.choculaterie.util;
 
-import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.nbt.NbtList;
-import net.minecraft.nbt.NbtSizeTracker;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtAccounter;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -27,26 +27,26 @@ public class LitematicParser {
 
         try (FileInputStream fis = new FileInputStream(litematicFile)) {
 
-            NbtCompound root = NbtIo.readCompressed(fis, NbtSizeTracker.ofUnlimitedBytes());
+            CompoundTag root = NbtIo.readCompressed(fis, NbtAccounter.unlimitedHeap());
 
             if (!root.contains("Regions")) {
                 return Collections.emptyList();
             }
 
-            NbtCompound regions = root.getCompound("Regions").orElse(new NbtCompound());
+            CompoundTag regions = root.getCompound("Regions").orElse(new CompoundTag());
 
-            for (String regionName : regions.getKeys()) {
-                NbtCompound region = regions.getCompound(regionName).orElse(new NbtCompound());
+            for (String regionName : regions.keySet()) {
+                CompoundTag region = regions.getCompound(regionName).orElse(new CompoundTag());
 
                 if (!region.contains("BlockStatePalette")) {
                     continue;
                 }
 
-                NbtList palette = region.getList("BlockStatePalette").orElse(new NbtList());
+                ListTag palette = region.getList("BlockStatePalette").orElse(new ListTag());
                 Map<Integer, String> indexToBlockId = new HashMap<>();
 
                 for (int i = 0; i < palette.size(); i++) {
-                    NbtCompound blockState = palette.getCompound(i).orElse(new NbtCompound());
+                    CompoundTag blockState = palette.getCompound(i).orElse(new CompoundTag());
                     if (blockState.contains("Name")) {
                         String blockId = blockState.getString("Name").orElse("minecraft:air");
                         indexToBlockId.put(i, blockId);
@@ -62,7 +62,7 @@ public class LitematicParser {
                     continue;
                 }
 
-                NbtCompound sizeCompound = region.getCompound("Size").orElse(new NbtCompound());
+                CompoundTag sizeCompound = region.getCompound("Size").orElse(new CompoundTag());
                 int sizeX = sizeCompound.getInt("x").orElse(0);
                 int sizeY = sizeCompound.getInt("y").orElse(0);
                 int sizeZ = sizeCompound.getInt("z").orElse(0);

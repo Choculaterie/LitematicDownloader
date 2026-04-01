@@ -1,5 +1,6 @@
 package com.choculaterie.gui;
 
+import org.lwjgl.glfw.GLFW;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.gui.localfolder.FileOperationsManager;
 import com.choculaterie.gui.localfolder.LocalFolderSearchManager;
@@ -13,9 +14,9 @@ import com.choculaterie.gui.widget.ScrollBar;
 import com.choculaterie.gui.widget.TextInputPopup;
 import com.choculaterie.gui.widget.ToastManager;
 import com.choculaterie.network.ChoculaterieNetworkManager;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
 
 import java.awt.Toolkit;
@@ -178,7 +179,7 @@ public class LocalFolderPage extends Screen {
     }
 
     public LocalFolderPage(Screen parentScreen) {
-        super(Text.of("Local Folder"));
+        super(Component.literal("Local Folder"));
         this.parentScreen = parentScreen;
 
         String downloadPath = DownloadSettings.getInstance().getAbsoluteDownloadPath();
@@ -201,7 +202,7 @@ public class LocalFolderPage extends Screen {
     @Override
     protected void init() {
         super.init();
-        this.clearChildren();
+        this.clearWidgets();
 
         String downloadPath = DownloadSettings.getInstance().getAbsoluteDownloadPath();
         File newBaseDirectory = new File(downloadPath);
@@ -226,10 +227,10 @@ public class LocalFolderPage extends Screen {
         loadEntries();
 
         int savedScrollOffset = scrollOffset;
-        String previousSearchText = (searchField != null) ? searchField.getText() : "";
+        String previousSearchText = (searchField != null) ? searchField.getValue() : "";
 
-        if (this.client != null) {
-            toastManager = new ToastManager(this.client);
+        if (this.minecraft != null) {
+            toastManager = new ToastManager(this.minecraft);
         }
 
         int leftPanelWidth = showDetailPanel ? this.width / 2 : this.width;
@@ -239,9 +240,9 @@ public class LocalFolderPage extends Screen {
 
         int currentX = PADDING;
 
-        this.addDrawableChild(new CustomButton(
+        this.addRenderableWidget(new CustomButton(
                 currentX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
-                Text.of("←"), button -> goBack()));
+                Component.literal("←"), button -> goBack()));
         currentX += BUTTON_HEIGHT + PADDING;
 
         if (!showDetailPanel) {
@@ -255,59 +256,59 @@ public class LocalFolderPage extends Screen {
             String deleteLabel = isVeryCompact ? "🗑" : "Delete";
             String openFolderLabel = isVeryCompact ? "📁" : (isCompact ? "📁 Open" : "📁 Open Folder");
 
-            this.addDrawableChild(new CustomButton(
+            this.addRenderableWidget(new CustomButton(
                     currentX, PADDING, newFolderWidth, BUTTON_HEIGHT,
-                    Text.of(newFolderLabel), button -> openNewFolderPopup()));
+                    Component.literal(newFolderLabel), button -> openNewFolderPopup()));
             currentX += newFolderWidth + PADDING;
 
             renameButton = new CustomButton(
                     currentX, PADDING, renameWidth, BUTTON_HEIGHT,
-                    Text.of(renameLabel), button -> openRenamePopup());
+                    Component.literal(renameLabel), button -> openRenamePopup());
             renameButton.active = false;
-            this.addDrawableChild(renameButton);
+            this.addRenderableWidget(renameButton);
             currentX += renameWidth + PADDING;
 
             deleteButton = new CustomButton(
                     currentX, PADDING, deleteWidth, BUTTON_HEIGHT,
-                    Text.of(deleteLabel), button -> handleDeleteClick());
+                    Component.literal(deleteLabel), button -> handleDeleteClick());
             deleteButton.active = false;
-            this.addDrawableChild(deleteButton);
+            this.addRenderableWidget(deleteButton);
             currentX += deleteWidth + PADDING;
 
-            this.addDrawableChild(new CustomButton(
+            this.addRenderableWidget(new CustomButton(
                     currentX, PADDING, openFolderWidth, BUTTON_HEIGHT,
-                    Text.of(openFolderLabel), button -> openInFileExplorer()));
+                    Component.literal(openFolderLabel), button -> openInFileExplorer()));
             currentX += openFolderWidth + PADDING;
 
             int settingsX = this.width - PADDING - BUTTON_HEIGHT;
-            this.addDrawableChild(new CustomButton(
+            this.addRenderableWidget(new CustomButton(
                     settingsX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
-                    Text.of("⚙"), button -> openSettings()));
+                    Component.literal("⚙"), button -> openSettings()));
 
             int searchWidth = settingsX - currentX - PADDING;
-            if (this.client != null && searchWidth > 30) {
-                searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT,
-                        Text.of("Search"));
-                searchField.setPlaceholder(Text.of("Search..."));
+            if (this.minecraft != null && searchWidth > 30) {
+                searchField = new CustomTextField(this.minecraft, currentX, PADDING, searchWidth, BUTTON_HEIGHT,
+                        Component.literal("Search"));
+                searchField.setPlaceholder(Component.literal("Search..."));
                 searchField.setOnChanged(this::onSearchChanged);
                 searchField.setOnClearPressed(this::onSearchCleared);
                 if (!previousSearchText.isEmpty()) {
-                    searchField.setText(previousSearchText);
+                    searchField.setValue(previousSearchText);
                 }
-                this.addDrawableChild(searchField);
+                this.addRenderableWidget(searchField);
             }
         } else {
             int searchWidth = leftPanelWidth - currentX - PADDING * 2;
-            if (this.client != null && searchWidth > 30) {
-                searchField = new CustomTextField(this.client, currentX, PADDING, searchWidth, BUTTON_HEIGHT,
-                        Text.of("Search"));
-                searchField.setPlaceholder(Text.of("Search..."));
+            if (this.minecraft != null && searchWidth > 30) {
+                searchField = new CustomTextField(this.minecraft, currentX, PADDING, searchWidth, BUTTON_HEIGHT,
+                        Component.literal("Search"));
+                searchField.setPlaceholder(Component.literal("Search..."));
                 searchField.setOnChanged(this::onSearchChanged);
                 searchField.setOnClearPressed(this::onSearchCleared);
                 if (!previousSearchText.isEmpty()) {
-                    searchField.setText(previousSearchText);
+                    searchField.setValue(previousSearchText);
                 }
-                this.addDrawableChild(searchField);
+                this.addRenderableWidget(searchField);
             }
             renameButton = null;
             deleteButton = null;
@@ -375,23 +376,23 @@ public class LocalFolderPage extends Screen {
     }
 
     private void goBack() {
-        if (this.client != null) {
-            this.client.setScreen(parentScreen);
+        if (this.minecraft != null) {
+            this.minecraft.setScreen(parentScreen);
         }
     }
 
     private void openSettings() {
-        if (this.client != null) {
+        if (this.minecraft != null) {
             SettingsPage settingsPage = new SettingsPage(this);
             if (onApiToggleChanged != null) {
                 settingsPage.setOnApiToggleChanged(onApiToggleChanged);
             }
-            this.client.setScreen(settingsPage);
+            this.minecraft.setScreen(settingsPage);
         }
     }
 
     private void openInFileExplorer() {
-        Util.getOperatingSystem().open(currentDirectory);
+        Util.getPlatform().openPath(currentDirectory.toPath());
     }
 
     private void handleQuickShare(int entryIndex) {
@@ -417,8 +418,8 @@ public class LocalFolderPage extends Screen {
                 .thenAccept(response -> {
                     String shortUrl = response.shortUrl();
                     if (shortUrl == null || shortUrl.isEmpty()) {
-                        if (client != null) {
-                            client.execute(() -> {
+                        if (this.minecraft != null) {
+                            this.minecraft.execute(() -> {
                                 if (toastManager != null) {
                                     toastManager.showError("Upload failed: No URL returned");
                                 }
@@ -429,11 +430,11 @@ public class LocalFolderPage extends Screen {
                         return;
                     }
 
-                    if (client != null) {
-                        client.execute(() -> {
+                    if (this.minecraft != null) {
+                        this.minecraft.execute(() -> {
                             try {
-                                if (client.keyboard != null) {
-                                    client.keyboard.setClipboard(shortUrl);
+                                if (this.minecraft.keyboardHandler != null) {
+                                    this.minecraft.keyboardHandler.setClipboard(shortUrl);
                                     if (toastManager != null) {
                                         toastManager.showSuccess("Link copied to clipboard!");
                                     }
@@ -627,7 +628,7 @@ public class LocalFolderPage extends Screen {
             return;
         }
 
-        long windowHandle = this.client != null ? this.client.getWindow().getHandle() : 0;
+        long windowHandle = GLFW.glfwGetCurrentContext();
         boolean shiftHeld = false;
         if (windowHandle != 0) {
             shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
@@ -1018,7 +1019,7 @@ public class LocalFolderPage extends Screen {
 
     private void onSearchChanged() {
         if (searchField != null) {
-            String newQuery = searchField.getText().trim().toLowerCase();
+            String newQuery = searchField.getValue().trim().toLowerCase();
             if (!newQuery.equals(searchManager.getSearchQuery())) {
                 searchManager.updateSearch(newQuery);
                 performSearch();
@@ -1108,11 +1109,11 @@ public class LocalFolderPage extends Screen {
     }
 
     private String truncateText(String text, int maxWidth) {
-        if (this.textRenderer.getWidth(text) <= maxWidth) {
+        if (this.font.width(text) <= maxWidth) {
             return text;
         }
         String ellipsis = "...";
-        int ellipsisWidth = this.textRenderer.getWidth(ellipsis);
+        int ellipsisWidth = this.font.width(ellipsis);
         int availableWidth = maxWidth - ellipsisWidth;
         if (availableWidth <= 0) {
             return ellipsis;
@@ -1120,7 +1121,7 @@ public class LocalFolderPage extends Screen {
         StringBuilder truncated = new StringBuilder();
         for (int c = 0; c < text.length(); c++) {
             String test = truncated.toString() + text.charAt(c);
-            if (this.textRenderer.getWidth(test) > availableWidth) {
+            if (this.font.width(test) > availableWidth) {
                 break;
             }
             truncated.append(text.charAt(c));
@@ -1181,15 +1182,15 @@ public class LocalFolderPage extends Screen {
         }
     }
 
-    private void renderBreadcrumb(DrawContext context, int mouseX, int mouseY) {
+    private void renderBreadcrumb(GuiGraphicsExtractor context, int mouseX, int mouseY) {
         breadcrumbSegments.clear();
 
         int breadcrumbY = PADDING + BUTTON_HEIGHT + PADDING + 14;
         int currentX = PADDING;
 
         String label = "Current: ";
-        context.drawTextWithShadow(this.textRenderer, label, currentX, breadcrumbY, 0xFFAAAAAA);
-        currentX += this.textRenderer.getWidth(label);
+        context.text(this.font, label, currentX, breadcrumbY, 0xFFAAAAAA);
+        currentX += this.font.width(label);
 
         List<File> pathSegments = new ArrayList<>();
         File dir = currentDirectory;
@@ -1219,17 +1220,17 @@ public class LocalFolderPage extends Screen {
             } else {
                 if (i > 1) {
                     String separator = " / ";
-                    context.drawTextWithShadow(this.textRenderer, separator, currentX, breadcrumbY, 0xFF888888);
-                    currentX += this.textRenderer.getWidth(separator);
+                    context.text(this.font, separator, currentX, breadcrumbY, 0xFF888888);
+                    currentX += this.font.width(separator);
                 } else {
                     String space = " ";
-                    context.drawTextWithShadow(this.textRenderer, space, currentX, breadcrumbY, 0xFF888888);
-                    currentX += this.textRenderer.getWidth(space);
+                    context.text(this.font, space, currentX, breadcrumbY, 0xFF888888);
+                    currentX += this.font.width(space);
                 }
                 segmentName = segment.getName();
             }
 
-            int segmentWidth = this.textRenderer.getWidth(segmentName);
+            int segmentWidth = this.font.width(segmentName);
 
             boolean isHovered = activePopup == null &&
                     mouseX >= currentX && mouseX < currentX + segmentWidth &&
@@ -1259,7 +1260,7 @@ public class LocalFolderPage extends Screen {
                 context.fill(currentX, breadcrumbY + 10, currentX + segmentWidth, breadcrumbY + 11, color);
             }
 
-            context.drawTextWithShadow(this.textRenderer, segmentName, currentX, breadcrumbY, color);
+            context.text(this.font, segmentName, currentX, breadcrumbY, color);
 
             if (!isCurrent) {
                 breadcrumbSegments.add(new BreadcrumbSegment(currentX, segmentWidth, segment));
@@ -1270,7 +1271,7 @@ public class LocalFolderPage extends Screen {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         if (pendingReload) {
             pendingReload = false;
             init();
@@ -1278,8 +1279,8 @@ public class LocalFolderPage extends Screen {
 
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
-        if (this.client != null && this.client.getWindow() != null) {
-            long windowHandle = this.client.getWindow().getHandle();
+        if (this.minecraft != null && this.minecraft.getWindow() != null) {
+            long windowHandle = GLFW.glfwGetCurrentContext();
             boolean searchFocused = searchField != null && searchField.isFocused();
             boolean detailPopupActive = showDetailPanel && detailPanel != null && detailPanel.hasPopup();
             boolean popupActive = activePopup != null || confirmPopup != null || detailPopupActive;
@@ -1328,8 +1329,8 @@ public class LocalFolderPage extends Screen {
             }
         }
 
-        if (dragStartIndex != -1 && this.client != null && this.client.getWindow() != null) {
-            long windowHandle = this.client.getWindow().getHandle();
+        if (dragStartIndex != -1 && this.minecraft != null && this.minecraft.getWindow() != null) {
+            long windowHandle = GLFW.glfwGetCurrentContext();
             boolean mouseButtonPressed = org.lwjgl.glfw.GLFW.glfwGetMouseButton(windowHandle,
                     org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
 
@@ -1406,10 +1407,10 @@ public class LocalFolderPage extends Screen {
         int renderMouseX = listBlocked ? -1 : mouseX;
         int renderMouseY = listBlocked ? -1 : mouseY;
 
-        super.render(context, renderMouseX, renderMouseY, delta);
+        super.extractRenderState(context, renderMouseX, renderMouseY, delta);
 
         if (searchField != null && !listBlocked) {
-            searchField.render(context, mouseX, mouseY, delta);
+            searchField.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         if (!searchManager.isActive()) {
@@ -1418,7 +1419,7 @@ public class LocalFolderPage extends Screen {
             int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT + 18 - 14;
             String searchInfo = "Found " + entries.size() + " result" + (entries.size() != 1 ? "s" : "") + " for \""
                     + searchManager.getSearchQuery() + "\"";
-            context.drawTextWithShadow(this.textRenderer, searchInfo, PADDING, breadcrumbY, 0xFFAAAAFF);
+            context.text(this.font, searchInfo, PADDING, breadcrumbY, 0xFFAAAAFF);
         }
 
         int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
@@ -1466,8 +1467,8 @@ public class LocalFolderPage extends Screen {
             int textY = itemY
                     + (searchManager.isActive() && entry.relativePath != null && !entry.relativePath.isEmpty() ? 4 : 8);
 
-            context.drawTextWithShadow(this.textRenderer, icon + " ", textX, textY, 0xFFFFFFFF);
-            textX += this.textRenderer.getWidth(icon + " ");
+            context.text(this.font, icon + " ", textX, textY, 0xFFFFFFFF);
+            textX += this.font.width(icon + " ");
 
             int buttonAreaWidth = (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic"))
                     ? (showDetailPanel ? 25 : 80) + 10
@@ -1475,14 +1476,14 @@ public class LocalFolderPage extends Screen {
             int maxTextWidth = listRightEdge - textX - buttonAreaWidth - 5;
 
             String displayFileName = fileName;
-            if (this.textRenderer.getWidth(fileName) > maxTextWidth) {
+            if (this.font.width(fileName) > maxTextWidth) {
                 String ellipsis = "...";
-                int ellipsisWidth = this.textRenderer.getWidth(ellipsis);
+                int ellipsisWidth = this.font.width(ellipsis);
                 int availableWidth = maxTextWidth - ellipsisWidth;
                 StringBuilder truncated = new StringBuilder();
                 for (int c = 0; c < fileName.length(); c++) {
                     String test = truncated.toString() + fileName.charAt(c);
-                    if (this.textRenderer.getWidth(test) > availableWidth) {
+                    if (this.font.width(test) > availableWidth) {
                         break;
                     }
                     truncated.append(fileName.charAt(c));
@@ -1498,53 +1499,53 @@ public class LocalFolderPage extends Screen {
                     String beforeMatch = fileName.substring(0, searchIndex);
                     if (!beforeMatch.isEmpty()) {
                         String displayBefore = beforeMatch;
-                        if (this.textRenderer.getWidth(beforeMatch) > maxTextWidth) {
+                        if (this.font.width(beforeMatch) > maxTextWidth) {
                             displayBefore = truncateText(beforeMatch, maxTextWidth);
                         }
-                        context.drawTextWithShadow(this.textRenderer, displayBefore, textX, textY, 0xFFFFFFFF);
-                        textX += this.textRenderer.getWidth(displayBefore);
+                        context.text(this.font, displayBefore, textX, textY, 0xFFFFFFFF);
+                        textX += this.font.width(displayBefore);
                     }
 
                     String queryLen = searchManager.getSearchQuery();
                     String matchText = fileName.substring(searchIndex, searchIndex + queryLen.length());
-                    int matchWidth = this.textRenderer.getWidth(matchText);
+                    int matchWidth = this.font.width(matchText);
                     context.fill(textX - 1, textY - 1, textX + matchWidth + 1, textY + 9, 0xFF4488FF);
-                    context.drawTextWithShadow(this.textRenderer, matchText, textX, textY, 0xFFFFFFFF);
+                    context.text(this.font, matchText, textX, textY, 0xFFFFFFFF);
                     textX += matchWidth;
 
                     String afterMatch = fileName.substring(searchIndex + queryLen.length());
                     if (!afterMatch.isEmpty()) {
                         int remainingWidth = maxTextWidth
-                                - (textX - PADDING - 5 - this.textRenderer.getWidth(icon + " "));
+                                - (textX - PADDING - 5 - this.font.width(icon + " "));
                         String displayAfter = afterMatch;
-                        if (this.textRenderer.getWidth(afterMatch) > remainingWidth) {
+                        if (this.font.width(afterMatch) > remainingWidth) {
                             displayAfter = truncateText(afterMatch, remainingWidth);
                         }
-                        context.drawTextWithShadow(this.textRenderer, displayAfter, textX, textY, 0xFFFFFFFF);
-                        textX += this.textRenderer.getWidth(displayAfter);
+                        context.text(this.font, displayAfter, textX, textY, 0xFFFFFFFF);
+                        textX += this.font.width(displayAfter);
                     }
                 } else {
-                    context.drawTextWithShadow(this.textRenderer, displayFileName, textX, textY, 0xFFFFFFFF);
-                    textX += this.textRenderer.getWidth(displayFileName);
+                    context.text(this.font, displayFileName, textX, textY, 0xFFFFFFFF);
+                    textX += this.font.width(displayFileName);
                 }
             } else {
-                context.drawTextWithShadow(this.textRenderer, displayFileName, textX, textY, 0xFFFFFFFF);
-                textX += this.textRenderer.getWidth(displayFileName);
+                context.text(this.font, displayFileName, textX, textY, 0xFFFFFFFF);
+                textX += this.font.width(displayFileName);
             }
 
             if (!entry.isDirectory && !entry.file.getName().toLowerCase().endsWith(".litematic")) {
                 long sizeKB = entry.file.length() / 1024;
                 String sizeText = " (" + sizeKB + " KB)";
                 int remainingWidth = listRightEdge - textX - 5;
-                if (this.textRenderer.getWidth(sizeText) <= remainingWidth) {
-                    context.drawTextWithShadow(this.textRenderer, sizeText, textX, textY, 0xFFAAAAAA);
+                if (this.font.width(sizeText) <= remainingWidth) {
+                    context.text(this.font, sizeText, textX, textY, 0xFFAAAAAA);
                 }
             }
 
             if (searchManager.isActive() && entry.relativePath != null && !entry.relativePath.isEmpty()) {
                 String pathDisplay = "📍 " + entry.relativePath;
-                context.drawTextWithShadow(this.textRenderer, pathDisplay,
-                        PADDING + 5 + this.textRenderer.getWidth(icon + " "), itemY + 15, 0xFF888888);
+                context.text(this.font, pathDisplay,
+                        PADDING + 5 + this.font.width(icon + " "), itemY + 15, 0xFF888888);
             }
 
             if (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic")) {
@@ -1594,18 +1595,18 @@ public class LocalFolderPage extends Screen {
                 context.fill(buttonX + buttonWidth - 1, buttonY, buttonX + buttonWidth, buttonY + buttonHeight,
                         borderColor);
 
-                int btnTextWidth = this.textRenderer.getWidth(buttonText);
+                int btnTextWidth = this.font.width(buttonText);
                 int btnTextX = buttonX + (buttonWidth - btnTextWidth) / 2;
                 int btnTextY = buttonY + (buttonHeight - 8) / 2;
-                context.drawTextWithShadow(this.textRenderer, buttonText, btnTextX, btnTextY, buttonTextColor);
+                context.text(this.font, buttonText, btnTextX, btnTextY, buttonTextColor);
             }
         }
 
         context.disableScissor();
 
-        if (scrollBar != null && scrollBar.isVisible() && this.client != null) {
+        if (scrollBar != null && scrollBar.isVisible() && this.minecraft != null) {
             boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta,
-                    this.client.getWindow().getHandle());
+                    GLFW.glfwGetCurrentContext());
 
             if (scrollChanged) {
                 int maxScroll = getMaxScroll();
@@ -1616,35 +1617,35 @@ public class LocalFolderPage extends Screen {
         if (showDetailPanel && detailPanel != null) {
             int detailMouseX = overlayPopupActive ? -1 : mouseX;
             int detailMouseY = overlayPopupActive ? -1 : mouseY;
-            detailPanel.render(context, detailMouseX, detailMouseY, delta);
+            detailPanel.extractRenderState(context, detailMouseX, detailMouseY, delta);
         }
 
         if (activePopup != null) {
-            activePopup.render(context, mouseX, mouseY, delta);
+            activePopup.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         if (confirmPopup != null) {
-            confirmPopup.render(context, mouseX, mouseY, delta);
+            confirmPopup.extractRenderState(context, mouseX, mouseY, delta);
         }
 
         if (isDragging && selectionManager.hasSelection()) {
             String dragText = selectionManager.getSelectionCount() + " item"
                     + (selectionManager.getSelectionCount() > 1 ? "s" : "");
-            int textWidth = this.textRenderer.getWidth(dragText);
+            int textWidth = this.font.width(dragText);
             int cursorX = mouseX + 10;
             int cursorY = mouseY + 10;
 
-            context.fill(cursorX - 2, cursorY - 2, cursorX + textWidth + 2, cursorY + this.textRenderer.fontHeight + 2,
+            context.fill(cursorX - 2, cursorY - 2, cursorX + textWidth + 2, cursorY + this.font.lineHeight + 2,
                     0xCC000000);
 
             context.fill(cursorX - 2, cursorY - 2, cursorX + textWidth + 2, cursorY - 1, 0xFF888888);
-            context.fill(cursorX - 2, cursorY + this.textRenderer.fontHeight + 1, cursorX + textWidth + 2,
-                    cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
-            context.fill(cursorX - 2, cursorY - 2, cursorX - 1, cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
+            context.fill(cursorX - 2, cursorY + this.font.lineHeight + 1, cursorX + textWidth + 2,
+                    cursorY + this.font.lineHeight + 2, 0xFF888888);
+            context.fill(cursorX - 2, cursorY - 2, cursorX - 1, cursorY + this.font.lineHeight + 2, 0xFF888888);
             context.fill(cursorX + textWidth + 1, cursorY - 2, cursorX + textWidth + 2,
-                    cursorY + this.textRenderer.fontHeight + 2, 0xFF888888);
+                    cursorY + this.font.lineHeight + 2, 0xFF888888);
 
-            context.drawText(this.textRenderer, dragText, cursorX, cursorY, 0xFFFFFFFF, false);
+            context.text(this.font, dragText, cursorX, cursorY, 0xFFFFFFFF);
         }
 
         if (toastManager != null) {
@@ -1653,7 +1654,7 @@ public class LocalFolderPage extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+    public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent click, boolean doubled) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
@@ -1704,7 +1705,7 @@ public class LocalFolderPage extends Screen {
                         String searchQuery = "";
                         isSearchActive = false;
                         if (searchField != null) {
-                            searchField.setText("");
+                            searchField.setValue("");
                         }
                     }
                     currentDirectory = segment.directory;
@@ -1738,7 +1739,7 @@ public class LocalFolderPage extends Screen {
                 if (button == 0) {
                     FileEntry entry = entries.get(clickedIndex);
 
-                    long windowHandle = this.client != null ? this.client.getWindow().getHandle() : 0;
+                    long windowHandle = GLFW.glfwGetCurrentContext();
                     boolean shiftHeld = false;
                     boolean ctrlHeld = false;
                     if (windowHandle != 0) {
@@ -1757,7 +1758,7 @@ public class LocalFolderPage extends Screen {
                         if (searchManager.isActive()) {
                             searchManager.clearSearch();
                             if (searchField != null) {
-                                searchField.setText("");
+                                searchField.setValue("");
                             }
                         }
                         currentDirectory = entry.file;
@@ -2078,7 +2079,7 @@ public class LocalFolderPage extends Screen {
     }
 
     @Override
-    public boolean shouldPause() {
+    public boolean isPauseScreen() {
         return false;
     }
 
@@ -2104,7 +2105,7 @@ public class LocalFolderPage extends Screen {
     }
 
     @Override
-    public void close() {
+    public void onClose() {
         goBack();
     }
 }

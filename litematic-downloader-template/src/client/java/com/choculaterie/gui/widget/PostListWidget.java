@@ -1,16 +1,17 @@
 package com.choculaterie.gui.widget;
 
+import org.lwjgl.glfw.GLFW;
 import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.models.MinemevPostInfo;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.ClickableWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class PostListWidget extends ClickableWidget {
+public class PostListWidget extends AbstractWidget {
     private static final int ENTRY_SPACING = 2;
     private static final int SCROLL_SPEED = 20;
 
@@ -24,7 +25,7 @@ public class PostListWidget extends ClickableWidget {
     }
 
     public PostListWidget(int x, int y, int width, int height, OnPostClickListener onPostClick) {
-        super(x, y, width, height, Text.empty());
+        super(x, y, width, height, Component.empty());
         this.entries = new ArrayList<>();
         this.onPostClick = onPostClick;
         this.scrollBar = new ScrollBar(x + width - UITheme.Dimensions.SCROLLBAR_WIDTH, y, height);
@@ -109,7 +110,7 @@ public class PostListWidget extends ClickableWidget {
     }
 
     @Override
-    public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         context.enableScissor(getX(), getY(), getX() + width, getY() + height);
 
         int offsetY = (int) scrollAmount;
@@ -121,7 +122,7 @@ public class PostListWidget extends ClickableWidget {
 
             if (isEntryVisible(entryY, entry.getRowHeight())) {
                 entry.updateBounds(getX(), entryY, entryWidth);
-                entry.render(context, mouseX, mouseY, delta);
+                entry.extractRenderState(context, mouseX, mouseY, delta);
             }
 
             currentY += entry.getRowHeight() + ENTRY_SPACING;
@@ -129,20 +130,20 @@ public class PostListWidget extends ClickableWidget {
 
         context.disableScissor();
 
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client != null && client.getWindow() != null) {
-            long windowHandle = client.getWindow().getHandle();
+            long windowHandle = GLFW.glfwGetCurrentContext();
             if (scrollBar.updateAndRender(context, mouseX, mouseY, delta, windowHandle)) {
                 double maxScroll = getMaxScroll();
                 scrollAmount = scrollBar.getScrollPercentage() * maxScroll;
             }
         } else {
-            scrollBar.render(context, mouseX, mouseY, delta);
+            scrollBar.extractRenderState(context, mouseX, mouseY, delta);
         }
     }
 
     @Override
-    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+    public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent click, boolean doubled) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
@@ -248,17 +249,17 @@ public class PostListWidget extends ClickableWidget {
     }
 
     @Override
-    protected void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
+    protected void updateWidgetNarration(net.minecraft.client.gui.narration.NarrationElementOutput builder) {
     }
 
-    private static final class PostEntryButton extends ClickableWidget {
+    private static final class PostEntryButton extends AbstractWidget {
         private final PostEntryWidget visual;
         private final MinemevPostInfo post;
         private final Runnable clickAction;
         private boolean pressed;
 
         private PostEntryButton(PostEntryWidget visual, Runnable clickAction) {
-            super(visual.getX(), visual.getY(), visual.getWidth(), visual.getHeight(), Text.empty());
+            super(visual.getX(), visual.getY(), visual.getWidth(), visual.getHeight(), Component.empty());
             this.visual = visual;
             this.post = visual.getPost();
             this.clickAction = clickAction;
@@ -289,7 +290,7 @@ public class PostListWidget extends ClickableWidget {
             pressed = true;
             visual.setPressed(true);
             this.setFocused(true);
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client != null && client.getSoundManager() != null) {
                 this.playDownSound(client.getSoundManager());
             }
@@ -314,16 +315,16 @@ public class PostListWidget extends ClickableWidget {
         }
 
         @Override
-        public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
-            visual.render(context, mouseX, mouseY, delta);
+        public void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            visual.extractRenderState(context, mouseX, mouseY, delta);
             if (this.isHovered()) {
                 context.fill(getX(), getY(), getX() + this.width, getY() + this.height, 0x30FFFFFF);
             }
         }
 
         @Override
-        protected void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {
-            builder.put(net.minecraft.client.gui.screen.narration.NarrationPart.TITLE, Text.of("Post entry"));
+        protected void updateWidgetNarration(net.minecraft.client.gui.narration.NarrationElementOutput builder) {
+            builder.add(net.minecraft.client.gui.narration.NarratedElementType.TITLE, Component.literal("Post entry"));
         }
     }
 }

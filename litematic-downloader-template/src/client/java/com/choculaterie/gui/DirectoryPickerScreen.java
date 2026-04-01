@@ -1,12 +1,13 @@
 package com.choculaterie.gui;
 
+import org.lwjgl.glfw.GLFW;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.gui.widget.CustomButton;
 import com.choculaterie.gui.widget.ScrollBar;
 import com.choculaterie.gui.widget.ToastManager;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -31,7 +32,7 @@ public class DirectoryPickerScreen extends Screen {
     private ToastManager toastManager;
 
     public DirectoryPickerScreen(Screen parentScreen, String startPath, Consumer<String> onPathSelected) {
-        super(Text.of("Select Directory"));
+        super(Component.literal("Select Directory"));
         this.parentScreen = parentScreen;
         this.onPathSelected = onPathSelected;
 
@@ -79,8 +80,8 @@ public class DirectoryPickerScreen extends Screen {
         int savedScrollOffset = scrollOffset;
         int savedSelectedIndex = selectedIndex;
 
-        if (this.client != null) {
-            toastManager = new ToastManager(this.client);
+        if (this.minecraft != null) {
+            toastManager = new ToastManager(this.minecraft);
         }
 
         boolean isCompact = this.width < 400;
@@ -96,20 +97,20 @@ public class DirectoryPickerScreen extends Screen {
                 PADDING,
                 BUTTON_HEIGHT,
                 BUTTON_HEIGHT,
-                Text.of("←"),
-                button -> close()
+                Component.literal("←"),
+                button -> onClose()
         );
-        this.addDrawableChild(backButton);
+        this.addRenderableWidget(backButton);
 
         CustomButton upButton = new CustomButton(
                 PADDING * 2 + BUTTON_HEIGHT,
                 PADDING,
                 upButtonWidth,
                 BUTTON_HEIGHT,
-                Text.of(upLabel),
+                Component.literal(upLabel),
                 button -> goUpDirectory()
         );
-        this.addDrawableChild(upButton);
+        this.addRenderableWidget(upButton);
 
         int listY = getListY();
         int listHeight = getListHeight();
@@ -121,10 +122,10 @@ public class DirectoryPickerScreen extends Screen {
                 selectButtonY,
                 selectButtonWidth,
                 BUTTON_HEIGHT,
-                Text.of(selectLabel),
+                Component.literal(selectLabel),
                 button -> selectCurrentDirectory()
         );
-        this.addDrawableChild(selectButton);
+        this.addRenderableWidget(selectButton);
 
         scrollBar = new ScrollBar(this.width - PADDING - SCROLLBAR_WIDTH, listY, listHeight);
 
@@ -202,7 +203,7 @@ public class DirectoryPickerScreen extends Screen {
                 toastManager.showSuccess("Directory selected!");
             }
             onPathSelected.accept(relativePath);
-            close();
+            onClose();
         }
     }
 
@@ -226,14 +227,14 @@ public class DirectoryPickerScreen extends Screen {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
-        super.render(context, mouseX, mouseY, delta);
+        super.extractRenderState(context, mouseX, mouseY, delta);
 
         String currentPath = currentDirectory != null ? currentDirectory.getAbsolutePath() : "";
-        context.drawTextWithShadow(
-                this.textRenderer,
+        context.text(
+                this.font,
                 "Current: " + currentPath,
                 PADDING,
                 PADDING * 3 + BUTTON_HEIGHT,
@@ -261,8 +262,8 @@ public class DirectoryPickerScreen extends Screen {
             context.fill(PADDING + 2, itemY + 2, listRightEdge - 2, itemY + ITEM_HEIGHT - 2, bgColor);
 
             String displayName = "📁 " + dir.getName();
-            context.drawTextWithShadow(
-                    this.textRenderer,
+            context.text(
+                    this.font,
                     displayName,
                     PADDING + 5,
                     itemY + 8,
@@ -272,8 +273,8 @@ public class DirectoryPickerScreen extends Screen {
 
         context.disableScissor();
 
-        if (scrollBar != null && scrollBar.isVisible() && this.client != null) {
-            boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, this.client.getWindow().getHandle());
+        if (scrollBar != null && scrollBar.isVisible() && this.minecraft != null) {
+            boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta, GLFW.glfwGetCurrentContext());
 
             if (scrollChanged) {
                 int maxScroll = getMaxScroll();
@@ -287,7 +288,7 @@ public class DirectoryPickerScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean doubled) {
+    public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent click, boolean doubled) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
@@ -336,14 +337,14 @@ public class DirectoryPickerScreen extends Screen {
     }
 
     @Override
-    public void close() {
-        if (this.client != null) {
-            this.client.setScreen(parentScreen);
+    public void onClose() {
+        if (this.minecraft != null) {
+            this.minecraft.setScreen(parentScreen);
         }
     }
 
     @Override
-    public boolean shouldPause() {
+    public boolean isPauseScreen() {
         return false;
     }
 }

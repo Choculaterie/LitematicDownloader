@@ -2,14 +2,14 @@ package com.choculaterie.gui.widget;
 
 import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.models.ModMessage;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.Element;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 
 import java.util.function.Consumer;
 
-public class ModMessageBanner implements Drawable, Element {
+public class ModMessageBanner implements Renderable, GuiEventListener {
     private static final int BANNER_HEIGHT = 30;
     private static final int CLOSE_BUTTON_SIZE = UITheme.Dimensions.ICON_SMALL;
 
@@ -19,7 +19,7 @@ public class ModMessageBanner implements Drawable, Element {
     private static final int DEFAULT_BG_COLOR = 0xE03A3A3A;
     private static final int CLOSE_HOVER_COLOR = 0x40FFFFFF;
 
-    private final MinecraftClient client;
+    private final Minecraft client;
     private int x;
     private int y;
     private int width;
@@ -31,7 +31,7 @@ public class ModMessageBanner implements Drawable, Element {
         this.x = x;
         this.y = y;
         this.width = width;
-        this.client = MinecraftClient.getInstance();
+        this.client = Minecraft.getInstance();
     }
 
     public void setMessage(ModMessage message) {
@@ -87,7 +87,7 @@ public class ModMessageBanner implements Drawable, Element {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         if (!visible || message == null || !message.hasMessage()) {
             return;
         }
@@ -100,16 +100,16 @@ public class ModMessageBanner implements Drawable, Element {
         drawCloseButton(context, mouseX, mouseY);
     }
 
-    private void drawBackground(DrawContext context, int bgColor) {
+    private void drawBackground(GuiGraphicsExtractor context, int bgColor) {
         context.fill(x, y, x + width, y + BANNER_HEIGHT, bgColor);
     }
 
-    private void drawBorder(DrawContext context) {
+    private void drawBorder(GuiGraphicsExtractor context) {
         context.fill(x, y + BANNER_HEIGHT - UITheme.Dimensions.BORDER_WIDTH,
                     x + width, y + BANNER_HEIGHT, UITheme.Colors.DIVIDER);
     }
 
-    private void drawMessageText(DrawContext context) {
+    private void drawMessageText(GuiGraphicsExtractor context) {
         String text = message.message();
         if (text == null) return;
 
@@ -117,21 +117,21 @@ public class ModMessageBanner implements Drawable, Element {
         text = truncateText(text, maxTextWidth);
 
         int textY = y + (BANNER_HEIGHT - UITheme.Typography.TEXT_HEIGHT) / 2;
-        context.drawTextWithShadow(client.textRenderer, text, x + UITheme.Dimensions.PADDING, textY, UITheme.Colors.TEXT_PRIMARY);
+        context.text(client.font, text, x + UITheme.Dimensions.PADDING, textY, UITheme.Colors.TEXT_PRIMARY);
     }
 
     private String truncateText(String text, int maxWidth) {
-        if (client.textRenderer.getWidth(text) <= maxWidth) {
+        if (client.font.width(text) <= maxWidth) {
             return text;
         }
 
-        while (client.textRenderer.getWidth(text + "...") > maxWidth && text.length() > 0) {
+        while (client.font.width(text + "...") > maxWidth && text.length() > 0) {
             text = text.substring(0, text.length() - 1);
         }
         return text + "...";
     }
 
-    private void drawCloseButton(DrawContext context, int mouseX, int mouseY) {
+    private void drawCloseButton(GuiGraphicsExtractor context, int mouseX, int mouseY) {
         int closeX = getCloseButtonX();
         int closeY = getCloseButtonY();
 
@@ -140,8 +140,8 @@ public class ModMessageBanner implements Drawable, Element {
         }
 
         String closeText = "✕";
-        int closeTextWidth = client.textRenderer.getWidth(closeText);
-        context.drawTextWithShadow(client.textRenderer, closeText,
+        int closeTextWidth = client.font.width(closeText);
+        context.text(client.font, closeText,
                 closeX + (CLOSE_BUTTON_SIZE - closeTextWidth) / 2,
                 closeY + (CLOSE_BUTTON_SIZE - UITheme.Typography.TEXT_HEIGHT) / 2,
                 UITheme.Colors.TEXT_PRIMARY);
