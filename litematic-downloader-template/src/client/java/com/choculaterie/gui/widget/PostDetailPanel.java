@@ -879,7 +879,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             imageLoadingSpinner.extractRenderState(context, mouseX, mouseY, delta);
         } else if (currentImageTexture != null) {
             context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, UITheme.Colors.PANEL_BG);
-            context.blit(currentImageTexture, imageX, imageY, actualImageWidth, actualImageHeight, 0.0f, 0.0f, 1.0f, 1.0f);
+            context.blit(currentImageTexture, imageX, imageY, imageX + actualImageWidth, imageY + actualImageHeight, 0.0f, 1.0f, 0.0f, 1.0f);
         } else {
             context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight, UITheme.Colors.CONTAINER_BG);
             String noImg = isCompactMode() ? "..." : "No image";

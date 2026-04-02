@@ -154,7 +154,7 @@ public class ImageViewerWidget {
         context.fill(0, 0, screenWidth, screenHeight, UITheme.Colors.PANEL_BG);
 
         if (imageTexture != null) {
-            context.blit(imageTexture, imageX, imageY, displayWidth, displayHeight, 0.0f, 0.0f, 1.0f, 1.0f);
+            context.blit(imageTexture, imageX, imageY, imageX + displayWidth, imageY + displayHeight, 0.0f, 1.0f, 0.0f, 1.0f);
         }
     }
 
