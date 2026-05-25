@@ -1,0 +1,13 @@
+
+
+# Minecraft extracted assets (auto-generated)
+/assets/
+/com/
+/data/
+/net/
+/META-INF/
+.vscode/
+*.jfc
+pack.png
+version.json
+flightrecorder-config.jfc
