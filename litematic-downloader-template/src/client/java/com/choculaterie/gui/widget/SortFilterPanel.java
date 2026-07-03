@@ -31,7 +31,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
     private final String[] sortOptions = {"newest", "popular", "oldest", "downloads"};
     private final String[] sortLabels = {"Newest", "Popular", "Oldest", "Downloads"};
     private int itemsPerPage = 10;
-    private final int[] pageOptions = {5, 10, 20, 50};
+    private int[] pageOptions = computePageOptions(4);
     private String[] availableVendors = new String[0];
     private Set<String> excludedVendors = new HashSet<>();
     private boolean isLoadingVendors = false;
@@ -148,7 +148,35 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
             });
     }
 
+    // Options must be multiples of the active vendor count so the API's
+    // per-vendor split (pagesize / vendor_count) returns exactly what we ask for.
+    // Base = 2 per vendor, doubling, capped at 50.
+    private static int[] computePageOptions(int vendorCount) {
+        int base = vendorCount * 2;
+        int cap = Math.max(base, 50 / vendorCount * vendorCount);
+        return new int[]{
+                base,
+                Math.min(base * 2, cap),
+                Math.min(base * 4, cap),
+                cap
+        };
+    }
+
+    private void updatePageOptions() {
+        int activeVendors = Math.max(1, availableVendors.length - excludedVendors.size());
+        pageOptions = computePageOptions(activeVendors);
+        // snap saved value to the closest valid option
+        int closest = pageOptions[0];
+        for (int opt : pageOptions) {
+            if (Math.abs(opt - itemsPerPage) < Math.abs(closest - itemsPerPage)) {
+                closest = opt;
+            }
+        }
+        itemsPerPage = closest;
+    }
+
     private void createVendorToggles() {
+        updatePageOptions();
         vendorToggles.clear();
         for (int i = 0; i < availableVendors.length; i++) {
             final String vendor = availableVendors[i];
@@ -400,6 +428,9 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
                     excludedVendors.add(vendor);
                     toggle.setToggled(false);
                 }
+                updatePageOptions();
+                saveSettings();
+                notifySettingsChanged();
                 return true;
             }
         }
@@ -426,6 +457,8 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
 
             if (mouseX >= btnX && mouseX < btnX + btnWidth && mouseY >= btnY && mouseY < btnY + btnHeight) {
                 selectedSort = sortOptions[i];
+                saveSettings();
+                notifySettingsChanged();
                 return true;
             }
         }
@@ -440,6 +473,8 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
 
             if (mouseX >= btnX && mouseX < btnX + pageBtnWidth && mouseY >= btnY && mouseY < btnY + btnHeight) {
                 itemsPerPage = pageOptions[i];
+                saveSettings();
+                notifySettingsChanged();
                 return true;
             }
         }
@@ -486,8 +521,10 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         for (ToggleButton toggle : vendorToggles) {
             toggle.setToggled(true);
         }
+        updatePageOptions();
         scrollOffset = 0;
         saveSettings();
+        notifySettingsChanged();
     }
 
     @Override

@@ -45,6 +45,7 @@ public class MinemevNetworkManager {
 	private static final int TIMEOUT = 10000;
 	private static final int DEFAULT_PAGE = 1;
 	private static final String DEFAULT_VENDOR = "minemev";
+	private static final int DEFAULT_PAGE_SIZE = 20;
 
 	public static CompletableFuture<String[]> getVendors() {
 		return supplyAsync(() -> {
@@ -59,14 +60,14 @@ public class MinemevNetworkManager {
 
 	public static CompletableFuture<MinemevSearchResponse> searchPosts(
 			String query, String sort, int cleanUuid, int page) {
-		return searchPostsAdvanced(query, sort, cleanUuid, page, null, null, null);
+		return searchPostsAdvanced(query, sort, cleanUuid, page, null, null, null, DEFAULT_PAGE_SIZE);
 	}
 
 	public static CompletableFuture<MinemevSearchResponse> searchPostsAdvanced(
 			String query, String sort, int cleanUuid, int page,
-			String tag, String versions, String excludeVendor) {
+			String tag, String versions, String excludeVendor, int pageSize) {
 		return supplyAsync(() -> {
-			String url = buildSearchUrl(query, sort, cleanUuid, page, tag, versions, excludeVendor);
+			String url = buildSearchUrl(query, sort, cleanUuid, page, tag, versions, excludeVendor, pageSize);
 			return parseSearchResponse(makeGetRequest(url));
 		});
 	}
@@ -114,7 +115,7 @@ public class MinemevNetworkManager {
 	}
 
 	private static String buildSearchUrl(String query, String sort, int cleanUuid, int page,
-										 String tag, String versions, String excludeVendor) {
+										 String tag, String versions, String excludeVendor, int pageSize) {
 		StringBuilder url = new StringBuilder(getSearchEndpoint())
 				.append("?clean_uuid=").append(cleanUuid);
 
@@ -127,6 +128,7 @@ public class MinemevNetworkManager {
 		if (page > 0) {
 			url.append("&page=").append(page);
 		}
+		url.append("&pagesize=").append(pageSize);
 		if (tag != null && !tag.isEmpty()) {
 			url.append("&tag=").append(encode(tag));
 		}
@@ -227,15 +229,18 @@ public class MinemevNetworkManager {
 	private static MinemevSearchResponse parseSearchResponse(String json) {
 		JsonObject root = GSON.fromJson(json, JsonObject.class);
 		JsonArray postsArray = root.getAsJsonArray("posts");
-		int totalPages = root.get("total_pages").getAsInt();
 		int totalItems = root.get("total_items").getAsInt();
+		int vendorPagesize = root.has("vendor_pagesize") ? root.get("vendor_pagesize").getAsInt() : 0;
+		int vendorCount = root.has("vendor_count") ? root.get("vendor_count").getAsInt() : 0;
+		int effectivePerPage = (vendorPagesize > 0 && vendorCount > 0) ? vendorPagesize * vendorCount : root.get("total_pages").getAsInt();
+		int totalPages = (effectivePerPage > 0) ? (int) Math.ceil((double) totalItems / effectivePerPage) : root.get("total_pages").getAsInt();
 
 		List<MinemevPostInfo> posts = new ArrayList<>();
 		for (int i = 0; i < postsArray.size(); i++) {
 			posts.add(parsePostInfo(postsArray.get(i).getAsJsonObject()));
 		}
 
-		return new MinemevSearchResponse(posts.toArray(new MinemevPostInfo[0]), totalPages, totalItems);
+		return new MinemevSearchResponse(posts.toArray(new MinemevPostInfo[0]), totalPages, totalItems, effectivePerPage);
 	}
 
 	private static MinemevPostInfo parsePostInfo(JsonObject obj) {

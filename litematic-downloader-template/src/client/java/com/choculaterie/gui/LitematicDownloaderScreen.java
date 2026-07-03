@@ -32,7 +32,6 @@ public class LitematicDownloaderScreen extends Screen {
     private static final int SEARCH_BAR_HEIGHT = 20;
     private static final int BUTTON_HEIGHT = 20;
     private static final int PADDING = 10;
-    private static final int ITEMS_PER_PAGE = 20;
     private static final int CLIPBOARD_BANNER_HEIGHT = 16;
     private static final Pattern QUICK_SHARE_PATTERN = Pattern.compile(
             "https?://(?:www\\.)?choculaterie\\.com/qs/([A-Za-z0-9_-]+)");
@@ -54,6 +53,7 @@ public class LitematicDownloaderScreen extends Screen {
     private int currentPage = 1;
     private int totalPages = 1;
     private int totalItems = 0;
+    private boolean pendingReload = false;
     private boolean isLoading = false;
     private String currentSearchQuery = "";
     private boolean noResultsFound = false;
@@ -485,8 +485,9 @@ public class LitematicDownloaderScreen extends Screen {
         String sort = sortFilterPanel != null ? sortFilterPanel.getSelectedSort() : "newest";
         String tag = sortFilterPanel != null ? sortFilterPanel.getTagFilter() : null;
         String excludeVendor = sortFilterPanel != null ? sortFilterPanel.getExcludedVendorsParam() : null;
+        int pageSize = sortFilterPanel != null ? sortFilterPanel.getItemsPerPage() : 20;
 
-        MinemevNetworkManager.searchPostsAdvanced(currentSearchQuery, sort, 1, currentPage, tag, null, excludeVendor)
+        MinemevNetworkManager.searchPostsAdvanced(currentSearchQuery, sort, 1, currentPage, tag, null, excludeVendor, pageSize)
                 .thenAccept(this::handleSearchResponse)
                 .exceptionally(throwable -> {
                     if (this.minecraft != null) {
@@ -494,6 +495,12 @@ public class LitematicDownloaderScreen extends Screen {
                             isLoading = false;
                             searchButton.active = true;
                             updatePaginationButtons();
+
+                            if (pendingReload) {
+                                pendingReload = false;
+                                loadPage();
+                                return;
+                            }
 
                             String errorMessage = throwable.getMessage();
                             String userMessage;
@@ -547,6 +554,13 @@ public class LitematicDownloaderScreen extends Screen {
     private void handleSearchResponse(MinemevSearchResponse response) {
         if (this.minecraft != null) {
             this.minecraft.execute(() -> {
+                if (pendingReload) {
+                    pendingReload = false;
+                    isLoading = false;
+                    loadPage();
+                    return;
+                }
+
                 totalPages = response.totalPages();
                 totalItems = response.totalItems();
 
@@ -612,6 +626,10 @@ public class LitematicDownloaderScreen extends Screen {
 
     private void onFilterSettingsChanged(SortFilterPanel panel) {
         currentPage = 1;
+        if (isLoading) {
+            pendingReload = true;
+            return;
+        }
         loadPage();
     }
 
@@ -641,7 +659,7 @@ public class LitematicDownloaderScreen extends Screen {
             detailPanel.extractRenderState(context, detailMouseX, detailMouseY, delta);
         }
 
-        if (totalPages > 1 || totalItems > ITEMS_PER_PAGE) {
+        if (totalPages > 1) {
             boolean isCompact = leftPanelWidth < 250;
             boolean isVeryCompact = leftPanelWidth < 180;
             int paginationButtonWidth = isVeryCompact ? 25 : (isCompact ? 50 : 80);
@@ -649,12 +667,9 @@ public class LitematicDownloaderScreen extends Screen {
             int availableWidth = leftPanelWidth - PADDING - paginationButtonWidth - PADDING - paginationButtonWidth - PADDING;
 
             String pageText;
-            String fullText = String.format("Page %d / %d (%d items)",
-                    currentPage,
-                    Math.max(totalPages, (int) Math.ceil(totalItems / (double) ITEMS_PER_PAGE)),
-                    totalItems);
-            String mediumText = String.format("%d / %d", currentPage, Math.max(totalPages, 1));
-            String shortText = String.format("%d/%d", currentPage, Math.max(totalPages, 1));
+            String fullText = String.format("Page %d / %d (%d items)", currentPage, totalPages, totalItems);
+            String mediumText = String.format("%d / %d", currentPage, totalPages);
+            String shortText = String.format("%d/%d", currentPage, totalPages);
 
             if (this.font.width(fullText) <= availableWidth) {
                 pageText = fullText;
