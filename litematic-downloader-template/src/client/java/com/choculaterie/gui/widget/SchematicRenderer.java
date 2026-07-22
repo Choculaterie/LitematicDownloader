@@ -1,6 +1,8 @@
 package com.choculaterie.gui.widget;
 
 import com.choculaterie.util.LitematicParser;
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.ProjectionType;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
@@ -32,6 +34,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -53,8 +56,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
 import java.util.function.Consumer;
 
 public class SchematicRenderer implements AutoCloseable {
@@ -134,7 +137,7 @@ public class SchematicRenderer implements AutoCloseable {
             boolean[] used = new boolean[LAYER_COUNT];
             for (int i = 0; i < LAYER_COUNT; i++) {
                 allocators[i] = new ByteBufferBuilder(Math.max(8192, count * 128));
-                builders[i] = new BufferBuilder(allocators[i], VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+                builders[i] = new BufferBuilder(allocators[i], PrimitiveTopology.QUADS, DefaultVertexFormat.BLOCK);
             }
 
             List<BlockStateModelPart> parts = new ArrayList<>();
@@ -163,7 +166,8 @@ public class SchematicRenderer implements AutoCloseable {
                             emitQuads(builders, used, blockColors, state, bd.x, bd.y, bd.z, part, dir);
                         }
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    System.err.println("[SchematicRenderer] Failed to emit block " + bd.blockId + ": " + e);
                 }
             }
 
@@ -189,6 +193,8 @@ public class SchematicRenderer implements AutoCloseable {
                 empty = true;
             }
         } catch (Exception e) {
+            System.err.println("[SchematicRenderer] Failed to build mesh: " + e);
+            e.printStackTrace();
             empty = true;
         } finally {
             buildingMesh = false;
@@ -360,7 +366,7 @@ public class SchematicRenderer implements AutoCloseable {
 
         boolean fbResized = false;
         if (framebuffer == null) {
-            framebuffer = new TextureTarget("SchematicPreview", fbW, fbH, true);
+            framebuffer = new TextureTarget("SchematicPreview", fbW, fbH, true, GpuFormat.RGBA8_UNORM);
             fbResized = true;
         } else if (framebuffer.width != fbW || framebuffer.height != fbH) {
             framebuffer.resize(fbW, fbH);
@@ -369,7 +375,12 @@ public class SchematicRenderer implements AutoCloseable {
 
         if (cameraChanged || fbResized) {
             cameraChanged = false;
-            renderToFramebuffer(mc, fbW, fbH, framebuffer, 0xFF161616);
+            try {
+                renderToFramebuffer(mc, fbW, fbH, framebuffer, 0xFF161616);
+            } catch (Exception e) {
+                System.err.println("[SchematicRenderer] Failed to render preview: " + e);
+                e.printStackTrace();
+            }
         }
 
         GpuSampler sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
@@ -434,7 +445,16 @@ public class SchematicRenderer implements AutoCloseable {
 
     private void renderToFramebuffer(Minecraft mc, int fbW, int fbH, TextureTarget target, int clearColor) {
         float aspect = (float) fbW / fbH;
-        Matrix4f projMat = new Matrix4f().perspective((float) Math.toRadians(FOV), aspect, NEAR, FAR);
+        // MC 26.2 renders with glClipControl(LOWER_LEFT, ZERO_TO_ONE) and reverse-Z depth
+        // (DepthStencilState.DEFAULT compares GREATER_OR_EQUAL, depth cleared to 0). Build a [0,1]
+        // perspective, then remap NDC z (0..1) -> (1..0) so near maps to 1 and far to 0.
+        Matrix4f projMat = new Matrix4f().perspective((float) Math.toRadians(FOV), aspect, NEAR, FAR, true);
+        Matrix4f reverseZ = new Matrix4f(
+                1f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f,
+                0f, 0f, -1f, 0f,
+                0f, 0f, 1f, 1f);
+        reverseZ.mul(projMat, projMat);
 
         if (projectionBuffer == null) {
             projectionBuffer = RenderSystem.getDevice().createBuffer(
@@ -470,7 +490,7 @@ public class SchematicRenderer implements AutoCloseable {
             int idx = (count / 4) * 6;
             if (idx > maxIdx) maxIdx = idx;
         }
-        RenderSystem.AutoStorageIndexBuffer seqIdx = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
+        RenderSystem.AutoStorageIndexBuffer seqIdx = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
         GpuBuffer indexBuf = seqIdx.getBuffer(maxIdx);
 
         GpuTextureView atlasView = mc.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS).getTextureView();
@@ -480,8 +500,8 @@ public class SchematicRenderer implements AutoCloseable {
 
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> "Schematic Preview",
-                target.getColorTextureView(), OptionalInt.of(clearColor),
-                target.getDepthTextureView(), OptionalDouble.of(1.0))) {
+                target.getColorTextureView(), Optional.of(ARGB.vector4fFromARGB32(clearColor)),
+                target.getDepthTextureView(), OptionalDouble.of(0.0))) {
             for (int i = 0; i < LAYER_COUNT; i++) {
                 GpuBuffer vertexBuffer = vertexBuffers[i];
                 if (vertexBuffer == null || vertexCounts[i] == 0) continue;
@@ -492,9 +512,9 @@ public class SchematicRenderer implements AutoCloseable {
                 pass.setUniform("DynamicTransforms", transforms);
                 pass.bindTexture("Sampler0", atlasView, atlasSampler);
                 pass.bindTexture("Sampler2", lightmapView, lightSampler);
-                pass.setVertexBuffer(0, vertexBuffer);
+                pass.setVertexBuffer(0, vertexBuffer.slice());
                 pass.setIndexBuffer(indexBuf, seqIdx.type());
-                pass.drawIndexed(0, 0, idxCount, 1);
+                pass.drawIndexed(idxCount, 1, 0, 0, 0);
             }
         }
 
@@ -580,12 +600,12 @@ public class SchematicRenderer implements AutoCloseable {
         TextureTarget target = null;
         GpuBuffer readbackBuffer = null;
         try {
-            target = new TextureTarget("SchematicExport", resolution, resolution, true);
+            target = new TextureTarget("SchematicExport", resolution, resolution, true, GpuFormat.RGBA8_UNORM);
             int clearColor = transparentBackground ? 0x00000000 : 0xFF161616;
             renderToFramebuffer(mc, resolution, resolution, target, clearColor);
 
             GpuTexture colorTexture = target.getColorTexture();
-            int pixelSize = colorTexture.getFormat().pixelSize();
+            int pixelSize = colorTexture.getFormat().blockSize();
             readbackBuffer = RenderSystem.getDevice().createBuffer(
                     () -> "Schematic Export Readback",
                     GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST,
@@ -625,7 +645,7 @@ public class SchematicRenderer implements AutoCloseable {
     private static void writeBufferToPng(CommandEncoder encoder, GpuBuffer buffer, int size, int pixelSize, File outFile)
             throws IOException {
         NativeImage image = new NativeImage(size, size, false);
-        try (GpuBuffer.MappedView view = encoder.mapBuffer(buffer, true, false)) {
+        try (GpuBufferSlice.MappedView view = buffer.map(true, false)) {
             ByteBuffer data = view.data();
             for (int y = 0; y < size; y++) {
                 for (int x = 0; x < size; x++) {

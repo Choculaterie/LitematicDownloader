@@ -611,7 +611,7 @@ public class LitematicDownloaderScreen extends Screen {
         if (this.minecraft != null) {
             LocalFolderPage folderPage = new LocalFolderPage(this);
             folderPage.setOnApiToggleChanged(this::refreshPostList);
-            this.minecraft.setScreen(folderPage);
+            this.minecraft.gui.setScreen(folderPage);
         }
     }
 

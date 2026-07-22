@@ -135,7 +135,7 @@ public class SettingsPage extends Screen {
 
     private void goBack() {
         if (this.minecraft != null) {
-            this.minecraft.setScreen(parentScreen);
+            this.minecraft.gui.setScreen(parentScreen);
         }
     }
 
@@ -160,7 +160,7 @@ public class SettingsPage extends Screen {
                         }
                     }
             );
-            this.minecraft.setScreen(picker);
+            this.minecraft.gui.setScreen(picker);
         }
     }
 

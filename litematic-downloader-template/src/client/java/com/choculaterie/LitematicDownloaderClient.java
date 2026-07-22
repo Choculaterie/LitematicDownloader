@@ -23,10 +23,10 @@ public class LitematicDownloaderClient implements ClientModInitializer {
 	}
 
 	private static void toggleLitematicDownloaderScreen(Minecraft client) {
-		if (client.screen instanceof LitematicDownloaderScreen) {
-			client.setScreen(null);
+		if (client.gui.screen() instanceof LitematicDownloaderScreen) {
+			client.gui.setScreen(null);
 		} else {
-			client.setScreen(new LitematicDownloaderScreen());
+			client.gui.setScreen(new LitematicDownloaderScreen());
 		}
 	}
 }

@@ -377,7 +377,7 @@ public class LocalFolderPage extends Screen {
 
     private void goBack() {
         if (this.minecraft != null) {
-            this.minecraft.setScreen(parentScreen);
+            this.minecraft.gui.setScreen(parentScreen);
         }
     }
 
@@ -387,7 +387,7 @@ public class LocalFolderPage extends Screen {
             if (onApiToggleChanged != null) {
                 settingsPage.setOnApiToggleChanged(onApiToggleChanged);
             }
-            this.minecraft.setScreen(settingsPage);
+            this.minecraft.gui.setScreen(settingsPage);
         }
     }
 

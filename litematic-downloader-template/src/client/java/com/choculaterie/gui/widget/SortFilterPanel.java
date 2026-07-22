@@ -51,7 +51,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         this.client = Minecraft.getInstance();
         this.scrollBar = new ScrollBar(x + width - UITheme.Dimensions.SCROLLBAR_WIDTH - UITheme.Dimensions.PADDING, y + 30, height - 60);
         loadSettings();
-        this.tagTextField = new CustomTextField(client, x + UITheme.Dimensions.PADDING, y + 100, width - UITheme.Dimensions.PADDING * 2 - 10, 18, Component.empty());
+        this.tagTextField = new CustomTextField(client, x + UITheme.Dimensions.PADDING, y + 100, width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH, 18, Component.empty());
         this.tagTextField.setPlaceholder(Component.literal("Enter tag..."));
         this.tagTextField.setValue(tagFilter);
         initButtons();
@@ -119,7 +119,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         this.scrollBar = new ScrollBar(x + width - UITheme.Dimensions.SCROLLBAR_WIDTH - UITheme.Dimensions.PADDING, y + 30, height - 60);
         if (tagTextField != null) {
             tagTextField.setPosition(x + UITheme.Dimensions.PADDING, y + 100);
-            tagTextField.setWidth(width - UITheme.Dimensions.PADDING * 2 - 10);
+            tagTextField.setWidth(width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH);
         }
         initButtons();
         createVendorToggles();
@@ -267,7 +267,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         context.text(client.font, "Sort By:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 14;
         contentHeight += 14;
-        int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10) : (width - UITheme.Dimensions.PADDING * 2 - 10) / 2;
+        int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) : (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 2;
         int btnHeight = 18;
         int col = 0;
 
@@ -306,7 +306,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         context.text(client.font, "Items per page:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 14;
         contentHeight += 14;
-        int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10) / 2 : (width - UITheme.Dimensions.PADDING * 2 - 10) / 4;
+        int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 2 : (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 4;
         int btnHeight = 18;
 
         for (int i = 0; i < pageOptions.length; i++) {
@@ -446,7 +446,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         }
         int currentY = y + 30 + 14 - (int) scrollOffset;
         boolean isCompact = width < 180;
-        int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10) : (width - UITheme.Dimensions.PADDING * 2 - 10) / 2;
+        int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) : (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 2;
         int btnHeight = 18;
 
         for (int i = 0; i < sortOptions.length; i++) {
@@ -464,7 +464,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         }
         int sortRows = isCompact ? sortOptions.length : (int) Math.ceil(sortOptions.length / 2.0);
         currentY += sortRows * (btnHeight + 2) + 8 + 14;
-        int pageBtnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10) / 2 : (width - UITheme.Dimensions.PADDING * 2 - 10) / 4;
+        int pageBtnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 2 : (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 4;
         for (int i = 0; i < pageOptions.length; i++) {
             int col = i % (isCompact ? 2 : 4);
             int row = i / (isCompact ? 2 : 4);

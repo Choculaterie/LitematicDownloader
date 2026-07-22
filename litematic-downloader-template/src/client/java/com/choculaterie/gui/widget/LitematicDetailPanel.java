@@ -112,6 +112,16 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
                 btn -> toggleExportPanel());
     }
 
+    private String truncateToWidth(String text, int maxWidth) {
+        if (client.font.width(text) <= maxWidth) {
+            return text;
+        }
+        while (!text.isEmpty() && client.font.width(text + "...") > maxWidth) {
+            text = text.substring(0, text.length() - 1);
+        }
+        return text + "...";
+    }
+
     private void updateExportPanelBounds() {
         int viewX = x + UITheme.Dimensions.PADDING;
         int viewW = width - UITheme.Dimensions.PADDING * 2;
@@ -271,7 +281,9 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
         int contentY = y + UITheme.Dimensions.PADDING;
 
         String fileName = litematicFile.getName();
-        context.text(client.font, fileName, contentX, contentY, 0xFFFFFFFF);
+        int buttonCount = (cameraButton != null && isIn3DMode) ? 3 : 2;
+        int maxTitleWidth = width - UITheme.Dimensions.PADDING * 2 - buttonCount * 20;
+        context.text(client.font, truncateToWidth(fileName, maxTitleWidth), contentX, contentY, 0xFFFFFFFF);
         contentY += 15;
 
         long sizeKB = litematicFile.length() / 1024;
