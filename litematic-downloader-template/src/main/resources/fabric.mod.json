@@ -7,6 +7,9 @@
 	"authors": [
 		"Choculat"
 	],
+	"contributors": [
+		"soller"
+	],
 	"contact": {
 		"homepage": "https://choculaterie.com/",
 		"sources": "https://github.com/Choculaterie/LitematicDownloader",
