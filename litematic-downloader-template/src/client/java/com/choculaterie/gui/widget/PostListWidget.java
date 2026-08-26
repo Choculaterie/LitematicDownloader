@@ -1,6 +1,5 @@
 package com.choculaterie.gui.widget;
 
-import org.lwjgl.glfw.GLFW;
 import com.choculaterie.gui.theme.UITheme;
 import com.choculaterie.models.MinemevPostInfo;
 import net.minecraft.client.Minecraft;
@@ -132,7 +131,7 @@ public class PostListWidget extends AbstractWidget {
 
         Minecraft client = Minecraft.getInstance();
         if (client != null && client.getWindow() != null) {
-            long windowHandle = GLFW.glfwGetCurrentContext();
+            long windowHandle = client.getWindow().getWindow();
             if (scrollBar.updateAndRender(context, mouseX, mouseY, delta, windowHandle)) {
                 double maxScroll = getMaxScroll();
                 scrollAmount = scrollBar.getScrollPercentage() * maxScroll;
