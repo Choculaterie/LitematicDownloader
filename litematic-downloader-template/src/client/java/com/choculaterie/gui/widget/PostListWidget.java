@@ -131,7 +131,7 @@ public class PostListWidget extends AbstractWidget {
 
         Minecraft client = Minecraft.getInstance();
         if (client != null && client.getWindow() != null) {
-            long windowHandle = client.getWindow().getWindow();
+            long windowHandle = client.getWindow().handle();
             if (scrollBar.updateAndRender(context, mouseX, mouseY, delta, windowHandle)) {
                 double maxScroll = getMaxScroll();
                 scrollAmount = scrollBar.getScrollPercentage() * maxScroll;
