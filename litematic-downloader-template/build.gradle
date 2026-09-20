@@ -21,6 +21,7 @@ repositories {
 		url = 'https://maven.fabricmc.net/'
 	}
 	mavenCentral()
+	mavenLocal()
 }
 
 tasks.named('test') {
@@ -66,6 +67,9 @@ dependencies {
 	implementation 'com.google.code.gson:gson:2.10.1'
 
 	include(implementation("org.sejda.imageio:webp-imageio:0.1.6"))
+	include(implementation("org.jsoup:jsoup:1.18.3"))
+
+	implementation("com.choculaterie:vanilib:${project.vanilib_version}")
 }
 
 processResources {

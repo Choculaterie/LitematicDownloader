@@ -2,16 +2,16 @@ package com.choculaterie.gui;
 
 import org.lwjgl.glfw.GLFW;
 import com.choculaterie.config.DownloadSettings;
-import com.choculaterie.gui.localfolder.FileOperationsManager;
+import com.choculaterie.vanilib.util.file.FileOperationsManager;
 import com.choculaterie.gui.localfolder.LocalFolderSearchManager;
 import com.choculaterie.gui.localfolder.LocalFolderSelectionManager;
-import com.choculaterie.gui.theme.UITheme;
-import com.choculaterie.gui.widget.ConfirmPopup;
-import com.choculaterie.gui.widget.CustomButton;
-import com.choculaterie.gui.widget.CustomTextField;
+import com.choculaterie.vanilib.gui.theme.UITheme;
+import com.choculaterie.vanilib.gui.widget.ConfirmPopup;
+import com.choculaterie.vanilib.gui.widget.CustomButton;
+import com.choculaterie.vanilib.gui.widget.CustomTextField;
 import com.choculaterie.gui.widget.LitematicDetailPanel;
-import com.choculaterie.gui.widget.ScrollBar;
-import com.choculaterie.gui.widget.TextInputPopup;
+import com.choculaterie.vanilib.gui.widget.ScrollBar;
+import com.choculaterie.vanilib.gui.widget.TextInputPopup;
 import com.choculaterie.gui.widget.ToastManager;
 import com.choculaterie.network.ChoculaterieNetworkManager;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -25,6 +25,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import net.minecraft.client.Minecraft;
 
 public class LocalFolderPage extends Screen {
     private static final int PADDING = 10;
@@ -195,7 +196,7 @@ public class LocalFolderPage extends Screen {
             this.trashFolder.mkdirs();
         }
 
-        this.fileOpsManager = new FileOperationsManager(this.baseDirectory, this.trashFolder);
+        this.fileOpsManager = new FileOperationsManager(this.trashFolder);
         loadEntries();
     }
 
@@ -211,7 +212,7 @@ public class LocalFolderPage extends Screen {
             this.baseDirectory = newBaseDirectory;
             this.currentDirectory = newBaseDirectory;
             this.trashFolder = new File(this.baseDirectory, ".trash");
-            this.fileOpsManager = new FileOperationsManager(this.baseDirectory, this.trashFolder);
+            this.fileOpsManager = new FileOperationsManager(this.trashFolder);
 
             if (!this.currentDirectory.exists()) {
                 this.currentDirectory.mkdirs();
@@ -628,7 +629,7 @@ public class LocalFolderPage extends Screen {
             return;
         }
 
-        long windowHandle = GLFW.glfwGetCurrentContext();
+        long windowHandle = Minecraft.getInstance().getWindow().handle();
         boolean shiftHeld = false;
         if (windowHandle != 0) {
             shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
@@ -1280,7 +1281,7 @@ public class LocalFolderPage extends Screen {
         context.fill(0, 0, this.width, this.height, 0xFF202020);
 
         if (this.minecraft != null && this.minecraft.getWindow() != null) {
-            long windowHandle = GLFW.glfwGetCurrentContext();
+            long windowHandle = Minecraft.getInstance().getWindow().handle();
             boolean searchFocused = searchField != null && searchField.isFocused();
             boolean detailPopupActive = showDetailPanel && detailPanel != null && detailPanel.hasPopup();
             boolean popupActive = activePopup != null || confirmPopup != null || detailPopupActive;
@@ -1330,7 +1331,7 @@ public class LocalFolderPage extends Screen {
         }
 
         if (dragStartIndex != -1 && this.minecraft != null && this.minecraft.getWindow() != null) {
-            long windowHandle = GLFW.glfwGetCurrentContext();
+            long windowHandle = Minecraft.getInstance().getWindow().handle();
             boolean mouseButtonPressed = org.lwjgl.glfw.GLFW.glfwGetMouseButton(windowHandle,
                     org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
 
@@ -1428,10 +1429,12 @@ public class LocalFolderPage extends Screen {
 
         int leftPanelWidth = showDetailPanel ? this.width / 2 : this.width;
         int listRightEdge = leftPanelWidth - PADDING - SCROLLBAR_WIDTH - SCROLLBAR_PADDING;
+        boolean scrollBarShowing = scrollBar != null && scrollBar.isVisible();
+        int panelRight = scrollBarShowing ? listRightEdge : leftPanelWidth - PADDING;
 
-        context.fill(PADDING, listY, listRightEdge, listY + listHeight, 0xFF151515);
+        context.fill(PADDING, listY, panelRight, listY + listHeight, 0xFF151515);
 
-        context.enableScissor(PADDING, listY, listRightEdge, listY + listHeight);
+        context.enableScissor(PADDING, listY, panelRight, listY + listHeight);
 
         quickShareButtons.clear();
 
@@ -1459,7 +1462,7 @@ public class LocalFolderPage extends Screen {
             } else {
                 bgColor = 0xFF1A1A1A;
             }
-            context.fill(PADDING + 2, itemY + 2, listRightEdge - 2, itemY + ITEM_HEIGHT - 2, bgColor);
+            context.fill(PADDING + 2, itemY + 2, panelRight - 2, itemY + ITEM_HEIGHT - 2, bgColor);
 
             String icon = entry.isDirectory ? "📁" : "📄";
             String fileName = entry.file.getName();
@@ -1551,7 +1554,7 @@ public class LocalFolderPage extends Screen {
             if (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic")) {
                 int buttonWidth = showDetailPanel ? 25 : 80;
                 int buttonHeight = 16;
-                int buttonX = listRightEdge - buttonWidth - 5;
+                int buttonX = panelRight - buttonWidth - 5;
                 int buttonY = itemY + (ITEM_HEIGHT - buttonHeight) / 2;
 
                 quickShareButtons.add(new QuickShareButton(buttonX, buttonY, buttonWidth, buttonHeight, i));
@@ -1606,7 +1609,7 @@ public class LocalFolderPage extends Screen {
 
         if (scrollBar != null && scrollBar.isVisible() && this.minecraft != null) {
             boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta,
-                    GLFW.glfwGetCurrentContext());
+                    Minecraft.getInstance().getWindow().handle());
 
             if (scrollChanged) {
                 int maxScroll = getMaxScroll();
@@ -1739,7 +1742,7 @@ public class LocalFolderPage extends Screen {
                 if (button == 0) {
                     FileEntry entry = entries.get(clickedIndex);
 
-                    long windowHandle = GLFW.glfwGetCurrentContext();
+                    long windowHandle = Minecraft.getInstance().getWindow().handle();
                     boolean shiftHeld = false;
                     boolean ctrlHeld = false;
                     if (windowHandle != 0) {

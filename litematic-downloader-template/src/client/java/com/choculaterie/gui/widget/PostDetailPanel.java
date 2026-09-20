@@ -1,13 +1,23 @@
 package com.choculaterie.gui.widget;
 
-import org.lwjgl.glfw.GLFW;
-import com.choculaterie.gui.theme.UITheme;
+import com.choculaterie.vanilib.gui.widget.ConfirmPopup;
+import com.choculaterie.vanilib.gui.widget.CustomButton;
+import com.choculaterie.vanilib.gui.widget.DropdownWidget;
+import com.choculaterie.vanilib.gui.widget.ImageViewerWidget;
+import com.choculaterie.vanilib.gui.widget.LoadingSpinner;
+import com.choculaterie.vanilib.gui.widget.ScrollBar;
+
+import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.models.MinemevFileInfo;
 import com.choculaterie.models.MinemevPostDetailInfo;
 import com.choculaterie.models.MinemevPostInfo;
 import com.choculaterie.network.MinemevNetworkManager;
-import com.choculaterie.util.HtmlText;
+import com.choculaterie.plugin.PluginRegistry;
+import com.choculaterie.plugin.PluginSource;
+import com.choculaterie.vanilib.util.HtmlText;
+import com.choculaterie.util.SafeFileName;
+import com.choculaterie.util.SchematicConverter;
 import net.minecraft.client.Minecraft;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -139,34 +149,24 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
         return MAX_IMAGE_SIZE;
     }
 
+    private float getImageScale() {
+        return Math.min(
+                (float) getDisplayImageWidth() / originalImageWidth,
+                (float) getDisplayImageHeight() / originalImageHeight);
+    }
+
     private int getActualImageWidth() {
         if (originalImageWidth <= 0 || originalImageHeight <= 0) {
             return getDisplayImageWidth();
         }
-
-        int containerWidth = getDisplayImageWidth();
-        int containerHeight = getDisplayImageHeight();
-
-        int widthAtContainerHeight = (int) ((float) originalImageWidth / originalImageHeight * containerHeight);
-
-        if (widthAtContainerHeight <= containerWidth) {
-            return Math.min(originalImageWidth, widthAtContainerHeight);
-        } else {
-            return Math.min(originalImageWidth, containerWidth);
-        }
+        return Math.max(1, Math.round(originalImageWidth * getImageScale()));
     }
 
     private int getActualImageHeight() {
         if (originalImageWidth <= 0 || originalImageHeight <= 0) {
             return getDisplayImageHeight();
         }
-
-        int containerHeight = getDisplayImageHeight();
-
-        int actualWidth = getActualImageWidth();
-        int calculatedHeight = (int) ((float) originalImageHeight / originalImageWidth * actualWidth);
-
-        return Math.min(originalImageHeight, Math.min(containerHeight, calculatedHeight));
+        return Math.max(1, Math.round(originalImageHeight * getImageScale()));
     }
 
     private boolean isCompactMode() {
@@ -635,6 +635,49 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
         downloadSchematic(file);
     }
 
+    private static boolean looksLikeSchematic(byte[] payload) {
+        if (payload == null || payload.length < 4) {
+            return false;
+        }
+        int b0 = payload[0] & 0xFF;
+        int b1 = payload[1] & 0xFF;
+        if (b0 == 0x1F && b1 == 0x8B) {
+            return true;
+        }
+        if (b0 == 0x0A) {
+            return true;
+        }
+        return b0 == 'P' && b1 == 'K';
+    }
+
+    private static final java.util.Set<String> KNOWN_EXTENSIONS =
+            java.util.Set.of(".litematic", ".schematic", ".schem", ".nbt", ".mcstructure");
+
+    private static String extensionFor(MinemevFileInfo file) {
+        String name = file.getDefaultFileName();
+        if (name != null) {
+            int dot = name.lastIndexOf('.');
+            if (dot > 0) {
+                String fromName = name.substring(dot).toLowerCase();
+                if (KNOWN_EXTENSIONS.contains(fromName)) {
+                    return fromName;
+                }
+            }
+        }
+
+        String type = file.getFileType();
+        if (type != null && !type.isBlank()) {
+            String t = type.toLowerCase().trim();
+            if (!t.startsWith(".")) {
+                t = "." + t;
+            }
+            if (KNOWN_EXTENSIONS.contains(t)) {
+                return t;
+            }
+        }
+        return ".litematic";
+    }
+
     private void downloadSchematic(MinemevFileInfo file) {
         downloadStatus = "Downloading...";
         if (schematicDropdown != null) {
@@ -663,48 +706,82 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                 String filename = URLDecoder.decode(downloadUrl.substring(lastSlash + 1), StandardCharsets.UTF_8);
                 String encodedUrl = base + URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
 
-                HttpClient httpClient = HttpClient.newBuilder()
-                        .connectTimeout(Duration.ofSeconds(30))
-                        .followRedirects(HttpClient.Redirect.ALWAYS)
-                        .build();
+                byte[] payload;
+                PluginSource plugin = PluginRegistry.get(postInfo.vendor());
+                if (plugin != null) {
+                    payload = plugin.download(encodedUrl);
+                    System.out.println("[Download] Plugin " + plugin.id() + " returned " + payload.length + " bytes");
+                } else {
+                    HttpClient httpClient = HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(30))
+                            .followRedirects(HttpClient.Redirect.ALWAYS)
+                            .build();
 
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(encodedUrl))
-                        .GET()
-                        .header("User-Agent", "LitematicDownloader/1.0")
-                        .build();
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create(encodedUrl))
+                            .GET()
+                            .header("User-Agent", "LitematicDownloader/1.0")
+                            .build();
 
-                System.out.println("[Download] Sending request...");
-                HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
-                System.out.println("[Download] Response status: " + response.statusCode());
-                System.out.println("[Download] Content length: " + response.body().length);
+                    HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
 
-                if (response.statusCode() != 200) {
-                    String errorMsg;
-                    switch (response.statusCode()) {
-                        case 404:
-                            errorMsg = "✗ Error: File not found on server";
-                            break;
-                        case 403:
-                            errorMsg = "✗ Error: Access denied";
-                            break;
-                        case 500:
-                        case 502:
-                        case 503:
-                            errorMsg = "✗ Error: Server error (" + response.statusCode() + ")";
-                            break;
-                        case 429:
-                            errorMsg = "✗ Error: Too many requests, try again later";
-                            break;
-                        default:
-                            errorMsg = "✗ Download failed: HTTP " + response.statusCode();
+                    if (response.statusCode() != 200) {
+                        String errorMsg;
+                        switch (response.statusCode()) {
+                            case 404:
+                                errorMsg = "✗ Error: File not found on server";
+                                break;
+                            case 403:
+                                errorMsg = "✗ Error: Access denied";
+                                break;
+                            case 500:
+                            case 502:
+                            case 503:
+                                errorMsg = "✗ Error: Server error (" + response.statusCode() + ")";
+                                break;
+                            case 429:
+                                errorMsg = "✗ Error: Too many requests, try again later";
+                                break;
+                            default:
+                                errorMsg = "✗ Download failed: HTTP " + response.statusCode();
+                        }
+                        System.err.println("[Download] " + errorMsg);
+                        client.execute(() -> {
+                            downloadStatus = errorMsg;
+                            if (schematicDropdown != null) {
+                                schematicDropdown.setStatusMessage(downloadStatus);
+                            }
+                        });
+                        return;
                     }
-                    System.err.println("[Download] " + errorMsg);
+                    payload = response.body();
+                }
+
+                if (!looksLikeSchematic(payload)) {
+                    System.err.println("[Download] Not a schematic (" + payload.length + " bytes) from " + downloadUrl);
+                    final String pageUrl = postInfo != null && postInfo.urlRedirect() != null
+                            ? postInfo.urlRedirect() : downloadUrl;
                     client.execute(() -> {
-                        downloadStatus = errorMsg;
+                        downloadStatus = "✗ Not downloadable here. The site may require an account.";
                         if (schematicDropdown != null) {
                             schematicDropdown.setStatusMessage(downloadStatus);
                         }
+                        confirmPopup = new ConfirmPopup(
+                                null,
+                                "Download Not Available",
+                                "The site did not return a schematic file, so it cannot be downloaded in-game. "
+                                        + "It may require an account.\n\nOpen the page in your browser?\n\n"
+                                        + pageUrl,
+                                () -> {
+                                    try {
+                                        Util.getPlatform().openUri(pageUrl);
+                                    } catch (Exception e) {
+                                        System.err.println("[Download] Failed to open URL: " + e.getMessage());
+                                    }
+                                    closeConfirmPopup();
+                                },
+                                this::closeConfirmPopup,
+                                "Open");
                     });
                     return;
                 }
@@ -717,22 +794,44 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                 }
                 System.out.println("[Download] Schematics directory: " + schematicsDir.getAbsolutePath());
 
-                String fileName = file.getDefaultFileName();
-                if (!fileName.endsWith(".litematic")) {
-                    fileName += ".litematic";
+                String fileName = SafeFileName.sanitize(file.getDefaultFileName(), "schematic");
+                String extension = extensionFor(file);
+
+                if (SchematicConverter.isConvertible(fileName) || SchematicConverter.isConvertible(extension)) {
+                    String stem = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+                    try {
+                        payload = SchematicConverter.toLitematic(payload, stem);
+                        fileName = stem;
+                        extension = ".litematic";
+                        System.out.println("[Download] Converted schematic to litematic: " + payload.length + " bytes");
+                    } catch (Exception e) {
+                        System.err.println("[Download] Conversion failed: " + e.getMessage());
+                        final String failure = e.getMessage();
+                        client.execute(() -> {
+                            downloadStatus = "✗ Could not convert schematic: " + failure;
+                            if (schematicDropdown != null) {
+                                schematicDropdown.setStatusMessage(downloadStatus);
+                            }
+                        });
+                        return;
+                    }
+                }
+
+                if (!fileName.toLowerCase().endsWith(extension)) {
+                    fileName += extension;
                 }
 
                 File outputFile = new File(schematicsDir, fileName);
 
                 int counter = 1;
                 while (outputFile.exists()) {
-                    String baseName = fileName.substring(0, fileName.lastIndexOf(".litematic"));
-                    outputFile = new File(schematicsDir, baseName + "_" + counter + ".litematic");
+                    String baseName = fileName.substring(0, fileName.length() - extension.length());
+                    outputFile = new File(schematicsDir, baseName + "_" + counter + extension);
                     counter++;
                 }
 
                 try (FileOutputStream fos = new FileOutputStream(outputFile)) {
-                    fos.write(response.body());
+                    fos.write(payload);
                 }
 
                 final String finalFileName = outputFile.getName();
@@ -1057,7 +1156,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             scrollBar.setScrollPercentage(scrollOffset / Math.max(1, contentHeight - height));
 
             if (client != null && client.getWindow() != null) {
-                long windowHandle = GLFW.glfwGetCurrentContext();
+                long windowHandle = Minecraft.getInstance().getWindow().handle();
                 if (scrollBar.updateAndRender(context, mouseX, mouseY, delta, windowHandle)) {
                     double maxScroll = Math.max(0, contentHeight - height);
                     scrollOffset = scrollBar.getScrollPercentage() * maxScroll;

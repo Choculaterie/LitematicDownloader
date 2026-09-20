@@ -1,6 +1,8 @@
 package com.choculaterie.gui.widget;
 
-import com.choculaterie.gui.theme.UITheme;
+import com.choculaterie.vanilib.gui.widget.CustomButton;
+
+import com.choculaterie.vanilib.gui.theme.UITheme;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
@@ -133,7 +135,7 @@ public class SchematicExportPanel {
         context.fill(x, y, x + width, y + PANEL_HEIGHT, 0xF01C1C1C);
         context.fill(x, y, x + width, y + 1, UITheme.Colors.PANEL_BORDER);
 
-        long window = GLFW.glfwGetCurrentContext();
+        long window = Minecraft.getInstance().getWindow().handle();
         boolean leftDown = window != 0L
                 && GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
 

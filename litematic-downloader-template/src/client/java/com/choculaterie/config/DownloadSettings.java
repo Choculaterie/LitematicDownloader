@@ -57,6 +57,7 @@ public class DownloadSettings {
 		setDefault("dismissedModMessageId", -1);
 		setDefault("useChoculaterieAPI", false);
 		setDefault("dismissedQuickShareLinks", "");
+		setDefault("enabledPlugins", "");
 	}
 
 	private void setDefault(String key, Object value) {
@@ -199,6 +200,14 @@ public class DownloadSettings {
 		} else if (!isQuickShareLinkDismissed(url)) {
 			set("dismissedQuickShareLinks", dismissed + "," + url);
 		}
+	}
+
+	public String getEnabledPlugins() {
+		return config.get("enabledPlugins").getAsString();
+	}
+
+	public void setEnabledPlugins(String ids) {
+		set("enabledPlugins", ids != null ? ids : "");
 	}
 
 	private File getConfigFile() {

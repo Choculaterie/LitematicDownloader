@@ -1,6 +1,6 @@
 package com.choculaterie.gui.widget;
 
-import com.choculaterie.gui.theme.UITheme;
+import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.models.MinemevPostInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;

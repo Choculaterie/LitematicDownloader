@@ -1,6 +1,6 @@
 package com.choculaterie.network;
 
-import com.choculaterie.models.ModMessage;
+import com.choculaterie.vanilib.models.ModMessage;
 import com.choculaterie.models.QuickShareDownloadResult;
 import com.choculaterie.models.QuickShareResponse;
 import com.google.gson.Gson;

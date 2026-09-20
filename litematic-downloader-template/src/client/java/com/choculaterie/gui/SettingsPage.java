@@ -1,12 +1,13 @@
 package com.choculaterie.gui;
 
 import com.choculaterie.config.DownloadSettings;
-import com.choculaterie.gui.theme.UITheme;
-import com.choculaterie.gui.widget.ConfirmPopup;
-import com.choculaterie.gui.widget.CustomButton;
-import com.choculaterie.gui.widget.CustomTextField;
+import com.choculaterie.vanilib.gui.screen.DirectoryPickerScreen;
+import com.choculaterie.vanilib.gui.theme.UITheme;
+import com.choculaterie.vanilib.gui.widget.ConfirmPopup;
+import com.choculaterie.vanilib.gui.widget.CustomButton;
+import com.choculaterie.vanilib.gui.widget.CustomTextField;
 import com.choculaterie.gui.widget.ToastManager;
-import com.choculaterie.gui.widget.ToggleButton;
+import com.choculaterie.vanilib.gui.widget.ToggleButton;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -53,6 +54,16 @@ public class SettingsPage extends Screen {
         initToastToggles(contentY);
     }
 
+    private int toastsY(int contentY) {
+        return contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 30;
+    }
+
+    private int apiToggleY(int contentY) {
+        return toastsY(contentY) + LABEL_HEIGHT + (TOGGLE_SPACING * 4) + 20;
+    }
+
+
+
     private void addBackButton() {
         CustomButton backButton = new CustomButton(
                 PADDING, PADDING, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE,
@@ -98,7 +109,7 @@ public class SettingsPage extends Screen {
     }
 
     private void initToastToggles(int contentY) {
-        int toastsY = contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 30;
+        int toastsY = toastsY(contentY);
         DownloadSettings settings = DownloadSettings.getInstance();
 
         createToastToggle(0, toastsY, settings.isInfoToastsEnabled(),
@@ -110,7 +121,7 @@ public class SettingsPage extends Screen {
         createToastToggle(3, toastsY, settings.isErrorToastsEnabled(),
                 settings::setErrorToastsEnabled);
 
-        int apiToggleY = toastsY + LABEL_HEIGHT + (TOGGLE_SPACING * 4) + 20;
+        int apiToggleY = apiToggleY(contentY);
         ToggleButton apiToggle = new ToggleButton(
                 PADDING * 2 + 200, apiToggleY,
                 settings.isUseChoculaterieAPI(),
@@ -144,7 +155,8 @@ public class SettingsPage extends Screen {
             String startPath = DownloadSettings.getInstance().getAbsoluteDownloadPath();
             DirectoryPickerScreen picker = new DirectoryPickerScreen(
                     this,
-                    startPath,
+                    new File(startPath),
+                    new File(DownloadSettings.getInstance().getGameDirectory()),
                     selectedPath -> {
                         if (downloadPathField != null) {
                             downloadPathField.setValue(selectedPath);
@@ -277,6 +289,7 @@ public class SettingsPage extends Screen {
         context.text(this.font, "Use Choculaterie API:",
                 PADDING * 2, apiToggleY + 6, 0xFFFFFFFF);
     }
+
 
     private void renderToastToggleLabel(GuiGraphicsExtractor context, String label, int baseY, int index, int color) {
         int y = baseY + LABEL_HEIGHT + TOGGLE_SPACING * index + 6;

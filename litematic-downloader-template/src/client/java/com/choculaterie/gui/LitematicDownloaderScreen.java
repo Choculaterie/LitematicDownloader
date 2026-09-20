@@ -1,18 +1,18 @@
 package com.choculaterie.gui;
 
 import com.choculaterie.config.DownloadSettings;
-import com.choculaterie.gui.theme.UITheme;
-import com.choculaterie.gui.widget.CustomButton;
-import com.choculaterie.gui.widget.CustomTextField;
+import com.choculaterie.vanilib.gui.theme.UITheme;
+import com.choculaterie.vanilib.gui.widget.CustomButton;
+import com.choculaterie.vanilib.gui.widget.CustomTextField;
 import com.choculaterie.gui.widget.PostListWidget;
 import com.choculaterie.gui.widget.PostDetailPanel;
 import com.choculaterie.gui.widget.SortFilterPanel;
-import com.choculaterie.gui.widget.LoadingSpinner;
+import com.choculaterie.vanilib.gui.widget.LoadingSpinner;
 import com.choculaterie.gui.widget.ToastManager;
-import com.choculaterie.gui.widget.ModMessageBanner;
+import com.choculaterie.vanilib.gui.widget.ModMessageBanner;
 import com.choculaterie.models.MinemevPostInfo;
 import com.choculaterie.models.MinemevSearchResponse;
-import com.choculaterie.models.ModMessage;
+import com.choculaterie.vanilib.models.ModMessage;
 import com.choculaterie.network.MinemevNetworkManager;
 import com.choculaterie.network.ChoculaterieNetworkManager;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -25,8 +25,13 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import net.minecraft.client.Minecraft;
 
 public class LitematicDownloaderScreen extends Screen {
     private static final int SEARCH_BAR_HEIGHT = 20;
@@ -52,6 +57,15 @@ public class LitematicDownloaderScreen extends Screen {
 
     private int currentPage = 1;
     private int totalPages = 1;
+    private final List<MinemevPostInfo> pageBuffer = new ArrayList<>();
+    private final List<MinemevPostInfo[]> fetchedPages = new ArrayList<>();
+    private final Set<String> everSeen = new HashSet<>();
+    private int sourcePage = 1;
+    private boolean sourcesExhausted = false;
+    private boolean totalKnown = false;
+    private int reportedItems = 0;
+    private boolean anyUnknown = false;
+    private static final int MAX_FETCHES_PER_PAGE = 4;
     private int totalItems = 0;
     private boolean pendingReload = false;
     private boolean isLoading = false;
@@ -221,7 +235,7 @@ public class LitematicDownloaderScreen extends Screen {
 
     private void checkClipboardForQuickShare() {
         try {
-            long windowHandle = GLFW.glfwGetCurrentContext();
+            long windowHandle = Minecraft.getInstance().getWindow().handle();
             if (windowHandle == 0) return;
             String clipboard = GLFW.glfwGetClipboardString(windowHandle);
             if (clipboard != null) {
@@ -255,7 +269,7 @@ public class LitematicDownloaderScreen extends Screen {
 
     private void clearClipboard() {
         try {
-            long windowHandle = GLFW.glfwGetCurrentContext();
+            long windowHandle = Minecraft.getInstance().getWindow().handle();
             if (windowHandle != 0) {
                 GLFW.glfwSetClipboardString(windowHandle, "");
             }
@@ -302,12 +316,10 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     private void performSearch() {
-        if (isLoading) return;
-
         searchField.setFocused(false);
 
         currentSearchQuery = searchField.getValue().trim();
-        currentPage = 1;
+        resetToFirstPage();
 
         Matcher matcher = QUICK_SHARE_PATTERN.matcher(currentSearchQuery);
         if (matcher.find()) {
@@ -317,6 +329,11 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         detailPanel.clear();
+
+        if (isLoading) {
+            pendingReload = true;
+            return;
+        }
 
         loadPage();
     }
@@ -476,19 +493,32 @@ public class LitematicDownloaderScreen extends Screen {
             return;
         }
 
+        if (fetchedPages.size() >= currentPage) {
+            showCachedPage();
+            return;
+        }
+
         isLoading = true;
         searchButton.active = false;
         prevPageButton.active = false;
         nextPageButton.active = false;
         postList.clear();
+        fetchMore(0);
+    }
+
+    private void fetchMore(int attempt) {
+        int pageSize = itemsPerPage();
+        if (pageBuffer.size() >= pageSize || sourcesExhausted || attempt >= MAX_FETCHES_PER_PAGE) {
+            finishPage();
+            return;
+        }
 
         String sort = sortFilterPanel != null ? sortFilterPanel.getSelectedSort() : "newest";
         String tag = sortFilterPanel != null ? sortFilterPanel.getTagFilter() : null;
         String excludeVendor = sortFilterPanel != null ? sortFilterPanel.getExcludedVendorsParam() : null;
-        int pageSize = sortFilterPanel != null ? sortFilterPanel.getItemsPerPage() : 20;
 
-        MinemevNetworkManager.searchPostsAdvanced(currentSearchQuery, sort, 1, currentPage, tag, null, excludeVendor, pageSize)
-                .thenAccept(this::handleSearchResponse)
+        MinemevNetworkManager.searchPostsAdvanced(currentSearchQuery, sort, 1, sourcePage, tag, null, excludeVendor, pageSize)
+                .thenAccept(response -> handleSearchResponse(response, attempt))
                 .exceptionally(throwable -> {
                     if (this.minecraft != null) {
                         this.minecraft.execute(() -> {
@@ -551,7 +581,7 @@ public class LitematicDownloaderScreen extends Screen {
                 });
     }
 
-    private void handleSearchResponse(MinemevSearchResponse response) {
+    private void handleSearchResponse(MinemevSearchResponse response, int attempt) {
         if (this.minecraft != null) {
             this.minecraft.execute(() -> {
                 if (pendingReload) {
@@ -561,19 +591,94 @@ public class LitematicDownloaderScreen extends Screen {
                     return;
                 }
 
-                totalPages = response.totalPages();
-                totalItems = response.totalItems();
+                int reportedPages = response.totalPages();
+                if (reportedPages < 0 || response.totalItems() < 0) {
+                    anyUnknown = true;
+                } else if (reportedItems == 0) {
+                    reportedItems = response.totalItems();
+                }
+                sourcePage++;
+                int added = 0;
+                for (MinemevPostInfo post : response.posts()) {
+                    String uuid = post.uuid();
+                    if (uuid == null || uuid.isEmpty() || everSeen.add(uuid)) {
+                        pageBuffer.add(post);
+                        added++;
+                    }
+                }
+                if (added == 0 || (reportedPages > 0 && sourcePage > reportedPages)) {
+                    sourcesExhausted = true;
+                }
 
-                MinemevPostInfo[] posts = response.posts();
-                postList.setPosts(posts);
-
-                isLoading = false;
-                searchButton.active = true;
-                updatePaginationButtons();
-
-                noResultsFound = (totalItems == 0);
+                fetchMore(attempt + 1);
             });
         }
+    }
+
+    private void resetToFirstPage() {
+        currentPage = 1;
+        pageBuffer.clear();
+        fetchedPages.clear();
+        everSeen.clear();
+        sourcePage = 1;
+        sourcesExhausted = false;
+        totalKnown = false;
+        reportedItems = 0;
+        anyUnknown = false;
+        totalPages = 1;
+        totalItems = 0;
+    }
+
+    private int itemsPerPage() {
+        return sortFilterPanel != null ? sortFilterPanel.getItemsPerPage() : 20;
+    }
+
+    private void showCachedPage() {
+        MinemevPostInfo[] posts = fetchedPages.get(currentPage - 1);
+        if (!totalKnown) {
+            boolean more = !sourcesExhausted || !pageBuffer.isEmpty();
+            totalPages = fetchedPages.size() + (more ? 1 : 0);
+        }
+        postList.setPosts(posts);
+        noResultsFound = posts.length == 0;
+        updatePaginationButtons();
+    }
+
+    private void finishPage() {
+        int pageSize = itemsPerPage();
+        int take = Math.min(pageSize, pageBuffer.size());
+        List<MinemevPostInfo> slice = new ArrayList<>(pageBuffer.subList(0, take));
+        pageBuffer.subList(0, take).clear();
+
+        while (fetchedPages.size() < currentPage - 1) {
+            fetchedPages.add(new MinemevPostInfo[0]);
+        }
+        MinemevPostInfo[] posts = slice.toArray(new MinemevPostInfo[0]);
+        if (fetchedPages.size() >= currentPage) {
+            fetchedPages.set(currentPage - 1, posts);
+        } else {
+            fetchedPages.add(posts);
+        }
+
+        if (sourcesExhausted && pageBuffer.isEmpty()) {
+            totalPages = Math.max(1, fetchedPages.size());
+            totalItems = everSeen.size();
+            totalKnown = true;
+        } else if (!anyUnknown && reportedItems > 0) {
+            totalItems = reportedItems;
+            totalPages = Math.max(currentPage, (reportedItems + pageSize - 1) / pageSize);
+            totalKnown = true;
+        } else {
+            totalPages = currentPage + 1;
+            totalItems = everSeen.size();
+            totalKnown = false;
+        }
+
+        isLoading = false;
+        searchButton.active = true;
+        postList.setPosts(posts);
+        noResultsFound = posts.length == 0;
+        updatePaginationButtons();
     }
 
     private void updatePaginationButtons() {
@@ -616,7 +721,7 @@ public class LitematicDownloaderScreen extends Screen {
     }
 
     public void refreshPostList() {
-        currentPage = 1;
+        resetToFirstPage();
         loadPage();
     }
 
@@ -624,8 +729,20 @@ public class LitematicDownloaderScreen extends Screen {
         showFilterPanel = !showFilterPanel;
     }
 
+    public void reloadAfterPluginChange() {
+        resetToFirstPage();
+        if (sortFilterPanel != null) {
+            sortFilterPanel.refreshVendors();
+        }
+        if (isLoading) {
+            pendingReload = true;
+            return;
+        }
+        loadPage();
+    }
+
     private void onFilterSettingsChanged(SortFilterPanel panel) {
-        currentPage = 1;
+        resetToFirstPage();
         if (isLoading) {
             pendingReload = true;
             return;
@@ -667,9 +784,15 @@ public class LitematicDownloaderScreen extends Screen {
             int availableWidth = leftPanelWidth - PADDING - paginationButtonWidth - PADDING - paginationButtonWidth - PADDING;
 
             String pageText;
-            String fullText = String.format("Page %d / %d (%d items)", currentPage, totalPages, totalItems);
-            String mediumText = String.format("%d / %d", currentPage, totalPages);
-            String shortText = String.format("%d/%d", currentPage, totalPages);
+            String fullText = totalKnown
+                    ? String.format("Page %d / %d (%d items)", currentPage, totalPages, totalItems)
+                    : String.format("Page %d (%d items)", currentPage, totalItems);
+            String mediumText = totalKnown
+                    ? String.format("%d / %d", currentPage, totalPages)
+                    : String.format("Page %d", currentPage);
+            String shortText = totalKnown
+                    ? String.format("%d/%d", currentPage, totalPages)
+                    : String.valueOf(currentPage);
 
             if (this.font.width(fullText) <= availableWidth) {
                 pageText = fullText;
@@ -742,7 +865,7 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
-        if (noResultsFound) {
+        if (noResultsFound && !isLoading) {
             String noResultsText = "No results found :(";
             int textWidth = this.font.width(noResultsText);
             context.text(
@@ -778,7 +901,6 @@ public class LitematicDownloaderScreen extends Screen {
             toastManager.render(context, delta, mouseX, mouseY);
         }
     }
-
 
     @Override
     public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent click, boolean doubled) {
@@ -867,6 +989,22 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         return super.mouseClicked(click, doubled);
+    }
+
+    @Override
+    public boolean mouseDragged(net.minecraft.client.input.MouseButtonEvent event, double dragX, double dragY) {
+        if (mouseDragged(event.x(), event.y(), event.button(), dragX, dragY)) {
+            return true;
+        }
+        return super.mouseDragged(event, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(net.minecraft.client.input.MouseButtonEvent event) {
+        if (mouseReleased(event.x(), event.y(), event.button())) {
+            return true;
+        }
+        return super.mouseReleased(event);
     }
 
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {

@@ -1,7 +1,10 @@
 package com.choculaterie.gui.widget;
 
-import org.lwjgl.glfw.GLFW;
-import com.choculaterie.gui.theme.UITheme;
+import com.choculaterie.vanilib.gui.widget.CustomButton;
+import com.choculaterie.vanilib.gui.widget.CustomTextField;
+import com.choculaterie.vanilib.gui.widget.ScrollBar;
+
+import com.choculaterie.vanilib.gui.theme.UITheme;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -222,7 +225,7 @@ public class BlockReplacementPopup implements Renderable {
 
         if (scrollBar != null && scrollBar.isVisible() && client != null) {
             boolean scrollChanged = scrollBar.updateAndRender(context, mouseX, mouseY, delta,
-                    GLFW.glfwGetCurrentContext());
+                    Minecraft.getInstance().getWindow().handle());
             if (scrollChanged) {
                 int maxScroll = getMaxScroll();
                 scrollOffset = (int) (scrollBar.getScrollPercentage() * maxScroll);

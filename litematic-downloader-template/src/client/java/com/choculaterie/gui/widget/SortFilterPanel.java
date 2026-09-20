@@ -1,6 +1,11 @@
 package com.choculaterie.gui.widget;
 
-import com.choculaterie.gui.theme.UITheme;
+import com.choculaterie.vanilib.gui.widget.CustomButton;
+import com.choculaterie.vanilib.gui.widget.CustomTextField;
+import com.choculaterie.vanilib.gui.widget.ScrollBar;
+import com.choculaterie.vanilib.gui.widget.ToggleButton;
+
+import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.network.MinemevNetworkManager;
 import net.minecraft.client.Minecraft;
@@ -42,6 +47,8 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
     private CustomTextField tagTextField;
     private CustomButton applyButton;
     private CustomButton resetButton;
+    private CustomButton addSourceButton;
+    private static final int ADD_SOURCE_SIZE = 13;
 
     public SortFilterPanel(int x, int y, int width, int height) {
         this.x = x;
@@ -123,6 +130,10 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         }
         initButtons();
         createVendorToggles();
+    }
+
+    public void refreshVendors() {
+        loadVendors();
     }
 
     private void loadVendors() {
@@ -349,6 +360,22 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
 
     private int renderVendorSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY, boolean isCompact) {
         context.text(client.font, "Vendors:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+
+        int addX = x + UITheme.Dimensions.PADDING + client.font.width("Vendors:") + 6;
+        if (addSourceButton == null) {
+            addSourceButton = new CustomButton(addX, currentY - 3, ADD_SOURCE_SIZE, ADD_SOURCE_SIZE,
+                    Component.literal("+"), btn -> openPluginsPage());
+        } else {
+            addSourceButton.setX(addX);
+            addSourceButton.setY(currentY - 3);
+        }
+        addSourceButton.extractRenderState(context, mouseX, mouseY, 0);
+
+        if (isMouseOverAddSource(mouseX, mouseY)) {
+            context.text(client.font, "Add plugins", addX + ADD_SOURCE_SIZE + 6, currentY,
+                    UITheme.Colors.ACCENT_GREEN);
+        }
+
         currentY += 14;
         contentHeight += 14;
 
@@ -398,6 +425,18 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         }
     }
 
+    private boolean isMouseOverAddSource(double mouseX, double mouseY) {
+        return addSourceButton != null
+                && mouseX >= addSourceButton.getX() && mouseX < addSourceButton.getX() + ADD_SOURCE_SIZE
+                && mouseY >= addSourceButton.getY() && mouseY < addSourceButton.getY() + ADD_SOURCE_SIZE;
+    }
+
+    private void openPluginsPage() {
+        if (client != null && client.gui != null && client.gui.screen() != null) {
+            client.gui.setScreen(new com.choculaterie.gui.PluginsPage(client.gui.screen()));
+        }
+    }
+
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button != 0) return false;
         if (mouseX < x || mouseX >= x + width || mouseY < y || mouseY >= y + height) {
@@ -414,6 +453,10 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         }
         if (resetButton != null && isOverButton(resetButton, mouseX, mouseY)) {
             resetSettings();
+            return true;
+        }
+        if (isMouseOverAddSource(mouseX, mouseY)) {
+            openPluginsPage();
             return true;
         }
         for (int i = 0; i < vendorToggles.size(); i++) {

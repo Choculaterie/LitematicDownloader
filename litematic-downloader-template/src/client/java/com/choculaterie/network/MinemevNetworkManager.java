@@ -2,9 +2,10 @@ package com.choculaterie.network;
 
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.models.*;
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
+import com.choculaterie.plugin.PluginHttp;
+import com.choculaterie.plugin.PluginManifest;
+import com.choculaterie.plugin.PluginRegistry;
+import com.choculaterie.plugin.PluginSource;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -14,8 +15,15 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 public class MinemevNetworkManager {
 	private static final String MINEMEV_BASE_URL = "https://www.minemev.com/api";
@@ -41,16 +49,33 @@ public class MinemevNetworkManager {
 		return getBaseUrl() + "/files";
 	}
 
-	private static final Gson GSON = new Gson();
 	private static final int TIMEOUT = 10000;
 	private static final int DEFAULT_PAGE = 1;
 	private static final String DEFAULT_VENDOR = "minemev";
 	private static final int DEFAULT_PAGE_SIZE = 20;
 
+	private static volatile String[] apiVendors = new String[0];
+
 	public static CompletableFuture<String[]> getVendors() {
 		return supplyAsync(() -> {
-			String response = makeGetRequest(getVendorsEndpoint());
-			return parseVendorList(response);
+			List<String> vendors = new ArrayList<>();
+			IOException apiFailure = null;
+			try {
+				String[] fetched = MinemevParsers.parseVendorList(makeGetRequest(getVendorsEndpoint()));
+				apiVendors = fetched;
+				vendors.addAll(Arrays.asList(fetched));
+			} catch (IOException e) {
+				apiFailure = e;
+			}
+			for (PluginSource plugin : PluginRegistry.enabled()) {
+				if (!vendors.contains(plugin.id())) {
+					vendors.add(plugin.id());
+				}
+			}
+			if (apiFailure != null && vendors.isEmpty()) {
+				throw apiFailure;
+			}
+			return vendors.toArray(new String[0]);
 		});
 	}
 
@@ -66,10 +91,161 @@ public class MinemevNetworkManager {
 	public static CompletableFuture<MinemevSearchResponse> searchPostsAdvanced(
 			String query, String sort, int cleanUuid, int page,
 			String tag, String versions, String excludeVendor, int pageSize) {
-		return supplyAsync(() -> {
-			String url = buildSearchUrl(query, sort, cleanUuid, page, tag, versions, excludeVendor, pageSize);
-			return parseSearchResponse(makeGetRequest(url));
+		List<PluginSource> plugins = activePlugins(excludeVendor);
+		if (plugins.isEmpty()) {
+			return supplyAsync(() -> {
+				String url = buildSearchUrl(query, sort, cleanUuid, page, tag, versions, excludeVendor, pageSize);
+				return MinemevParsers.parseSearchResponse(makeGetRequest(url));
+			});
+		}
+
+		String apiExclude = excludeWithPluginVendors(excludeVendor, plugins);
+		int activeApiVendors = countActiveApiVendors(apiExclude);
+		int apiStreams = activeApiVendors == 0 ? 0 : 1;
+		int slice = Math.max(1, pageSize / Math.max(1, apiStreams + plugins.size()));
+		int apiSize = activeApiVendors == 0 ? 0 : Math.max(1, pageSize - slice * plugins.size());
+
+		AtomicReference<Throwable> apiError = new AtomicReference<>();
+		CompletableFuture<MinemevSearchResponse> apiFuture = apiSize == 0
+				? CompletableFuture.completedFuture(null)
+				: supplyAsync(() -> {
+			String url = buildSearchUrl(query, sort, cleanUuid, page, tag, versions, apiExclude, apiSize);
+			return MinemevParsers.parseSearchResponse(makeGetRequest(url));
+		}).exceptionally(t -> {
+			apiError.set(t);
+			return null;
 		});
+
+		PluginSource.Result empty = new PluginSource.Result(List.of(), -1, -1);
+		List<CompletableFuture<PluginSource.Result>> pluginFutures = new ArrayList<>();
+		for (PluginSource plugin : plugins) {
+			pluginFutures.add(CompletableFuture.supplyAsync(() -> {
+				try {
+					return plugin.search(query, sort, page, slice, tag, versions);
+				} catch (Exception e) {
+					System.err.println("[Plugin] " + plugin.id() + " search failed: " + e.getMessage());
+					return empty;
+				}
+			}).completeOnTimeout(empty, PluginHttp.TIMEOUT_MS + 2000L, TimeUnit.MILLISECONDS));
+		}
+
+		CompletableFuture<?>[] all = Stream.concat(Stream.of(apiFuture), pluginFutures.stream())
+				.toArray(CompletableFuture[]::new);
+
+		return CompletableFuture.allOf(all).thenApply(ignored -> {
+			List<MinemevPostInfo> merged = new ArrayList<>();
+			int totalItems = 0;
+			int totalPages = 1;
+			boolean unknownTotal = false;
+
+			Set<String> seen = new HashSet<>();
+
+			MinemevSearchResponse api = apiFuture.join();
+			if (api != null) {
+				totalPages = Math.max(totalPages, api.totalPages());
+				if (api.totalPages() <= 0 || page <= api.totalPages()) {
+					addNew(merged, seen, Arrays.asList(api.posts()));
+					totalItems += api.totalItems();
+				}
+			}
+			for (CompletableFuture<PluginSource.Result> future : pluginFutures) {
+				PluginSource.Result result = future.join();
+				boolean spent = result.totalPages() > 0 && page > result.totalPages();
+				List<MinemevPostInfo> posts = spent ? List.of() : result.posts();
+				int added = addNew(merged, seen, posts);
+				if (result.totalItems() >= 0) {
+					totalItems += result.totalItems();
+				} else {
+					totalItems += added;
+				}
+				if (result.totalPages() > 0) {
+					totalPages = Math.max(totalPages, result.totalPages());
+				} else if (!spent) {
+					unknownTotal = true;
+				}
+			}
+			if (merged.isEmpty() && apiError.get() != null) {
+				throw new CompletionException(apiError.get());
+			}
+			if (unknownTotal) {
+				totalPages = -1;
+			}
+			return new MinemevSearchResponse(merged.toArray(new MinemevPostInfo[0]), totalPages, totalItems, pageSize);
+		});
+	}
+
+	private static String excludeWithPluginVendors(String excludeVendor, List<PluginSource> plugins) {
+		Set<String> known = new HashSet<>();
+		for (String vendor : apiVendors) {
+			known.add(vendor.toLowerCase());
+		}
+		List<String> parts = new ArrayList<>();
+		Set<String> seen = new HashSet<>();
+		if (excludeVendor != null && !excludeVendor.isEmpty()) {
+			for (String entry : excludeVendor.split(",")) {
+				String trimmed = entry.trim();
+				if (!trimmed.isEmpty() && seen.add(trimmed.toLowerCase())) {
+					parts.add(trimmed);
+				}
+			}
+		}
+		for (PluginSource plugin : plugins) {
+			PluginManifest manifest = plugin.manifest();
+			String vendor = manifest.vendor != null && !manifest.vendor.isBlank()
+					? manifest.vendor : plugin.id();
+			if (known.contains(vendor.toLowerCase()) && seen.add(vendor.toLowerCase())) {
+				parts.add(vendor);
+			}
+		}
+		return String.join(",", parts);
+	}
+
+	private static int addNew(List<MinemevPostInfo> merged, Set<String> seen, List<MinemevPostInfo> posts) {
+		int added = 0;
+		for (MinemevPostInfo post : posts) {
+			String key = post.uuid();
+			if (key == null || key.isEmpty() || seen.add(key)) {
+				merged.add(post);
+				added++;
+			}
+		}
+		return added;
+	}
+
+	private static int countActiveApiVendors(String excludeVendor) {
+		Set<String> excluded = new HashSet<>();
+		if (excludeVendor != null && !excludeVendor.isEmpty()) {
+			for (String entry : excludeVendor.split(",")) {
+				excluded.add(entry.trim().toLowerCase());
+			}
+		}
+		String[] known = apiVendors;
+		if (known.length == 0) {
+			return excluded.isEmpty() ? 1 : 0;
+		}
+		int active = 0;
+		for (String vendor : known) {
+			if (!excluded.contains(vendor.toLowerCase())) {
+				active++;
+			}
+		}
+		return active;
+	}
+
+	private static List<PluginSource> activePlugins(String excludeVendor) {
+		Set<String> excluded = new HashSet<>();
+		if (excludeVendor != null && !excludeVendor.isEmpty()) {
+			for (String entry : excludeVendor.split(",")) {
+				excluded.add(entry.trim().toLowerCase());
+			}
+		}
+		List<PluginSource> plugins = new ArrayList<>();
+		for (PluginSource plugin : PluginRegistry.enabled()) {
+			if (!excluded.contains(plugin.id().toLowerCase())) {
+				plugins.add(plugin);
+			}
+		}
+		return plugins;
 	}
 
 	public static CompletableFuture<MinemevPostDetailInfo> getPostDetails(String vendorUuid) {
@@ -105,13 +281,27 @@ public class MinemevNetworkManager {
 	}
 
 	private static MinemevPostDetailInfo getPostDetailsInternal(String vendor, String uuid) throws IOException {
+		PluginSource plugin = PluginRegistry.get(vendor);
+		if (plugin != null) {
+			return plugin.details(uuid);
+		}
+		if (PluginRegistry.isKnown(vendor)) {
+			throw new IOException(PluginRegistry.nameOf(vendor) + " is disabled. Enable it in Plugins.");
+		}
 		String url = String.format("%s/%s/%s", getDetailsEndpoint(), vendor, uuid);
-		return parsePostDetail(makeGetRequest(url));
+		return MinemevParsers.parsePostDetail(makeGetRequest(url));
 	}
 
 	private static MinemevFileInfo[] getPostFilesInternal(String vendor, String uuid) throws IOException {
+		PluginSource plugin = PluginRegistry.get(vendor);
+		if (plugin != null) {
+			return plugin.files(uuid);
+		}
+		if (PluginRegistry.isKnown(vendor)) {
+			throw new IOException(PluginRegistry.nameOf(vendor) + " is disabled. Enable it in Plugins.");
+		}
 		String url = String.format("%s/%s/%s", getFilesEndpoint(), vendor, uuid);
-		return parseFileList(makeGetRequest(url));
+		return MinemevParsers.parseFileList(makeGetRequest(url));
 	}
 
 	private static String buildSearchUrl(String query, String sort, int cleanUuid, int page,
@@ -178,7 +368,6 @@ public class MinemevNetworkManager {
 		}
 	}
 
-
 	private static String makeGetRequestInternal(String urlString) throws IOException {
 		System.out.println("[HTTP] GET " + urlString);
 		URL url = new URL(urlString);
@@ -224,162 +413,6 @@ public class MinemevNetworkManager {
 		}
 
 		return null;
-	}
-
-	private static MinemevSearchResponse parseSearchResponse(String json) {
-		JsonObject root = GSON.fromJson(json, JsonObject.class);
-		JsonArray postsArray = root.getAsJsonArray("posts");
-		int totalItems = root.get("total_items").getAsInt();
-		int vendorPagesize = root.has("vendor_pagesize") ? root.get("vendor_pagesize").getAsInt() : 0;
-		int vendorCount = root.has("vendor_count") ? root.get("vendor_count").getAsInt() : 0;
-		int effectivePerPage = (vendorPagesize > 0 && vendorCount > 0) ? vendorPagesize * vendorCount : root.get("total_pages").getAsInt();
-		int totalPages = (effectivePerPage > 0) ? (int) Math.ceil((double) totalItems / effectivePerPage) : root.get("total_pages").getAsInt();
-
-		List<MinemevPostInfo> posts = new ArrayList<>();
-		for (int i = 0; i < postsArray.size(); i++) {
-			posts.add(parsePostInfo(postsArray.get(i).getAsJsonObject()));
-		}
-
-		return new MinemevSearchResponse(posts.toArray(new MinemevPostInfo[0]), totalPages, totalItems, effectivePerPage);
-	}
-
-	private static MinemevPostInfo parsePostInfo(JsonObject obj) {
-		return new MinemevPostInfo(
-				getString(obj, "uuid"),
-				getStringEither(obj, "post_name", "postName"),
-				getString(obj, "description"),
-				getString(obj, "User"),
-				getInt(obj, "downloads"),
-				getStringEither(obj, "published_at", "publishedAt"),
-				getStringArray(obj, "tags"),
-				getStringArray(obj, "versions"),
-				getString(obj, "vendor"),
-				getStringArray(obj, "images"),
-				getStringEither(obj, "thumbnail_url", "thumbnailUrl"),
-				getStringEither(obj, "user_picture", "userPicture"),
-				getStringEither(obj, "yt_link", "ytLink"),
-				getStringEither(obj, "url_redirect", "urlRedirect")
-		);
-	}
-
-	private static MinemevPostDetailInfo parsePostDetail(String json) {
-		JsonObject obj = GSON.fromJson(json, JsonObject.class);
-
-		return new MinemevPostDetailInfo(
-				getString(obj, "uuid"),
-				getStringEither(obj, "post_name", "postName"),
-				getString(obj, "description"),
-				getStringEither(obj, "description_md", "descriptionMd"),
-				getString(obj, "User"),
-				getInt(obj, "downloads"),
-				getStringEither(obj, "published_at", "publishedAt"),
-				getStringArray(obj, "tags"),
-				getStringArray(obj, "versions"),
-				getStringArray(obj, "images"),
-				getStringEither(obj, "yt_link", "ytLink"),
-				getBoolean(obj, "owner"),
-				getString(obj, "creators"),
-				getStringEither(obj, "url_redirect", "urlRedirect")
-		);
-	}
-
-	private static MinemevFileInfo[] parseFileList(String json) {
-		JsonArray filesArray = GSON.fromJson(json, JsonArray.class);
-		if (filesArray == null) {
-			System.err.println("[MinemevNetworkManager] ERROR - filesArray is null");
-			return new MinemevFileInfo[0];
-		}
-
-		List<MinemevFileInfo> files = new ArrayList<>();
-
-		for (int i = 0; i < filesArray.size(); i++) {
-			JsonObject obj = filesArray.get(i).getAsJsonObject();
-			files.add(new MinemevFileInfo(
-					getString(obj, "id"),
-					getStringEither(obj, "default_file_name", "defaultFileName"),
-					getString(obj, "file"),
-					getLongEither(obj, "file_size", "fileSize"),
-					getStringArray(obj, "versions"),
-					getInt(obj, "downloads"),
-					getStringEither(obj, "file_type", "fileType"),
-					getBooleanEither(obj, "is_verified", "isVerified")
-			));
-		}
-
-		return files.toArray(new MinemevFileInfo[0]);
-	}
-
-	private static String[] parseVendorList(String json) {
-		JsonObject root = GSON.fromJson(json, JsonObject.class);
-		JsonArray vendorsArray = root.getAsJsonArray("vendors");
-		if (vendorsArray == null) {
-			return new String[0];
-		}
-
-		String[] result = new String[vendorsArray.size()];
-		for (int i = 0; i < vendorsArray.size(); i++) {
-			result[i] = vendorsArray.get(i).getAsString();
-		}
-		return result;
-	}
-
-	private static String getString(JsonObject obj, String key) {
-		return (obj.has(key) && !obj.get(key).isJsonNull()) ? obj.get(key).getAsString() : null;
-	}
-
-	private static String getStringEither(JsonObject obj, String snakeKey, String camelKey) {
-		if (obj.has(snakeKey) && !obj.get(snakeKey).isJsonNull()) {
-			return obj.get(snakeKey).getAsString();
-		}
-		if (obj.has(camelKey) && !obj.get(camelKey).isJsonNull()) {
-			return obj.get(camelKey).getAsString();
-		}
-		return null;
-	}
-
-	private static int getInt(JsonObject obj, String key) {
-		return (obj.has(key) && !obj.get(key).isJsonNull()) ? obj.get(key).getAsInt() : 0;
-	}
-
-	private static long getLong(JsonObject obj) {
-		return (obj.has("file_size") && !obj.get("file_size").isJsonNull()) ? obj.get("file_size").getAsLong() : 0L;
-	}
-
-	private static long getLongEither(JsonObject obj, String snakeKey, String camelKey) {
-		if (obj.has(snakeKey) && !obj.get(snakeKey).isJsonNull()) {
-			return obj.get(snakeKey).getAsLong();
-		}
-		if (obj.has(camelKey) && !obj.get(camelKey).isJsonNull()) {
-			return obj.get(camelKey).getAsLong();
-		}
-		return 0L;
-	}
-
-	private static boolean getBoolean(JsonObject obj, String key) {
-		return (obj.has(key) && !obj.get(key).isJsonNull()) && obj.get(key).getAsBoolean();
-	}
-
-	private static boolean getBooleanEither(JsonObject obj, String snakeKey, String camelKey) {
-		if (obj.has(snakeKey) && !obj.get(snakeKey).isJsonNull()) {
-			return obj.get(snakeKey).getAsBoolean();
-		}
-		if (obj.has(camelKey) && !obj.get(camelKey).isJsonNull()) {
-			return obj.get(camelKey).getAsBoolean();
-		}
-		return false;
-	}
-
-	private static String[] getStringArray(JsonObject obj, String key) {
-		if (!obj.has(key) || obj.get(key).isJsonNull()) {
-			return new String[0];
-		}
-
-		JsonArray array = obj.getAsJsonArray(key);
-		String[] result = new String[array.size()];
-		for (int i = 0; i < array.size(); i++) {
-			result[i] = array.get(i).getAsString();
-		}
-		return result;
 	}
 
 	@FunctionalInterface
