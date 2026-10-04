@@ -1,6 +1,5 @@
 package com.choculaterie.gui;
 
-import org.lwjgl.glfw.GLFW;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.vanilib.util.file.FileOperationsManager;
 import com.choculaterie.gui.localfolder.LocalFolderSearchManager;
@@ -17,7 +16,7 @@ import com.choculaterie.network.ChoculaterieNetworkManager;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Util;
+import com.mojang.blaze3d.Blaze3D;
 
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
@@ -26,6 +25,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import net.minecraft.client.Minecraft;
+import com.mojang.blaze3d.platform.InputConstants;
+import com.choculaterie.vanilib.util.MouseState;
 
 public class LocalFolderPage extends Screen {
     private static final int PADDING = 10;
@@ -393,7 +394,7 @@ public class LocalFolderPage extends Screen {
     }
 
     private void openInFileExplorer() {
-        Util.getPlatform().openPath(currentDirectory.toPath());
+        Blaze3D.openPath(currentDirectory.toPath());
     }
 
     private void handleQuickShare(int entryIndex) {
@@ -632,10 +633,8 @@ public class LocalFolderPage extends Screen {
         long windowHandle = Minecraft.getInstance().getWindow().handle();
         boolean shiftHeld = false;
         if (windowHandle != 0) {
-            shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                    org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                    org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                            org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+            shiftHeld = InputConstants.isKeyDown(InputConstants.KEY_LSHIFT) ||
+                    InputConstants.isKeyDown(InputConstants.KEY_RSHIFT);
         }
 
         if (shiftHeld) {
@@ -1287,17 +1286,12 @@ public class LocalFolderPage extends Screen {
             boolean popupActive = activePopup != null || confirmPopup != null || detailPopupActive;
 
             if (!searchFocused && !popupActive) {
-                boolean ctrlHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                        org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                        org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                                org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-                boolean shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                        org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                        org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                                org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean ctrlHeld = InputConstants.isKeyDown(InputConstants.KEY_LCONTROL) ||
+                        InputConstants.isKeyDown(InputConstants.KEY_RCONTROL);
+                boolean shiftHeld = InputConstants.isKeyDown(InputConstants.KEY_LSHIFT) ||
+                        InputConstants.isKeyDown(InputConstants.KEY_RSHIFT);
 
-                boolean isDeleteDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                        org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean isDeleteDown = InputConstants.isKeyDown(InputConstants.KEY_DELETE);
                 if (isDeleteDown && !wasDeleteKeyPressed && selectionManager.hasSelection()) {
                     if (shiftHeld) {
                         deleteSelectedFiles();
@@ -1307,22 +1301,19 @@ public class LocalFolderPage extends Screen {
                 }
                 wasDeleteKeyPressed = isDeleteDown;
 
-                boolean isZDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                        org.lwjgl.glfw.GLFW.GLFW_KEY_Z) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean isZDown = InputConstants.isKeyDown(InputConstants.KEY_Z);
                 if (isZDown && !wasZKeyPressed && ctrlHeld) {
                     performUndo();
                 }
                 wasZKeyPressed = isZDown;
 
-                boolean isYDown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                        org.lwjgl.glfw.GLFW.GLFW_KEY_Y) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean isYDown = InputConstants.isKeyDown(InputConstants.KEY_Y);
                 if (isYDown && !wasYKeyPressed && ctrlHeld) {
                     performRedo();
                 }
                 wasYKeyPressed = isYDown;
 
-                boolean isADown = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                        org.lwjgl.glfw.GLFW.GLFW_KEY_A) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                boolean isADown = InputConstants.isKeyDown(InputConstants.KEY_A);
                 if (isADown && !wasAKeyPressed && ctrlHeld) {
                     selectAll();
                 }
@@ -1332,8 +1323,7 @@ public class LocalFolderPage extends Screen {
 
         if (dragStartIndex != -1 && this.minecraft != null && this.minecraft.getWindow() != null) {
             long windowHandle = Minecraft.getInstance().getWindow().handle();
-            boolean mouseButtonPressed = org.lwjgl.glfw.GLFW.glfwGetMouseButton(windowHandle,
-                    org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+            boolean mouseButtonPressed = MouseState.isLeftDown();
 
             if (mouseButtonPressed) {
                 if (!isDragging) {
@@ -1678,7 +1668,7 @@ public class LocalFolderPage extends Screen {
             }
         }
 
-        if (button == 0 && toastManager != null) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && toastManager != null) {
             if (toastManager.mouseClicked(mouseX, mouseY)) {
                 return true;
             }
@@ -1687,7 +1677,7 @@ public class LocalFolderPage extends Screen {
             }
         }
 
-        if (button == 0 && searchField != null) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && searchField != null) {
             if (searchField.isMouseOver(mouseX, mouseY)) {
                 searchField.setFocused(true);
                 return true;
@@ -1729,7 +1719,7 @@ public class LocalFolderPage extends Screen {
 
             for (QuickShareButton qsButton : quickShareButtons) {
                 if (qsButton.isHovered(mouseX, mouseY)) {
-                    if (button == 0 && uploadingIndex == -1) {
+                    if (button == InputConstants.MOUSE_BUTTON_LEFT && uploadingIndex == -1) {
                         handleQuickShare(qsButton.entryIndex);
                         return true;
                     }
@@ -1739,21 +1729,17 @@ public class LocalFolderPage extends Screen {
             int clickedIndex = scrollOffset + (int) ((mouseY - listY) / ITEM_HEIGHT);
 
             if (clickedIndex >= 0 && clickedIndex < entries.size()) {
-                if (button == 0) {
+                if (button == InputConstants.MOUSE_BUTTON_LEFT) {
                     FileEntry entry = entries.get(clickedIndex);
 
                     long windowHandle = Minecraft.getInstance().getWindow().handle();
                     boolean shiftHeld = false;
                     boolean ctrlHeld = false;
                     if (windowHandle != 0) {
-                        shiftHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                                org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                                org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                                        org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-                        ctrlHeld = org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                                org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS ||
-                                org.lwjgl.glfw.GLFW.glfwGetKey(windowHandle,
-                                        org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+                        shiftHeld = InputConstants.isKeyDown(InputConstants.KEY_LSHIFT) ||
+                                InputConstants.isKeyDown(InputConstants.KEY_RSHIFT);
+                        ctrlHeld = InputConstants.isKeyDown(InputConstants.KEY_LCONTROL) ||
+                                InputConstants.isKeyDown(InputConstants.KEY_RCONTROL);
                     }
 
                     if (entry.isDirectory && selectionManager.isSelected(clickedIndex) && doubled && !shiftHeld

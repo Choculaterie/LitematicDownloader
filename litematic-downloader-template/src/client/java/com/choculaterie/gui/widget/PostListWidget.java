@@ -11,6 +11,7 @@ import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class PostListWidget extends AbstractWidget {
     private static final int ENTRY_SPACING = 2;
@@ -153,7 +154,7 @@ public class PostListWidget extends AbstractWidget {
             return true;
         }
 
-        if (button == 0 && isMouseOver(mouseX, mouseY)) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && isMouseOver(mouseX, mouseY)) {
             int offsetY = (int) scrollAmount;
             int currentY = 0;
             int entryWidth = getEntryWidth();
@@ -182,8 +183,8 @@ public class PostListWidget extends AbstractWidget {
     }
 
     protected void onDrag(double mouseX, double mouseY, double deltaX, double deltaY) {
-        if (scrollBar.isDragging() || scrollBar.mouseDragged(mouseX, mouseY, 0, deltaX, deltaY)) {
-            scrollBar.mouseDragged(mouseX, mouseY, 0, deltaX, deltaY);
+        if (scrollBar.isDragging() || scrollBar.mouseDragged(mouseX, mouseY, InputConstants.MOUSE_BUTTON_LEFT, deltaX, deltaY)) {
+            scrollBar.mouseDragged(mouseX, mouseY, InputConstants.MOUSE_BUTTON_LEFT, deltaX, deltaY);
             double maxScroll = getMaxScroll();
             scrollAmount = scrollBar.getScrollPercentage() * maxScroll;
         }
@@ -285,7 +286,7 @@ public class PostListWidget extends AbstractWidget {
         }
 
         private boolean handlePress(double mouseX, double mouseY, int button) {
-            if (button != 0 || !isPointInside(mouseX, mouseY)) {
+            if (button != InputConstants.MOUSE_BUTTON_LEFT || !isPointInside(mouseX, mouseY)) {
                 return false;
             }
             pressed = true;

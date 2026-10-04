@@ -13,6 +13,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.io.File;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class SettingsPage extends Screen {
     private static final int PADDING = 10;
@@ -315,7 +316,7 @@ public class SettingsPage extends Screen {
             return activePopup.mouseClicked(mouseX, mouseY, button);
         }
 
-        if (button == 0 && downloadPathField != null) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && downloadPathField != null) {
             if (downloadPathField.isMouseOver(mouseX, mouseY)) {
                 downloadPathField.setFocused(true);
                 return true;

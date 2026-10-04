@@ -4,13 +4,12 @@ import com.choculaterie.vanilib.gui.widget.CustomButton;
 
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.util.Util;
+import com.mojang.blaze3d.Blaze3D;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
-import org.lwjgl.glfw.GLFW;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -18,6 +17,8 @@ import java.nio.file.Path;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import com.mojang.blaze3d.platform.InputConstants;
+import com.choculaterie.vanilib.util.MouseState;
 
 public class SchematicExportPanel {
 
@@ -137,7 +138,7 @@ public class SchematicExportPanel {
 
         long window = Minecraft.getInstance().getWindow().handle();
         boolean leftDown = window != 0L
-                && GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+                && MouseState.isLeftDown();
 
         Font font = client.font;
         for (Slider slider : sliders) {
@@ -204,7 +205,7 @@ public class SchematicExportPanel {
         if (saveButton.mouseClicked(click, doubled)) return true;
         if (openFolderButton.mouseClicked(click, doubled)) return true;
 
-        if (click.button() == 0) {
+        if (click.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             for (Slider slider : sliders) {
                 if (slider.isInside(mx, my)) {
                     slider.dragging = true;
@@ -228,7 +229,7 @@ public class SchematicExportPanel {
         try {
             Path dir = rendersDir();
             Files.createDirectories(dir);
-            Util.getPlatform().openPath(dir);
+            Blaze3D.openPath(dir);
         } catch (Exception e) {
             setStatus("Could not open folder", UITheme.Colors.TOAST_ACCENT_ERROR);
         }

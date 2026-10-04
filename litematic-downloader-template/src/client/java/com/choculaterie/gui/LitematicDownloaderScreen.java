@@ -19,7 +19,6 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-import org.lwjgl.glfw.GLFW;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -32,6 +31,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.minecraft.client.Minecraft;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class LitematicDownloaderScreen extends Screen {
     private static final int SEARCH_BAR_HEIGHT = 20;
@@ -235,9 +235,7 @@ public class LitematicDownloaderScreen extends Screen {
 
     private void checkClipboardForQuickShare() {
         try {
-            long windowHandle = Minecraft.getInstance().getWindow().handle();
-            if (windowHandle == 0) return;
-            String clipboard = GLFW.glfwGetClipboardString(windowHandle);
+            String clipboard = Minecraft.getInstance().keyboardHandler.getClipboard();
             if (clipboard != null) {
                 String trimmed = clipboard.trim();
                 Matcher matcher = QUICK_SHARE_PATTERN.matcher(trimmed);
@@ -269,10 +267,7 @@ public class LitematicDownloaderScreen extends Screen {
 
     private void clearClipboard() {
         try {
-            long windowHandle = Minecraft.getInstance().getWindow().handle();
-            if (windowHandle != 0) {
-                GLFW.glfwSetClipboardString(windowHandle, "");
-            }
+            Minecraft.getInstance().keyboardHandler.setClipboard("");
         } catch (Exception ignored) {
         }
     }
@@ -912,7 +907,7 @@ public class LitematicDownloaderScreen extends Screen {
             return detailPanel.mouseClicked(mouseX, mouseY, button);
         }
 
-        if (button == 0 && toastManager != null) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && toastManager != null) {
             if (toastManager.mouseClicked(mouseX, mouseY)) {
                 return true;
             }
@@ -921,7 +916,7 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
-        if (button == 0 && modMessageBanner != null && modMessageBanner.isVisible()) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && modMessageBanner != null && modMessageBanner.isVisible()) {
             if (modMessageBanner.mouseClicked(mouseX, mouseY, button)) {
                 return true;
             }
@@ -930,17 +925,17 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
-        if (button == 0 && isMouseOverButton(closeButton, mouseX, mouseY)) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && isMouseOverButton(closeButton, mouseX, mouseY)) {
             this.onClose();
             return true;
         }
 
-        if (button == 0 && isMouseOverButton(filterButton, mouseX, mouseY)) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && isMouseOverButton(filterButton, mouseX, mouseY)) {
             toggleFilterPanel();
             return true;
         }
 
-        if (button == 0 && isMouseOverButton(folderButton, mouseX, mouseY)) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && isMouseOverButton(folderButton, mouseX, mouseY)) {
             openFolderPage();
             return true;
         }
@@ -955,7 +950,7 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
-        if (button == 0 && bannerState == BannerState.DETECTED) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && bannerState == BannerState.DETECTED) {
             int bannerX = PADDING;
             int bannerY = PADDING + SEARCH_BAR_HEIGHT + 2;
             int leftPanelW = this.width / 2;
@@ -979,7 +974,7 @@ public class LitematicDownloaderScreen extends Screen {
             }
         }
 
-        if (button == 0 && searchField != null) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && searchField != null) {
             if (searchField.isMouseOver(mouseX, mouseY)) {
                 searchField.setFocused(true);
                 return true;

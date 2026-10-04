@@ -22,6 +22,7 @@ import net.minecraft.resources.Identifier;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class LitematicDetailPanel implements Renderable, GuiEventListener {
 
@@ -459,7 +460,7 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
         if (replacementPopup != null) {
-            replacementPopup.mouseClicked(click.x(), click.y(), 0);
+            replacementPopup.mouseClicked(click.x(), click.y(), InputConstants.MOUSE_BUTTON_LEFT);
             return true;
         }
 

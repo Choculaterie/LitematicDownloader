@@ -28,10 +28,10 @@
 	},
 	"depends": {
 		"fabricloader": ">=0.18.5",
-        "minecraft": "~26.2",
+        "minecraft": "~26.3",
 		"java": ">=25",
 		"fabric-api": "*",
-		"vanilib": ">=0.2.2"
+		"vanilib": ">=0.2.4"
 	},
 	"suggests": {
 		"another-mod": "*"

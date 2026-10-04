@@ -17,6 +17,7 @@ import net.minecraft.resources.Identifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class BlockReplacementPopup implements Renderable {
     private final Minecraft client;
@@ -260,7 +261,7 @@ public class BlockReplacementPopup implements Renderable {
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button != 0)
+        if (button != InputConstants.MOUSE_BUTTON_LEFT)
             return true;
 
         if (mouseX < x || mouseX > x + width || mouseY < y || mouseY > y + height) {

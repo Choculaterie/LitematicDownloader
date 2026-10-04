@@ -14,12 +14,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Util;
+import com.mojang.blaze3d.Blaze3D;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class PluginsPage extends Screen {
     private static final int PADDING = 10;
@@ -126,7 +127,7 @@ public class PluginsPage extends Screen {
         this.addRenderableWidget(new CustomButton(
                 openFolderX, PADDING, OPEN_FOLDER_WIDTH, BUTTON_SIZE,
                 Component.literal("Open folder"), button ->
-                Util.getPlatform().openPath(PluginRegistry.directory())));
+                Blaze3D.openPath(PluginRegistry.directory())));
 
         this.addRenderableWidget(new CustomButton(
                 PADDING + BUTTON_SIZE + PADDING, PADDING, 90, BUTTON_SIZE,
@@ -178,18 +179,14 @@ public class PluginsPage extends Screen {
 
     private boolean isShiftHeld() {
         long w = Minecraft.getInstance().getWindow().handle();
-        return w != 0 && (org.lwjgl.glfw.GLFW.glfwGetKey(w, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT)
-                == org.lwjgl.glfw.GLFW.GLFW_PRESS
-                || org.lwjgl.glfw.GLFW.glfwGetKey(w, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT)
-                == org.lwjgl.glfw.GLFW.GLFW_PRESS);
+        return w != 0 && (InputConstants.isKeyDown(InputConstants.KEY_LSHIFT)
+                || InputConstants.isKeyDown(InputConstants.KEY_RSHIFT));
     }
 
     private boolean isCtrlHeld() {
         long w = Minecraft.getInstance().getWindow().handle();
-        return w != 0 && (org.lwjgl.glfw.GLFW.glfwGetKey(w, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL)
-                == org.lwjgl.glfw.GLFW.GLFW_PRESS
-                || org.lwjgl.glfw.GLFW.glfwGetKey(w, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL)
-                == org.lwjgl.glfw.GLFW.GLFW_PRESS);
+        return w != 0 && (InputConstants.isKeyDown(InputConstants.KEY_LCONTROL)
+                || InputConstants.isKeyDown(InputConstants.KEY_RCONTROL));
     }
 
     private void handleDeleteClick() {
@@ -277,8 +274,7 @@ public class PluginsPage extends Screen {
         boolean ctrl = isCtrlHeld();
         boolean shift = isShiftHeld();
 
-        boolean deleteDown = org.lwjgl.glfw.GLFW.glfwGetKey(w, org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE)
-                == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+        boolean deleteDown = InputConstants.isKeyDown(InputConstants.KEY_DELETE);
         if (deleteDown && !wasDeleteKeyPressed && selectionManager.hasSelection()) {
             if (shift) {
                 deleteRows(selectedRows());
@@ -288,24 +284,21 @@ public class PluginsPage extends Screen {
         }
         wasDeleteKeyPressed = deleteDown;
 
-        boolean zDown = org.lwjgl.glfw.GLFW.glfwGetKey(w, org.lwjgl.glfw.GLFW.GLFW_KEY_Z)
-                == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+        boolean zDown = InputConstants.isKeyDown(InputConstants.KEY_Z);
         if (zDown && !wasZKeyPressed && ctrl && fileOps != null) {
             fileOps.performUndo();
             afterFileChange();
         }
         wasZKeyPressed = zDown;
 
-        boolean yDown = org.lwjgl.glfw.GLFW.glfwGetKey(w, org.lwjgl.glfw.GLFW.GLFW_KEY_Y)
-                == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+        boolean yDown = InputConstants.isKeyDown(InputConstants.KEY_Y);
         if (yDown && !wasYKeyPressed && ctrl && fileOps != null) {
             fileOps.performRedo();
             afterFileChange();
         }
         wasYKeyPressed = yDown;
 
-        boolean aDown = org.lwjgl.glfw.GLFW.glfwGetKey(w, org.lwjgl.glfw.GLFW.GLFW_KEY_A)
-                == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+        boolean aDown = InputConstants.isKeyDown(InputConstants.KEY_A);
         if (aDown && !wasAKeyPressed && ctrl && !rows.isEmpty()) {
             selectionManager.selectAll(rows.size());
             updateSelectionButtons();
@@ -494,7 +487,7 @@ public class PluginsPage extends Screen {
         if (super.mouseClicked(click, doubled)) {
             return true;
         }
-        if (click.button() == 0 && handleListClick(click.x(), click.y())) {
+        if (click.button() == InputConstants.MOUSE_BUTTON_LEFT && handleListClick(click.x(), click.y())) {
             return true;
         }
         return false;

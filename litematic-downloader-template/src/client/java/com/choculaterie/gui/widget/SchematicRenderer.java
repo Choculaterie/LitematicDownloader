@@ -1,22 +1,22 @@
 package com.choculaterie.gui.widget;
 
 import com.choculaterie.util.LitematicParser;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.blaze3d.ProjectionType;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.CommandEncoder;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.commands.CommandEncoder;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -265,7 +265,8 @@ public class SchematicRenderer implements AutoCloseable {
             } catch (Exception ignored) {
             }
         }
-        float shading = info.shade() ? getDirectionShading(quad.direction()) : 1.0f;
+        Direction shadeDir = info.shadeDirectionOverride() != null ? info.shadeDirectionOverride() : quad.direction();
+        float shading = getDirectionShading(shadeDir);
         r = Math.min(255, (int) (r * shading));
         g = Math.min(255, (int) (g * shading));
         b = Math.min(255, (int) (b * shading));
@@ -366,7 +367,7 @@ public class SchematicRenderer implements AutoCloseable {
 
         boolean fbResized = false;
         if (framebuffer == null) {
-            framebuffer = new TextureTarget("SchematicPreview", fbW, fbH, true, GpuFormat.RGBA8_UNORM);
+            framebuffer = new TextureTarget("SchematicPreview", fbW, fbH, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
             fbResized = true;
         } else if (framebuffer.width != fbW || framebuffer.height != fbH) {
             framebuffer.resize(fbW, fbH);
@@ -437,7 +438,7 @@ public class SchematicRenderer implements AutoCloseable {
             }
             InputConstants.Key key = (InputConstants.Key) keyMappingKeyField.get(mapping);
             if (key == null) return false;
-            return InputConstants.isKeyDown(mc.getWindow(), key.getValue());
+            return InputConstants.isKeyDown(key.getValue());
         } catch (Exception e) {
             return false;
         }
@@ -507,11 +508,11 @@ public class SchematicRenderer implements AutoCloseable {
                 if (vertexBuffer == null || vertexCounts[i] == 0) continue;
                 int idxCount = (vertexCounts[i] / 4) * 6;
 
-                pass.setPipeline(pipelineForLayer(i));
+                pass.setPipeline(RenderSystem.getCompiledPipeline(pipelineForLayer(i)));
                 RenderSystem.bindDefaultUniforms(pass);
                 pass.setUniform("DynamicTransforms", transforms);
-                pass.bindTexture("Sampler0", atlasView, atlasSampler);
-                pass.bindTexture("Sampler2", lightmapView, lightSampler);
+                pass.setUniform("Sampler0", atlasView, atlasSampler);
+                pass.setUniform("Sampler2", lightmapView, lightSampler);
                 pass.setVertexBuffer(0, vertexBuffer.slice());
                 pass.setIndexBuffer(indexBuf, seqIdx.type());
                 pass.drawIndexed(idxCount, 1, 0, 0, 0);
@@ -522,7 +523,7 @@ public class SchematicRenderer implements AutoCloseable {
     }
 
     public void onDrag(double dx, double dy, int button) {
-        if (button == 0) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT) {
             rotationY = ((rotationY + (float) (dx * 0.5)) % 360f + 360f) % 360f;
             rotationX = Math.max(-90f, Math.min(90f, rotationX + (float) (dy * 0.5)));
         } else {
@@ -600,7 +601,7 @@ public class SchematicRenderer implements AutoCloseable {
         TextureTarget target = null;
         GpuBuffer readbackBuffer = null;
         try {
-            target = new TextureTarget("SchematicExport", resolution, resolution, true, GpuFormat.RGBA8_UNORM);
+            target = new TextureTarget("SchematicExport", resolution, resolution, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
             int clearColor = transparentBackground ? 0x00000000 : 0xFF161616;
             renderToFramebuffer(mc, resolution, resolution, target, clearColor);
 

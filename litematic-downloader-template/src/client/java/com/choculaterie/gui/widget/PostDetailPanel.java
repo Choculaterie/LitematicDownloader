@@ -27,7 +27,7 @@ import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.util.Util;
+import com.mojang.blaze3d.Blaze3D;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -52,6 +52,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class PostDetailPanel implements Renderable, GuiEventListener {
 
@@ -774,7 +775,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                                         + pageUrl,
                                 () -> {
                                     try {
-                                        Util.getPlatform().openUri(pageUrl);
+                                        Blaze3D.openUri(URI.create(pageUrl));
                                     } catch (Exception e) {
                                         System.err.println("[Download] Failed to open URL: " + e.getMessage());
                                     }
@@ -901,7 +902,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
     private void openRedirectUrl() {
         if (postInfo != null && postInfo.urlRedirect() != null && !postInfo.urlRedirect().isEmpty()) {
             try {
-                Util.getPlatform().openUri(postInfo.urlRedirect());
+                Blaze3D.openUri(URI.create(postInfo.urlRedirect()));
             } catch (Exception e) {
                 System.err.println("[PostDetailPanel] ERROR - Failed to open URL: " + e.getMessage());
             }
@@ -1276,7 +1277,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
 
         System.out.println("[PostDetailPanel] mouseClicked - x:" + mouseX + " y:" + mouseY + " button:" + button);
 
-        if (button == 0 && downloadButton != null && postInfo != null) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && downloadButton != null && postInfo != null) {
             boolean isOverDownload = mouseX >= downloadButton.getX() &&
                     mouseX < downloadButton.getX() + downloadButton.getWidth() &&
                     mouseY >= downloadButton.getY() &&
@@ -1287,7 +1288,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             }
         }
 
-        if (button == 0 && redirectLinkButton != null) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && redirectLinkButton != null) {
             boolean isOverRedirect = mouseX >= redirectLinkButton.getX() &&
                     mouseX < redirectLinkButton.getX() + redirectLinkButton.getWidth() &&
                     mouseY >= redirectLinkButton.getY() &&
@@ -1303,7 +1304,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             return true;
         }
 
-        if (button == 0 && currentImageTexture != null && !isLoadingImage && postInfo != null) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && currentImageTexture != null && !isLoadingImage && postInfo != null) {
             int downloadBtnSize = 20;
             int contentStartY = y + downloadBtnSize;
             int currentY = contentStartY + UITheme.Dimensions.PADDING - (int) scrollOffset;
@@ -1326,7 +1327,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             }
         }
 
-        if (button == 0 && imageUrls != null && imageUrls.length > 1) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && imageUrls != null && imageUrls.length > 1) {
             if (prevImageButton != null) {
                 System.out.println("[PostDetailPanel] Checking prev button - btnX:" + prevImageButton.getX() +
                         " btnY:" + prevImageButton.getY() + " btnW:" + prevImageButton.getWidth() +

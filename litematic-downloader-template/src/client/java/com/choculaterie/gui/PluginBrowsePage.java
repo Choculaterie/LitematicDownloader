@@ -16,6 +16,7 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class PluginBrowsePage extends Screen {
     private static final int PADDING = 10;
@@ -329,7 +330,7 @@ public class PluginBrowsePage extends Screen {
         if (toastManager != null && toastManager.mouseClicked(click.x(), click.y())) {
             return true;
         }
-        if (click.button() == 0) {
+        if (click.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             for (int i = 0; i < actionButtons.size() && i < actionTargets.size(); i++) {
                 CustomButton button = actionButtons.get(i);
                 if (button.active

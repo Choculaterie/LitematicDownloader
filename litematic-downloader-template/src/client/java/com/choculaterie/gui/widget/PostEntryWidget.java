@@ -6,6 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.events.GuiEventListener;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class PostEntryWidget implements Renderable, GuiEventListener {
     private static final int MIN_ENTRY_HEIGHT = 70;
@@ -242,7 +243,7 @@ public class PostEntryWidget implements Renderable, GuiEventListener {
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button != 0) return false;
+        if (button != InputConstants.MOUSE_BUTTON_LEFT) return false;
 
         if (mouseX >= x && mouseX < x + width &&
             mouseY >= y && mouseY < y + calculatedHeight) {

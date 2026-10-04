@@ -1,1 +1,1 @@
-JAVA_HOME=/home/choculat/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2 ./gradlew build
+JAVA_HOME=/home/choculat/.jdks/temurin-25.0.4 ./gradlew build

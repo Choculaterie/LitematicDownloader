@@ -20,6 +20,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class SortFilterPanel implements Renderable, GuiEventListener {
 
@@ -438,7 +439,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button != 0) return false;
+        if (button != InputConstants.MOUSE_BUTTON_LEFT) return false;
         if (mouseX < x || mouseX >= x + width || mouseY < y || mouseY >= y + height) {
             if (tagTextField != null) {
                 tagTextField.setFocused(false);
