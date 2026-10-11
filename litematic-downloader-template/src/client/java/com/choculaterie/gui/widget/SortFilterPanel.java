@@ -1,5 +1,8 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.vanilib.gui.theme.ButtonStyle;
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.widget.CustomButton;
 import com.choculaterie.vanilib.gui.widget.CustomTextField;
 import com.choculaterie.vanilib.gui.widget.ScrollBar;
@@ -23,6 +26,14 @@ import java.util.function.Consumer;
 import com.mojang.blaze3d.platform.InputConstants;
 
 public class SortFilterPanel implements Renderable, GuiEventListener {
+    private static final int PAD = UITheme.Dimensions.PADDING;
+    private static final int CONTROL_H = UITheme.Dimensions.BUTTON_HEIGHT;
+    private static final int GAP = 4;
+    private static final int HEADER_H = 27;
+    private static final int LABEL_GAP = 12;
+    private static final int SECTION_GAP = 10;
+    private static final int TOGGLE_ROW_H = 23;
+    private static final int LINK_H = 15;
 
     private int x;
     private int y;
@@ -49,7 +60,9 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
     private CustomButton applyButton;
     private CustomButton resetButton;
     private CustomButton addSourceButton;
-    private static final int ADD_SOURCE_SIZE = 13;
+
+    private final List<int[]> sortChipRects = new ArrayList<>();
+    private final List<int[]> pageChipRects = new ArrayList<>();
 
     public SortFilterPanel(int x, int y, int width, int height) {
         this.x = x;
@@ -57,13 +70,68 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         this.width = width;
         this.height = height;
         this.client = Minecraft.getInstance();
-        this.scrollBar = new ScrollBar(x + width - UITheme.Dimensions.SCROLLBAR_WIDTH - UITheme.Dimensions.PADDING, y + 30, height - 60);
         loadSettings();
-        this.tagTextField = new CustomTextField(client, x + UITheme.Dimensions.PADDING, y + 100, width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH, 18, Component.empty());
+        this.tagTextField = new CustomTextField(client, innerX(), contentTop(), innerWidth(), CONTROL_H, Component.empty());
         this.tagTextField.setPlaceholder(Component.literal("Enter tag..."));
         this.tagTextField.setValue(tagFilter);
-        initButtons();
+        layoutChrome();
         loadVendors();
+    }
+
+    private int boxBottom() {
+        return y + height - CONTROL_H - PAD;
+    }
+
+    private int contentTop() {
+        return y + HEADER_H;
+    }
+
+    private int contentBottom() {
+        return boxBottom() - GAP;
+    }
+
+    private int visibleHeight() {
+        return Math.max(0, contentBottom() - contentTop());
+    }
+
+    private int scrollBarX() {
+        return x + width - UITheme.Dimensions.SCROLLBAR_WIDTH - 3;
+    }
+
+    private int innerX() {
+        return x + PAD;
+    }
+
+    private int innerWidth() {
+        return Math.max(20, scrollBarX() - GAP - innerX());
+    }
+
+    private boolean isCompact() {
+        return width < 180;
+    }
+
+    private void layoutChrome() {
+        this.scrollBar = new ScrollBar(scrollBarX(), contentTop(), visibleHeight());
+        if (tagTextField != null) {
+            tagTextField.setWidth(innerWidth());
+        }
+
+        boolean iconOnly = width < 150;
+        int footerY = y + height - CONTROL_H;
+        int buttonWidth = (width - PAD) / 2;
+
+        applyButton = new CustomButton(x, footerY, buttonWidth, CONTROL_H,
+                Component.literal(iconOnly ? "" : "Apply"), button -> applySettings());
+        applyButton.setIcon(UIIcon.CHECK).setStyle(ButtonStyle.PRIMARY);
+
+        resetButton = new CustomButton(x + width - buttonWidth, footerY, buttonWidth, CONTROL_H,
+                Component.literal(iconOnly ? "" : "Refresh"), button -> resetSettings());
+        resetButton.setIcon(UIIcon.REFRESH);
+
+        String linkLabel = "Add plugins";
+        int linkWidth = UIDraw.font().width(linkLabel) + UIIcon.SIZE + 4 + 8;
+        addSourceButton = new CustomButton(0, 0, linkWidth, LINK_H, Component.literal(linkLabel), btn -> openPluginsPage());
+        addSourceButton.setIcon(UIIcon.PLUS).setStyle(ButtonStyle.GHOST);
     }
 
     private void loadSettings() {
@@ -85,28 +153,6 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         settings.setExcludedVendors(String.join(",", excludedVendors));
     }
 
-    private void initButtons() {
-        int buttonWidth = (width - UITheme.Dimensions.PADDING * 3) / 2;
-
-        applyButton = new CustomButton(
-                x + UITheme.Dimensions.PADDING,
-                y + height - UITheme.Dimensions.BUTTON_HEIGHT - UITheme.Dimensions.PADDING,
-                buttonWidth,
-                UITheme.Dimensions.BUTTON_HEIGHT,
-                Component.literal(width < 150 ? "✓" : "Apply"),
-                button -> applySettings()
-        );
-
-        resetButton = new CustomButton(
-                x + UITheme.Dimensions.PADDING + buttonWidth + UITheme.Dimensions.PADDING,
-                y + height - UITheme.Dimensions.BUTTON_HEIGHT - UITheme.Dimensions.PADDING,
-                buttonWidth,
-                UITheme.Dimensions.BUTTON_HEIGHT,
-                Component.literal(width < 150 ? "↺" : "Reset"),
-                button -> resetSettings()
-        );
-    }
-
     private void applySettings() {
         if (tagTextField != null) {
             tagFilter = tagTextField.getValue();
@@ -124,12 +170,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         this.y = y;
         this.width = width;
         this.height = height;
-        this.scrollBar = new ScrollBar(x + width - UITheme.Dimensions.SCROLLBAR_WIDTH - UITheme.Dimensions.PADDING, y + 30, height - 60);
-        if (tagTextField != null) {
-            tagTextField.setPosition(x + UITheme.Dimensions.PADDING, y + 100);
-            tagTextField.setWidth(width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH);
-        }
-        initButtons();
+        layoutChrome();
         createVendorToggles();
     }
 
@@ -160,9 +201,6 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
             });
     }
 
-    // Options must be multiples of the active vendor count so the API's
-    // per-vendor split (pagesize / vendor_count) returns exactly what we ask for.
-    // Base = 2 per vendor, doubling, capped at 50.
     private static int[] computePageOptions(int vendorCount) {
         int base = vendorCount * 2;
         int cap = Math.max(base, 50 / vendorCount * vendorCount);
@@ -177,7 +215,6 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
     private void updatePageOptions() {
         int activeVendors = Math.max(1, availableVendors.length - excludedVendors.size());
         pageOptions = computePageOptions(activeVendors);
-        // snap saved value to the closest valid option
         int closest = pageOptions[0];
         for (int opt : pageOptions) {
             if (Math.abs(opt - itemsPerPage) < Math.abs(closest - itemsPerPage)) {
@@ -194,7 +231,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
             final String vendor = availableVendors[i];
             boolean isIncluded = !excludedVendors.contains(vendor);
             ToggleButton toggle = new ToggleButton(
-                    x + UITheme.Dimensions.PADDING,
+                    innerX(),
                     0,
                     isIncluded,
                     enabled -> {
@@ -208,6 +245,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
             vendorToggles.add(toggle);
         }
     }
+
     public String getSelectedSort() {
         return selectedSort;
     }
@@ -237,205 +275,126 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
         }
     }
 
-    private void drawButtonBorder(GuiGraphicsExtractor context, int x, int y, int width, int height) {
-        int borderWidth = UITheme.Dimensions.BORDER_WIDTH;
-        int borderColor = UITheme.Colors.BUTTON_BORDER;
-        context.fill(x, y, x + width, y + borderWidth, borderColor);
-        context.fill(x, y + height - borderWidth, x + width, y + height, borderColor);
-        context.fill(x, y, x + borderWidth, y + height, borderColor);
-        context.fill(x + width - borderWidth, y, x + width, y + height, borderColor);
-    }
-
-    private void drawCenteredButtonText(GuiGraphicsExtractor context, String text, int x, int y, int width, int height) {
-        int textWidth = client.font.width(text);
-        context.text(client.font, text, x + (width - textWidth) / 2, y + 5, UITheme.Colors.TEXT_PRIMARY);
-    }
-
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        context.fill(x, y, x + width, y + height, UITheme.Colors.PANEL_BG_SECONDARY);
-        context.fill(x, y, x + 1, y + height, UITheme.Colors.BUTTON_BORDER);
-        boolean isCompact = width < 180;
-        String title = isCompact ? "Filters" : "Sort & Filter";
-        context.text(client.font, title, x + UITheme.Dimensions.PADDING, y + UITheme.Dimensions.PADDING, UITheme.Colors.TEXT_PRIMARY);
-        int contentStartY = y + 30;
-        context.enableScissor(x + 1, contentStartY, x + width - UITheme.Dimensions.SCROLLBAR_WIDTH, y + height - 40);
+        int boxBottom = boxBottom();
+        UIDraw.sidePanel(context, x, y, x + width, boxBottom);
+        String title = isCompact() ? "Filters" : "Sort & Filter";
+        UIDraw.sectionHeader(context, title, innerX(), y + 8, x + width - PAD);
 
-        int currentY = contentStartY - (int) scrollOffset;
-        contentHeight = 0;
-        currentY = renderSortSection(context, mouseX, mouseY, currentY, isCompact);
-        currentY = renderPaginationSection(context, mouseX, mouseY, currentY, isCompact);
-        currentY = renderTagSection(context, mouseX, mouseY, currentY, isCompact);
-        currentY = renderVendorSection(context, mouseX, mouseY, currentY, isCompact);
+        boolean inside = mouseY >= contentTop() && mouseY < contentBottom();
+        int contentMouseX = inside ? mouseX : -1;
+        int contentMouseY = inside ? mouseY : -1;
 
+        context.enableScissor(x + 1, contentTop(), scrollBarX() - 1, contentBottom());
+        int currentY = contentTop() - (int) scrollOffset;
+        int startY = currentY;
+        currentY = renderSortSection(context, contentMouseX, contentMouseY, currentY);
+        currentY = renderPaginationSection(context, contentMouseX, contentMouseY, currentY);
+        currentY = renderTagSection(context, contentMouseX, contentMouseY, currentY);
+        currentY = renderVendorSection(context, contentMouseX, contentMouseY, currentY);
         context.disableScissor();
-        int visibleHeight = height - 70;
-        scrollBar.setScrollData(contentHeight, visibleHeight);
+        contentHeight = currentY - startY;
+
+        double maxScroll = Math.max(0, contentHeight - visibleHeight());
+        if (scrollOffset > maxScroll) scrollOffset = maxScroll;
+        scrollBar.setScrollData(contentHeight, visibleHeight());
+        scrollBar.setScrollPercentage(maxScroll > 0 ? scrollOffset / maxScroll : 0);
         scrollBar.extractRenderState(context, mouseX, mouseY, delta);
-        renderBottomButtons(context, mouseX, mouseY, delta);
-    }
 
-    private int renderSortSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY, boolean isCompact) {
-        context.text(client.font, "Sort By:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
-        currentY += 14;
-        contentHeight += 14;
-        int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) : (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 2;
-        int btnHeight = 18;
-        int col = 0;
-
-        for (int i = 0; i < sortOptions.length; i++) {
-            int btnX = x + UITheme.Dimensions.PADDING + (col * (btnWidth + 4));
-            int btnY = currentY;
-
-            boolean isSelected = sortOptions[i].equals(selectedSort);
-            boolean isHovered = mouseX >= btnX && mouseX < btnX + btnWidth && mouseY >= btnY && mouseY < btnY + btnHeight;
-
-            int bgColor = isSelected ? UITheme.Colors.TOGGLE_ON : (isHovered ? UITheme.Colors.BUTTON_BG_HOVER : UITheme.Colors.BUTTON_BG);
-            context.fill(btnX, btnY, btnX + btnWidth, btnY + btnHeight, bgColor);
-            drawButtonBorder(context, btnX, btnY, btnWidth, btnHeight);
-
-            String label = isCompact ? sortOptions[i].substring(0, Math.min(3, sortOptions[i].length())).toUpperCase() : sortLabels[i];
-            drawCenteredButtonText(context, label, btnX, btnY, btnWidth, btnHeight);
-
-            col++;
-            if (col >= (isCompact ? 1 : 2)) {
-                col = 0;
-                currentY += btnHeight + 2;
-                contentHeight += btnHeight + 2;
-            }
+        if (scrollOffset > 0) {
+            UIDraw.fadeTop(context, x + 1, contentTop(), scrollBarX() - 1, UITheme.Dimensions.FADE_HEIGHT, UITheme.Colors.PANEL_BG);
         }
-        if (col != 0) {
-            currentY += btnHeight + 2;
-            contentHeight += btnHeight + 2;
+        if (scrollOffset < maxScroll) {
+            UIDraw.fadeBottom(context, x + 1, contentBottom(), scrollBarX() - 1, UITheme.Dimensions.FADE_HEIGHT, UITheme.Colors.PANEL_BG);
         }
 
-        currentY += 8;
-        contentHeight += 8;
-        return currentY;
+        applyButton.extractRenderState(context, mouseX, mouseY, delta);
+        resetButton.extractRenderState(context, mouseX, mouseY, delta);
     }
 
-    private int renderPaginationSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY, boolean isCompact) {
-        context.text(client.font, "Items per page:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
-        currentY += 14;
-        contentHeight += 14;
-        int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 2 : (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 4;
-        int btnHeight = 18;
+    private int renderLabel(GuiGraphicsExtractor context, String label, int currentY) {
+        UIDraw.text(context, label, innerX(), currentY, UITheme.Colors.TEXT_SUBTITLE);
+        return currentY + LABEL_GAP;
+    }
 
+    private int renderChipGrid(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY,
+                               String[] labels, int selectedIndex, int columns, List<int[]> rects) {
+        rects.clear();
+        int chipWidth = (innerWidth() - GAP * (columns - 1)) / columns;
+        int rows = (labels.length + columns - 1) / columns;
+        for (int i = 0; i < labels.length; i++) {
+            int col = i % columns;
+            int row = i / columns;
+            int chipX = innerX() + col * (chipWidth + GAP);
+            int chipY = currentY + row * (CONTROL_H + GAP);
+            boolean hovered = UIDraw.isInside(mouseX, mouseY, chipX, chipY, chipWidth, CONTROL_H);
+            UIDraw.chip(context, chipX, chipY, chipWidth, CONTROL_H, labels[i], i == selectedIndex, hovered);
+            rects.add(new int[]{chipX, chipY, chipWidth, CONTROL_H});
+        }
+        return currentY + rows * CONTROL_H + (rows - 1) * GAP + SECTION_GAP;
+    }
+
+    private int renderSortSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY) {
+        currentY = renderLabel(context, "Sort by", currentY);
+        int selected = Arrays.asList(sortOptions).indexOf(selectedSort);
+        return renderChipGrid(context, mouseX, mouseY, currentY, sortLabels, selected, isCompact() ? 1 : 2, sortChipRects);
+    }
+
+    private int renderPaginationSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY) {
+        currentY = renderLabel(context, "Items per page", currentY);
+        String[] labels = new String[pageOptions.length];
+        int selected = -1;
         for (int i = 0; i < pageOptions.length; i++) {
-            int btnX = x + UITheme.Dimensions.PADDING + (i % (isCompact ? 2 : 4)) * (btnWidth + 2);
-            int btnY = currentY + (i / (isCompact ? 2 : 4)) * (btnHeight + 2);
-
-            boolean isSelected = pageOptions[i] == itemsPerPage;
-            boolean isHovered = mouseX >= btnX && mouseX < btnX + btnWidth && mouseY >= btnY && mouseY < btnY + btnHeight;
-
-            int bgColor = isSelected ? UITheme.Colors.TOGGLE_ON : (isHovered ? UITheme.Colors.BUTTON_BG_HOVER : UITheme.Colors.BUTTON_BG);
-            context.fill(btnX, btnY, btnX + btnWidth, btnY + btnHeight, bgColor);
-            drawButtonBorder(context, btnX, btnY, btnWidth, btnHeight);
-
-            String label = String.valueOf(pageOptions[i]);
-            drawCenteredButtonText(context, label, btnX, btnY, btnWidth, btnHeight);
+            labels[i] = String.valueOf(pageOptions[i]);
+            if (pageOptions[i] == itemsPerPage) selected = i;
         }
-
-        int rows = isCompact ? 2 : 1;
-        currentY += rows * (btnHeight + 2) + 8;
-        contentHeight += rows * (btnHeight + 2) + 8;
-        return currentY;
+        return renderChipGrid(context, mouseX, mouseY, currentY, labels, selected, isCompact() ? 2 : 4, pageChipRects);
     }
 
-    private int renderTagSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY, boolean isCompact) {
-        context.text(client.font, "Tag Filter:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
-        currentY += 14;
-        contentHeight += 14;
+    private int renderTagSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY) {
+        currentY = renderLabel(context, "Tag filter", currentY);
         if (tagTextField != null) {
-            tagTextField.setPosition(x + UITheme.Dimensions.PADDING, currentY);
-            tagTextField.setWidth(width - UITheme.Dimensions.PADDING * 2 - UITheme.Dimensions.SCROLLBAR_WIDTH - UITheme.Dimensions.PADDING);
+            tagTextField.setPosition(innerX(), currentY);
+            tagTextField.setWidth(innerWidth());
             tagTextField.extractRenderState(context, mouseX, mouseY, 0);
         }
-
-        currentY += 22;
-        contentHeight += 22;
-        currentY += 8;
-        contentHeight += 8;
-        return currentY;
+        return currentY + CONTROL_H + SECTION_GAP;
     }
 
-    private int renderVendorSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY, boolean isCompact) {
-        context.text(client.font, "Vendors:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
-
-        int addX = x + UITheme.Dimensions.PADDING + client.font.width("Vendors:") + 6;
-        if (addSourceButton == null) {
-            addSourceButton = new CustomButton(addX, currentY - 3, ADD_SOURCE_SIZE, ADD_SOURCE_SIZE,
-                    Component.literal("+"), btn -> openPluginsPage());
-        } else {
-            addSourceButton.setX(addX);
-            addSourceButton.setY(currentY - 3);
-        }
+    private int renderVendorSection(GuiGraphicsExtractor context, int mouseX, int mouseY, int currentY) {
+        UIDraw.text(context, "Sources", innerX(), currentY, UITheme.Colors.TEXT_SUBTITLE);
+        addSourceButton.setX(innerX() + innerWidth() - addSourceButton.getWidth());
+        addSourceButton.setY(currentY - (LINK_H - UITheme.Typography.CAP_HEIGHT) / 2);
         addSourceButton.extractRenderState(context, mouseX, mouseY, 0);
+        currentY += LABEL_GAP + 2;
 
-        if (isMouseOverAddSource(mouseX, mouseY)) {
-            context.text(client.font, "Add plugins", addX + ADD_SOURCE_SIZE + 6, currentY,
-                    UITheme.Colors.ACCENT_GREEN);
+        if (isLoadingVendors || availableVendors.length == 0) {
+            UIDraw.text(context, isLoadingVendors ? "Loading..." : "No sources", innerX(), currentY, UITheme.Colors.TEXT_MUTED);
+            return currentY + LABEL_GAP + SECTION_GAP;
         }
 
-        currentY += 14;
-        contentHeight += 14;
-
-        if (isLoadingVendors) {
-            context.text(client.font, "Loading...", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
-            currentY += 14;
-            contentHeight += 14;
-        } else if (availableVendors.length == 0) {
-            context.text(client.font, "No vendors", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
-            currentY += 14;
-            contentHeight += 14;
-        } else {
-            for (int i = 0; i < availableVendors.length && i < vendorToggles.size(); i++) {
-                String vendor = availableVendors[i];
-                ToggleButton toggle = vendorToggles.get(i);
-                toggle.setX(x + UITheme.Dimensions.PADDING);
-                toggle.setY(currentY);
-                toggle.extractRenderState(context, mouseX, mouseY, 0);
-                context.text(client.font, vendor, x + UITheme.Dimensions.PADDING + 45, currentY + 6, UITheme.Colors.TEXT_PRIMARY);
-
-                currentY += 24;
-                contentHeight += 24;
-            }
+        for (int i = 0; i < availableVendors.length && i < vendorToggles.size(); i++) {
+            ToggleButton toggle = vendorToggles.get(i);
+            toggle.setX(innerX() - 7);
+            toggle.setY(currentY);
+            toggle.extractRenderState(context, mouseX, mouseY, 0);
+            int labelX = innerX() - 7 + toggle.getWidth() + 2;
+            UIDraw.text(context, UIDraw.ellipsize(availableVendors[i], innerX() + innerWidth() - labelX),
+                    labelX, UIDraw.flatContentY(currentY, toggle.getHeight()), UITheme.Colors.TEXT_PRIMARY);
+            currentY += TOGGLE_ROW_H;
         }
-
-        currentY += 8;
-        contentHeight += 8;
-        return currentY;
-    }
-
-    private void renderBottomButtons(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        int buttonY = y + height - 30;
-        int buttonWidth = (width - UITheme.Dimensions.PADDING * 3) / 2;
-
-        if (applyButton != null) {
-            applyButton.setX(x + UITheme.Dimensions.PADDING);
-            applyButton.setY(buttonY);
-            applyButton.setWidth(buttonWidth);
-            applyButton.extractRenderState(context, mouseX, mouseY, delta);
-        }
-
-        if (resetButton != null) {
-            resetButton.setX(x + UITheme.Dimensions.PADDING * 2 + buttonWidth);
-            resetButton.setY(buttonY);
-            resetButton.setWidth(buttonWidth);
-            resetButton.extractRenderState(context, mouseX, mouseY, delta);
-        }
-    }
-
-    private boolean isMouseOverAddSource(double mouseX, double mouseY) {
-        return addSourceButton != null
-                && mouseX >= addSourceButton.getX() && mouseX < addSourceButton.getX() + ADD_SOURCE_SIZE
-                && mouseY >= addSourceButton.getY() && mouseY < addSourceButton.getY() + ADD_SOURCE_SIZE;
+        return currentY + SECTION_GAP;
     }
 
     private void openPluginsPage() {
         if (client != null && client.gui != null && client.gui.screen() != null) {
             client.gui.setScreen(new com.choculaterie.gui.PluginsPage(client.gui.screen()));
         }
+    }
+
+    private static boolean hit(int[] r, double mouseX, double mouseY) {
+        return UIDraw.isInside(mouseX, mouseY, r[0], r[1], r[2], r[3]);
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -446,24 +405,34 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
             }
             return false;
         }
-        if (applyButton != null && isOverButton(applyButton, mouseX, mouseY)) {
-            tagFilter = tagTextField != null ? tagTextField.getValue() : "";
-            saveSettings();
-            notifySettingsChanged();
+        if (isOverButton(applyButton, mouseX, mouseY)) {
+            UIDraw.playClick();
+            applySettings();
             return true;
         }
-        if (resetButton != null && isOverButton(resetButton, mouseX, mouseY)) {
+        if (isOverButton(resetButton, mouseX, mouseY)) {
+            UIDraw.playClick();
             resetSettings();
             return true;
         }
-        if (isMouseOverAddSource(mouseX, mouseY)) {
+        if (scrollBar.mouseClicked(mouseX, mouseY, button)) {
+            if (tagTextField != null) tagTextField.setFocused(false);
+            return true;
+        }
+
+        boolean inContent = mouseY >= contentTop() && mouseY < contentBottom();
+        if (!inContent) {
+            return true;
+        }
+        if (isOverButton(addSourceButton, mouseX, mouseY)) {
+            UIDraw.playClick();
             openPluginsPage();
             return true;
         }
         for (int i = 0; i < vendorToggles.size(); i++) {
             ToggleButton toggle = vendorToggles.get(i);
-            if (mouseX >= toggle.getX() && mouseX < toggle.getX() + toggle.getWidth()
-                    && mouseY >= toggle.getY() && mouseY < toggle.getY() + toggle.getHeight()) {
+            if (UIDraw.isInside(mouseX, mouseY, toggle.getX(), toggle.getY(), toggle.getWidth(), toggle.getHeight())) {
+                UIDraw.playClick();
                 String vendor = availableVendors[i];
                 if (excludedVendors.contains(vendor)) {
                     excludedVendors.remove(vendor);
@@ -478,63 +447,41 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
                 return true;
             }
         }
-        if (scrollBar.mouseClicked(mouseX, mouseY, button)) {
-            if (tagTextField != null) tagTextField.setFocused(false);
-            return true;
-        }
         if (tagTextField != null && tagTextField.isMouseOver(mouseX, mouseY)) {
             tagTextField.setFocused(true);
             return true;
         } else if (tagTextField != null) {
             tagTextField.setFocused(false);
         }
-        int currentY = y + 30 + 14 - (int) scrollOffset;
-        boolean isCompact = width < 180;
-        int btnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) : (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 2;
-        int btnHeight = 18;
-
-        for (int i = 0; i < sortOptions.length; i++) {
-            int col = isCompact ? 0 : (i % 2);
-            int row = isCompact ? i : (i / 2);
-            int btnX = x + UITheme.Dimensions.PADDING + (col * (btnWidth + 4));
-            int btnY = currentY + row * (btnHeight + 2);
-
-            if (mouseX >= btnX && mouseX < btnX + btnWidth && mouseY >= btnY && mouseY < btnY + btnHeight) {
+        for (int i = 0; i < sortChipRects.size(); i++) {
+            if (hit(sortChipRects.get(i), mouseX, mouseY)) {
+                UIDraw.playClick();
                 selectedSort = sortOptions[i];
                 saveSettings();
                 notifySettingsChanged();
                 return true;
             }
         }
-        int sortRows = isCompact ? sortOptions.length : (int) Math.ceil(sortOptions.length / 2.0);
-        currentY += sortRows * (btnHeight + 2) + 8 + 14;
-        int pageBtnWidth = isCompact ? (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 2 : (width - UITheme.Dimensions.PADDING * 2 - 10 - UITheme.Dimensions.SCROLLBAR_WIDTH) / 4;
-        for (int i = 0; i < pageOptions.length; i++) {
-            int col = i % (isCompact ? 2 : 4);
-            int row = i / (isCompact ? 2 : 4);
-            int btnX = x + UITheme.Dimensions.PADDING + col * (pageBtnWidth + 2);
-            int btnY = currentY + row * (btnHeight + 2);
-
-            if (mouseX >= btnX && mouseX < btnX + pageBtnWidth && mouseY >= btnY && mouseY < btnY + btnHeight) {
+        for (int i = 0; i < pageChipRects.size() && i < pageOptions.length; i++) {
+            if (hit(pageChipRects.get(i), mouseX, mouseY)) {
+                UIDraw.playClick();
                 itemsPerPage = pageOptions[i];
                 saveSettings();
                 notifySettingsChanged();
                 return true;
             }
         }
-
-        return false;
+        return true;
     }
 
     private boolean isOverButton(CustomButton button, double mouseX, double mouseY) {
-        return mouseX >= button.getX() && mouseX < button.getX() + button.getWidth()
-                && mouseY >= button.getY() && mouseY < button.getY() + button.getHeight();
+        return button != null && UIDraw.isInside(mouseX, mouseY, button.getX(), button.getY(), button.getWidth(), button.getHeight());
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height) {
-            scrollOffset = Math.max(0, Math.min(scrollOffset - verticalAmount * 10, Math.max(0, contentHeight - (height - 70))));
-            scrollBar.setScrollPercentage((float) (scrollOffset / Math.max(1, contentHeight - (height - 70))));
+        if (mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < boxBottom()) {
+            double maxScroll = Math.max(0, contentHeight - visibleHeight());
+            scrollOffset = Math.max(0, Math.min(scrollOffset - verticalAmount * 10, maxScroll));
             return true;
         }
         return false;
@@ -542,7 +489,7 @@ public class SortFilterPanel implements Renderable, GuiEventListener {
 
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         if (scrollBar.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
-            scrollOffset = scrollBar.getScrollPercentage() * Math.max(0, contentHeight - (height - 70));
+            scrollOffset = scrollBar.getScrollPercentage() * Math.max(0, contentHeight - visibleHeight());
             return true;
         }
         return false;

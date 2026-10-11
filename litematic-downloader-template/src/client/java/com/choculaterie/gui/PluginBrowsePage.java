@@ -3,6 +3,9 @@ package com.choculaterie.gui;
 import com.choculaterie.gui.widget.ToastManager;
 import com.choculaterie.plugin.PluginCatalog;
 import com.choculaterie.plugin.PluginRegistry;
+import com.choculaterie.vanilib.gui.theme.ButtonStyle;
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.vanilib.gui.widget.CustomButton;
 import com.choculaterie.vanilib.gui.widget.CustomTextField;
@@ -20,7 +23,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 
 public class PluginBrowsePage extends Screen {
     private static final int PADDING = 10;
-    private static final int BUTTON_SIZE = 20;
+    private static final int BUTTON_SIZE = 21;
     private static final int ITEM_HEIGHT = 30;
     private static final int SCROLLBAR_WIDTH = 8;
     private static final int ACTION_WIDTH = 70;
@@ -96,7 +99,7 @@ public class PluginBrowsePage extends Screen {
 
         this.addRenderableWidget(new CustomButton(
                 PADDING, PADDING, BUTTON_SIZE, BUTTON_SIZE,
-                Component.literal("←"), button -> goBack()));
+                Component.literal(""), button -> goBack()).setIcon(UIIcon.ARROW_LEFT));
 
         if (toastManager == null && this.minecraft != null) {
             toastManager = new ToastManager(this.minecraft);
@@ -104,7 +107,8 @@ public class PluginBrowsePage extends Screen {
 
         refreshButton = new CustomButton(
                 this.width - PADDING - BUTTON_SIZE, PADDING, BUTTON_SIZE, BUTTON_SIZE,
-                Component.literal("🔄"), button -> load(true));
+                Component.literal(""), button -> load(true));
+        refreshButton.setIcon(UIIcon.REFRESH);
         refreshButton.active = !loading;
         this.addRenderableWidget(refreshButton);
 
@@ -158,6 +162,10 @@ public class PluginBrowsePage extends Screen {
     private void load(boolean announce) {
         loading = true;
         status = "";
+        entries.clear();
+        scrollOffset = 0;
+        applyFilter();
+        updateScrollBar();
         if (refreshButton != null) {
             refreshButton.active = false;
         }
@@ -236,18 +244,18 @@ public class PluginBrowsePage extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, 0xFF202020);
+        context.fill(0, 0, this.width, this.height, UITheme.Colors.BACKGROUND);
 
         if (!status.isEmpty()) {
-            context.text(this.font, status, PADDING, listY() - 12, UITheme.Colors.TEXT_MUTED);
+            UIDraw.text(context, status, PADDING, listY() - 12, UITheme.Colors.TEXT_MUTED);
         }
 
         actionButtons.clear();
         actionTargets.clear();
 
         int listY = listY();
-        context.fill(PADDING, listY, panelRight(), listY + listHeight(), 0xFF151515);
-        context.enableScissor(PADDING, listY, panelRight(), listY + listHeight());
+        UIDraw.panel(context, PADDING, listY, panelRight(), listY + listHeight(), UITheme.Colors.FIELD_BG, UITheme.Colors.FIELD_BORDER);
+        context.enableScissor(PADDING + 1, listY + 1, panelRight() - 1, listY + listHeight() - 1);
 
         int shown = Math.min(visible.size() - scrollOffset, maxVisible() + 1);
         for (int i = 0; i < shown; i++) {
@@ -259,8 +267,9 @@ public class PluginBrowsePage extends Screen {
             int itemY = listY + i * ITEM_HEIGHT;
             boolean hovered = mouseX >= PADDING && mouseX < panelRight()
                     && mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
-            context.fill(PADDING + 2, itemY + 2, panelRight() - 2, itemY + ITEM_HEIGHT - 2,
-                    hovered ? 0xFF2A2A2A : 0xFF1A1A1A);
+            if (hovered) {
+                context.fill(PADDING + 1, itemY, panelRight() - 1, itemY + ITEM_HEIGHT, UITheme.Colors.SURFACE_HOVER);
+            }
 
             String label = actionLabel(entry);
             CustomButton action = new CustomButton(
@@ -272,11 +281,11 @@ public class PluginBrowsePage extends Screen {
             actionTargets.add(entry);
 
             boolean installed = PluginCatalog.installedVersion(entry.id()) != null;
-            context.text(this.font, entry.name(), PADDING + 6, itemY + 5,
-                    installed ? UITheme.Colors.ACCENT_GREEN : UITheme.Colors.TEXT_PRIMARY);
+            UIDraw.text(context, entry.name(), PADDING + 6, itemY + 5,
+                    installed ? UITheme.Colors.ACCENT : UITheme.Colors.TEXT_PRIMARY);
             String meta = (entry.version().isEmpty() ? "" : "v" + entry.version() + "  ")
                     + String.join(", ", entry.hosts());
-            context.text(this.font, trim(meta, listRightEdge() - PADDING - ACTION_WIDTH - 20),
+            UIDraw.text(context, trim(meta, listRightEdge() - PADDING - ACTION_WIDTH - 20),
                     PADDING + 6, itemY + 16, UITheme.Colors.TEXT_TAG);
         }
         context.disableScissor();

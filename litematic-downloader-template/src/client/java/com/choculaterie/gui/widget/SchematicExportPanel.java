@@ -2,6 +2,9 @@ package com.choculaterie.gui.widget;
 
 import com.choculaterie.vanilib.gui.widget.CustomButton;
 
+import com.choculaterie.vanilib.gui.theme.ButtonStyle;
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import net.fabricmc.loader.api.FabricLoader;
 import com.mojang.blaze3d.Blaze3D;
@@ -22,7 +25,7 @@ import com.choculaterie.vanilib.util.MouseState;
 
 public class SchematicExportPanel {
 
-    public static final int PANEL_HEIGHT = 128;
+    public static final int PANEL_HEIGHT = 140;
 
     private static final int PAD = 6;
     private static final int[] RESOLUTIONS = {512, 1024, 2048};
@@ -93,34 +96,37 @@ public class SchematicExportPanel {
         int innerX = x + PAD;
         int innerW = width - PAD * 2;
 
-        int halfW = innerW / 2 - 3;
-        autoIsoButton = new CustomButton(innerX, y + 4, halfW, 16,
+        int controlH = UITheme.Dimensions.BUTTON_HEIGHT;
+        int halfW = (innerW - 4) / 2;
+        autoIsoButton = new CustomButton(innerX, y + PAD, halfW, controlH,
                 Component.literal("Auto ISO"), btn -> renderer.setAutoIsometric());
-        bgButton = new CustomButton(innerX + innerW - halfW, y + 4, halfW, 16,
+        bgButton = new CustomButton(innerX + innerW - halfW, y + PAD, halfW, controlH,
                 Component.literal(bgLabel()), btn -> {
             transparentBackground = !transparentBackground;
             if (bgButton != null) bgButton.setMessage(Component.literal(bgLabel()));
         });
 
-        int sliderY = y + 26;
+        int sliderY = y + 32;
         pitchSlider.layout(innerX, innerW, sliderY);
         yawSlider.layout(innerX, innerW, sliderY + 14);
         zoomSlider.layout(innerX, innerW, sliderY + 28);
 
-        int resY = y + 74;
+        int resY = y + 78;
         int gap = 4;
         int resW = (innerW - gap * (RESOLUTIONS.length - 1)) / RESOLUTIONS.length;
         for (int i = 0; i < RESOLUTIONS.length; i++) {
             final int res = RESOLUTIONS[i];
-            resButtons[i] = new CustomButton(innerX + i * (resW + gap), resY, resW, 15,
+            resButtons[i] = new CustomButton(innerX + i * (resW + gap), resY, resW, controlH,
                     Component.literal(String.valueOf(res)), btn -> exportResolution = res);
         }
 
-        int folderBtnSize = 18;
-        saveButton = new CustomButton(innerX, y + 95, innerW - folderBtnSize - 4, 18,
+        int folderBtnSize = controlH;
+        saveButton = new CustomButton(innerX, y + 102, innerW - folderBtnSize - 4, controlH,
                 Component.literal("Save Render"), btn -> exportRequested = true);
-        openFolderButton = new CustomButton(innerX + innerW - folderBtnSize, y + 95, folderBtnSize, 18,
-                Component.literal("📁"), btn -> openRenderFolder());
+        saveButton.setIcon(UIIcon.CAMERA).setStyle(ButtonStyle.PRIMARY);
+        openFolderButton = new CustomButton(innerX + innerW - folderBtnSize, y + 102, folderBtnSize, controlH,
+                Component.literal(""), btn -> openRenderFolder());
+        openFolderButton.setIcon(UIIcon.FOLDER);
     }
 
     private String bgLabel() {
@@ -133,8 +139,7 @@ public class SchematicExportPanel {
             beginExport();
         }
 
-        context.fill(x, y, x + width, y + PANEL_HEIGHT, 0xF01C1C1C);
-        context.fill(x, y, x + width, y + 1, UITheme.Colors.PANEL_BORDER);
+        UIDraw.panel(context, x - 1, y, x + width + 1, y + PANEL_HEIGHT, UITheme.Colors.SURFACE, UITheme.Colors.PANEL_BORDER);
 
         long window = Minecraft.getInstance().getWindow().handle();
         boolean leftDown = window != 0L
@@ -157,10 +162,8 @@ public class SchematicExportPanel {
 
         for (int i = 0; i < resButtons.length; i++) {
             CustomButton btn = resButtons[i];
+            btn.setStyle(RESOLUTIONS[i] == exportResolution ? ButtonStyle.PRIMARY : ButtonStyle.GRAY);
             btn.extractRenderState(context, mouseX, mouseY, delta);
-            if (RESOLUTIONS[i] == exportResolution) {
-                drawAccentBorder(context, btn.getX(), btn.getY(), btn.getWidth(), btn.getHeight());
-            }
         }
 
         saveButton.active = !exporting;
@@ -177,17 +180,9 @@ public class SchematicExportPanel {
                 while (font.width(msg) > maxW && msg.length() > 4) {
                     msg = msg.substring(0, msg.length() - 4) + "...";
                 }
-                context.text(font, msg, x + (width - font.width(msg)) / 2, y + 117, statusColor);
+                UIDraw.centeredText(context, msg, x + width / 2, y + 126, statusColor);
             }
         }
-    }
-
-    private void drawAccentBorder(GuiGraphicsExtractor context, int bx, int by, int bw, int bh) {
-        int accent = UITheme.Colors.TOGGLE_ON;
-        context.fill(bx, by, bx + bw, by + 1, accent);
-        context.fill(bx, by + bh - 1, bx + bw, by + bh, accent);
-        context.fill(bx, by, bx + 1, by + bh, accent);
-        context.fill(bx + bw - 1, by, bx + bw, by + bh, accent);
     }
 
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
@@ -284,7 +279,7 @@ public class SchematicExportPanel {
         private int trackX;
         private int trackW;
         private int rowY;
-        private static final int ROW_H = 14;
+        private static final int ROW_H = 15;
 
         private boolean dragging = false;
 
@@ -318,11 +313,10 @@ public class SchematicExportPanel {
 
         void render(GuiGraphicsExtractor context, Font font, int mouseX, int mouseY) {
             int centerY = rowY + ROW_H / 2;
-            context.text(font, label, labelX, centerY - 4, UITheme.Colors.TEXT_MUTED);
+            UIDraw.text(context, label, labelX, centerY - 4, UITheme.Colors.TEXT_MUTED);
 
             int trackY = centerY - 1;
-            context.fill(trackX, trackY, trackX + trackW, trackY + 3, UITheme.Colors.FIELD_BG);
-            context.fill(trackX, trackY, trackX + trackW, trackY + 1, UITheme.Colors.FIELD_BORDER);
+            context.fill(trackX, trackY, trackX + trackW, trackY + 3, UITheme.Colors.SCROLLBAR_BG);
 
             float value = getter.get();
             float t = clamp01((value - min) / (max - min));
@@ -331,14 +325,13 @@ public class SchematicExportPanel {
             context.fill(trackX, trackY, knobX, trackY + 3, UITheme.Colors.TOGGLE_ON);
 
             boolean hovered = dragging || isInside(mouseX, mouseY);
-            int knobColor = hovered ? UITheme.Colors.SCROLLBAR_THUMB_HOVER : UITheme.Colors.SCROLLBAR_THUMB;
-            context.fill(knobX - 3, rowY + 1, knobX + 3, rowY + ROW_H - 1, knobColor);
-            context.fill(knobX - 3, rowY + 1, knobX + 3, rowY + 2, UITheme.Colors.BUTTON_BORDER);
+            int knob = hovered ? UITheme.Colors.TOGGLE_KNOB : UITheme.Palette.PALE_PINK;
+            UIDraw.outline(context, knobX - 3, rowY + 1, knobX + 3, rowY + ROW_H - 1, hovered ? UITheme.Colors.OUTLINE_HOVER : UITheme.Colors.OUTLINE);
+            context.fill(knobX - 2, rowY + 2, knobX + 2, rowY + ROW_H - 2, knob);
 
             if (valueFormat != null) {
                 String text = valueFormat.apply(value);
-                context.text(font, text, trackX + trackW + 34 - font.width(text), centerY - 4,
-                        UITheme.Colors.TEXT_SUBTITLE);
+                UIDraw.rightText(context, text, trackX + trackW + 34, centerY - 4, UITheme.Colors.TEXT_SUBTITLE);
             }
         }
     }

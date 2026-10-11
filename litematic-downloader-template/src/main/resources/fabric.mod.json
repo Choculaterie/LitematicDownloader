@@ -31,7 +31,7 @@
         "minecraft": "~26.3",
 		"java": ">=25",
 		"fabric-api": "*",
-		"vanilib": ">=0.2.4"
+		"vanilib": ">=1.0.0"
 	},
 	"suggests": {
 		"another-mod": "*"

@@ -2,6 +2,9 @@ package com.choculaterie.gui;
 
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.vanilib.gui.screen.DirectoryPickerScreen;
+import com.choculaterie.vanilib.gui.theme.ButtonStyle;
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.vanilib.gui.widget.ConfirmPopup;
 import com.choculaterie.vanilib.gui.widget.CustomButton;
@@ -17,9 +20,9 @@ import com.mojang.blaze3d.platform.InputConstants;
 
 public class SettingsPage extends Screen {
     private static final int PADDING = 10;
-    private static final int BACK_BUTTON_SIZE = 20;
-    private static final int LABEL_HEIGHT = 20;
-    private static final int TEXT_FIELD_HEIGHT = 20;
+    private static final int BACK_BUTTON_SIZE = 21;
+    private static final int LABEL_HEIGHT = 21;
+    private static final int TEXT_FIELD_HEIGHT = 21;
     private static final int TOGGLE_SPACING = 25;
     private static final String TITLE = "Settings";
 
@@ -68,8 +71,9 @@ public class SettingsPage extends Screen {
     private void addBackButton() {
         CustomButton backButton = new CustomButton(
                 PADDING, PADDING, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE,
-                Component.literal("←"), button -> goBack()
+                Component.literal(""), button -> goBack()
         );
+        backButton.setIcon(UIIcon.ARROW_LEFT);
         this.addRenderableWidget(backButton);
     }
 
@@ -77,7 +81,7 @@ public class SettingsPage extends Screen {
         int contentY = PADDING * 4 + BACK_BUTTON_SIZE;
         boolean isVeryCompact = this.width < 300;
         int browseButtonWidth = isVeryCompact ? 50 : (this.width < 400 ? 70 : 90);
-        String browseLabel = isVeryCompact ? "..." : "Browse...";
+        String browseLabel = isVeryCompact ? "" : "Browse";
 
         int setButtonSize = TEXT_FIELD_HEIGHT;
         int setButtonX = this.width - PADDING * 2 - setButtonSize;
@@ -97,12 +101,14 @@ public class SettingsPage extends Screen {
                 browseButtonX, contentY + LABEL_HEIGHT, browseButtonWidth, TEXT_FIELD_HEIGHT,
                 Component.literal(browseLabel), button -> openFileDialog()
         );
+        browseButton.setIcon(UIIcon.FOLDER);
         this.addRenderableWidget(browseButton);
 
         setPathButton = new CustomButton(
                 setButtonX, contentY + LABEL_HEIGHT, setButtonSize, setButtonSize,
-                Component.literal("✓"), button -> saveDownloadPath()
+                Component.literal(""), button -> saveDownloadPath()
         );
+        setPathButton.setIcon(UIIcon.CHECK).setStyle(ButtonStyle.PRIMARY);
         setPathButton.visible = false;
         this.addRenderableWidget(setPathButton);
 
@@ -225,7 +231,7 @@ public class SettingsPage extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         showPendingToast();
-        context.fill(0, 0, this.width, this.height, 0xFF202020);
+        context.fill(0, 0, this.width, this.height, UITheme.Colors.BACKGROUND);
 
         super.extractRenderState(context, mouseX, mouseY, delta);
 
@@ -246,14 +252,10 @@ public class SettingsPage extends Screen {
     }
 
     private int renderTitleAndDownloadSection(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        int titleX = (this.width - this.font.width(TITLE)) / 2;
-        context.text(this.font, TITLE, titleX,
-                PADDING * 2 + BACK_BUTTON_SIZE, 0xFFFFFFFF);
+        UIDraw.centeredText(context, TITLE, this.width / 2, UIDraw.bevelContentY(PADDING, BACK_BUTTON_SIZE), UITheme.Colors.TEXT_HIGHLIGHT);
 
         int contentY = PADDING * 4 + BACK_BUTTON_SIZE;
-        context.text(this.font,
-                "Download Path (relative to game folder):",
-                PADDING * 2, contentY, 0xFFFFFFFF);
+        UIDraw.text(context, "Download path (relative to game folder)", PADDING * 2, contentY, UITheme.Colors.TEXT_SUBTITLE);
 
         renderDownloadPathField(context, contentY, mouseX, mouseY, delta);
         return contentY;
@@ -271,30 +273,30 @@ public class SettingsPage extends Screen {
         }
 
         String previewText = "Full path: " + DownloadSettings.getInstance().getAbsoluteDownloadPath();
-        context.text(this.font, previewText, PADDING * 2,
-                contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 5, 0xFFAAAAAA);
+        UIDraw.text(context, UIDraw.ellipsize(previewText, this.width - PADDING * 4), PADDING * 2,
+                contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 5, UITheme.Colors.TEXT_MUTED);
     }
 
     private void renderToastTogglesSection(GuiGraphicsExtractor context, int contentY) {
         int toastsY = contentY + LABEL_HEIGHT + TEXT_FIELD_HEIGHT + 30;
 
-        context.text(this.font, "Show Notifications:",
-                PADDING * 2, toastsY, 0xFFFFFFFF);
+        UIDraw.text(context, "Show notifications", PADDING * 2, toastsY, UITheme.Colors.TEXT_SUBTITLE);
 
-        renderToastToggleLabel(context, "Info:", toastsY, 0, 0xFF2196F3);
-        renderToastToggleLabel(context, "Success:", toastsY, 1, UITheme.Colors.ACCENT_GREEN);
-        renderToastToggleLabel(context, "Warning:", toastsY, 2, 0xFFFFC107);
-        renderToastToggleLabel(context, "Error:", toastsY, 3, 0xFFFF5252);
+        renderToastToggleLabel(context, "Info", toastsY, 0, UITheme.Colors.TOAST_ACCENT_INFO);
+        renderToastToggleLabel(context, "Success", toastsY, 1, UITheme.Colors.TOAST_ACCENT_SUCCESS);
+        renderToastToggleLabel(context, "Warning", toastsY, 2, UITheme.Colors.TOAST_ACCENT_WARNING);
+        renderToastToggleLabel(context, "Error", toastsY, 3, UITheme.Colors.TOAST_ACCENT_ERROR);
 
         int apiToggleY = toastsY + LABEL_HEIGHT + (TOGGLE_SPACING * 4) + 20;
-        context.text(this.font, "Use Choculaterie API:",
-                PADDING * 2, apiToggleY + 6, 0xFFFFFFFF);
+        UIDraw.text(context, "Use Choculaterie API", PADDING * 2, UIDraw.flatContentY(apiToggleY, UITheme.Dimensions.BUTTON_HEIGHT), UITheme.Colors.TEXT_PRIMARY);
     }
 
 
     private void renderToastToggleLabel(GuiGraphicsExtractor context, String label, int baseY, int index, int color) {
-        int y = baseY + LABEL_HEIGHT + TOGGLE_SPACING * index + 6;
-        context.text(this.font, label, PADDING * 2, y, color);
+        int rowY = baseY + LABEL_HEIGHT + TOGGLE_SPACING * index;
+        int y = UIDraw.flatContentY(rowY, UITheme.Dimensions.BUTTON_HEIGHT);
+        context.fill(PADDING * 2, rowY + 4, PADDING * 2 + 2, rowY + UITheme.Dimensions.BUTTON_HEIGHT - 4, color);
+        UIDraw.text(context, label, PADDING * 2 + 7, y, UITheme.Colors.TEXT_PRIMARY);
     }
 
     private void renderOverlays(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {

@@ -7,6 +7,9 @@ import com.choculaterie.vanilib.gui.widget.ImageViewerWidget;
 import com.choculaterie.vanilib.gui.widget.LoadingSpinner;
 import com.choculaterie.vanilib.gui.widget.ScrollBar;
 
+import com.choculaterie.vanilib.gui.theme.ButtonStyle;
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.models.MinemevFileInfo;
@@ -97,6 +100,9 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
     private DropdownWidget schematicDropdown;
     private MinemevFileInfo[] availableFiles;
     private boolean isLoadingFiles = false;
+    private boolean isDownloading = false;
+    private int downloadGeneration = 0;
+    private boolean directDownload = false;
     private String downloadStatus = "";
 
     private ImageViewerWidget imageViewer;
@@ -111,10 +117,40 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
         this.height = height;
         this.client = Minecraft.getInstance();
         this.imageLoadingSpinner = new LoadingSpinner(0, 0);
-        int scrollBarYOffset = 30;
-        this.scrollBar = new ScrollBar(x + width - 8, y + scrollBarYOffset, height - scrollBarYOffset);
-        this.schematicDropdown = new DropdownWidget(x, y, width - UITheme.Dimensions.PADDING * 2,
+        this.scrollBar = createScrollBar();
+        this.schematicDropdown = new DropdownWidget(x, y, width,
                 this::onSchematicSelected);
+    }
+
+    private static final int PAD = UITheme.Dimensions.PADDING;
+    private static final int CONTROL_H = UITheme.Dimensions.BUTTON_HEIGHT;
+
+    private int boxBottom() {
+        return y + height - CONTROL_H - PAD;
+    }
+
+    private int contentTop() {
+        return y + 1;
+    }
+
+    private int contentBottom() {
+        return boxBottom() - 1;
+    }
+
+    private int visibleHeight() {
+        return Math.max(0, contentBottom() - contentTop());
+    }
+
+    private int maxScroll() {
+        return Math.max(0, contentHeight - visibleHeight());
+    }
+
+    private ScrollBar createScrollBar() {
+        return new ScrollBar(x + width - UITheme.Dimensions.SCROLLBAR_WIDTH - 3, contentTop() + 3, visibleHeight() - 6);
+    }
+
+    private int imageContainerY() {
+        return contentTop() + PAD - (int) scrollOffset;
     }
 
     public void setDimensions(int x, int y, int width, int height) {
@@ -122,8 +158,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
         this.y = y;
         this.width = width;
         this.height = height;
-        int scrollBarYOffset = 30;
-        this.scrollBar = new ScrollBar(x + width - 8, y + scrollBarYOffset, height - scrollBarYOffset);
+        this.scrollBar = createScrollBar();
         if (schematicDropdown != null) {
             schematicDropdown.setPosition(x, y);
             if (schematicDropdown.isOpen()) {
@@ -143,7 +178,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
     }
 
     private int getDisplayImageWidth() {
-        return width - 10;
+        return width - PAD * 2;
     }
 
     private int getDisplayImageHeight() {
@@ -181,10 +216,9 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             return;
         }
 
-        boolean compact = isCompactMode();
-        int btnWidth = compact ? 18 : 25;
-        int btnHeight = compact ? 14 : 16;
-        int btnSpacing = compact ? 5 : 10;
+        int btnWidth = CONTROL_H;
+        int btnHeight = CONTROL_H;
+        int btnSpacing = isCompactMode() ? 4 : PAD;
 
         String indicator = String.format("%d / %d", currentImageIndex + 1, imageUrls.length);
         int indicatorWidth = client.font.width(indicator);
@@ -195,7 +229,8 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
 
         if (prevImageButton == null) {
             prevImageButton = new CustomButton(prevBtnX, imageNavY, btnWidth, btnHeight,
-                    Component.literal("<"), btn -> previousImage());
+                    Component.literal(""), btn -> previousImage());
+            prevImageButton.setIcon(UIIcon.ARROW_LEFT);
         } else {
             prevImageButton.setX(prevBtnX);
             prevImageButton.setY(imageNavY);
@@ -204,7 +239,8 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
 
         if (nextImageButton == null) {
             nextImageButton = new CustomButton(nextBtnX, imageNavY, btnWidth, btnHeight,
-                    Component.literal(">"), btn -> nextImage());
+                    Component.literal(""), btn -> nextImage());
+            nextImageButton.setIcon(UIIcon.ARROW_RIGHT);
         } else {
             nextImageButton.setX(nextBtnX);
             nextImageButton.setY(imageNavY);
@@ -493,6 +529,12 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
     }
 
     private void clearDownloadState() {
+        this.downloadGeneration++;
+        this.isDownloading = false;
+        this.directDownload = false;
+        if (downloadButton != null) {
+            downloadButton.clearFlash();
+        }
         this.availableFiles = null;
         this.isLoadingFiles = false;
         this.downloadStatus = "";
@@ -512,7 +554,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
         }
 
         if (availableFiles != null && availableFiles.length > 0) {
-            showSchematicDropdown();
+            openFilesOrDownload();
             return;
         }
 
@@ -549,7 +591,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                             availableFiles = files;
                             isLoadingFiles = false;
                             if (files != null && files.length > 0) {
-                                showSchematicDropdown();
+                                openFilesOrDownload();
                             } else {
                                 boolean isLitGen = postInfo != null &&
                                         ("LitematicaGen".equalsIgnoreCase(postInfo.vendor()) ||
@@ -570,17 +612,43 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                             isLoadingFiles = false;
                             String errorMsg = throwable.getMessage();
                             if (errorMsg != null && errorMsg.contains("UnknownHost")) {
-                                downloadStatus = "✗ Error: No internet connection";
+                                downloadStatus = "Error: No internet connection";
                             } else if (errorMsg != null && errorMsg.contains("timeout")) {
-                                downloadStatus = "✗ Error: Connection timeout";
+                                downloadStatus = "Error: Connection timeout";
                             } else {
-                                downloadStatus = "✗ Error: Failed to load file list";
+                                downloadStatus = "Error: Failed to load file list";
                             }
                             System.err.println("Failed to load files: " + errorMsg);
                         });
                     }
                     return null;
                 });
+    }
+
+    private boolean hasWebsiteOption() {
+        return postInfo != null
+                && ("LitematicaGen".equalsIgnoreCase(postInfo.vendor()) || "LitematicaShare".equalsIgnoreCase(postInfo.vendor()))
+                && postInfo.urlRedirect() != null && !postInfo.urlRedirect().isEmpty();
+    }
+
+    private void openFilesOrDownload() {
+        if (availableFiles != null && availableFiles.length == 1 && !hasWebsiteOption()) {
+            directDownload = true;
+            downloadSchematic(availableFiles[0]);
+        } else {
+            directDownload = false;
+            showSchematicDropdown();
+        }
+    }
+
+    private void onDownloadFailed(int generation, String message) {
+        if (generation != downloadGeneration) return;
+        isDownloading = false;
+        directDownload = false;
+        if (downloadButton != null) {
+            String shown = message == null ? "Download failed" : message.replaceFirst("^Error: ", "");
+            downloadButton.showError(shown);
+        }
     }
 
     private void showSchematicDropdown() {
@@ -594,7 +662,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                         "LitematicaShare".equalsIgnoreCase(postInfo.vendor()));
 
         if (isLitematicaGenVendor && postInfo.urlRedirect() != null && !postInfo.urlRedirect().isEmpty()) {
-            items.add(new DropdownWidget.DropdownItem("🔗 View on Website", "WEBSITE_LINK"));
+            items.add(new DropdownWidget.DropdownItem("View on website", "WEBSITE_LINK"));
         }
 
         for (MinemevFileInfo file : availableFiles) {
@@ -611,7 +679,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
         if (downloadButton != null) {
             schematicDropdown.setPosition(
                     downloadButton.getX(),
-                    downloadButton.getY() + downloadButton.getHeight() + 2);
+                    downloadButton.getY() - 2 - schematicDropdown.getExpandedHeight());
         }
 
         schematicDropdown.open();
@@ -680,9 +748,13 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
     }
 
     private void downloadSchematic(MinemevFileInfo file) {
-        downloadStatus = "Downloading...";
+        isDownloading = true;
+        final int generation = downloadGeneration;
+        if (downloadButton != null) {
+            downloadButton.clearFlash();
+        }
         if (schematicDropdown != null) {
-            schematicDropdown.setStatusMessage(downloadStatus);
+            schematicDropdown.onClose();
         }
 
         new Thread(() -> {
@@ -690,10 +762,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                 String downloadUrl = file.getDownloadUrl();
                 if (downloadUrl == null || downloadUrl.isEmpty()) {
                     client.execute(() -> {
-                        downloadStatus = "Invalid download URL";
-                        if (schematicDropdown != null) {
-                            schematicDropdown.setStatusMessage(downloadStatus);
-                        }
+                        onDownloadFailed(generation, "Invalid download URL");
                     });
                     System.err.println("[Download] Invalid download URL");
                     return;
@@ -730,28 +799,25 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                         String errorMsg;
                         switch (response.statusCode()) {
                             case 404:
-                                errorMsg = "✗ Error: File not found on server";
+                                errorMsg = "Error: File not found on server";
                                 break;
                             case 403:
-                                errorMsg = "✗ Error: Access denied";
+                                errorMsg = "Error: Access denied";
                                 break;
                             case 500:
                             case 502:
                             case 503:
-                                errorMsg = "✗ Error: Server error (" + response.statusCode() + ")";
+                                errorMsg = "Error: Server error (" + response.statusCode() + ")";
                                 break;
                             case 429:
-                                errorMsg = "✗ Error: Too many requests, try again later";
+                                errorMsg = "Error: Too many requests, try again later";
                                 break;
                             default:
-                                errorMsg = "✗ Download failed: HTTP " + response.statusCode();
+                                errorMsg = "Download failed: HTTP " + response.statusCode();
                         }
                         System.err.println("[Download] " + errorMsg);
                         client.execute(() -> {
-                            downloadStatus = errorMsg;
-                            if (schematicDropdown != null) {
-                                schematicDropdown.setStatusMessage(downloadStatus);
-                            }
+                            onDownloadFailed(generation, errorMsg);
                         });
                         return;
                     }
@@ -763,10 +829,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                     final String pageUrl = postInfo != null && postInfo.urlRedirect() != null
                             ? postInfo.urlRedirect() : downloadUrl;
                     client.execute(() -> {
-                        downloadStatus = "✗ Not downloadable here. The site may require an account.";
-                        if (schematicDropdown != null) {
-                            schematicDropdown.setStatusMessage(downloadStatus);
-                        }
+                        onDownloadFailed(generation, "Not downloadable here. The site may require an account.");
                         confirmPopup = new ConfirmPopup(
                                 null,
                                 "Download Not Available",
@@ -809,10 +872,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                         System.err.println("[Download] Conversion failed: " + e.getMessage());
                         final String failure = e.getMessage();
                         client.execute(() -> {
-                            downloadStatus = "✗ Could not convert schematic: " + failure;
-                            if (schematicDropdown != null) {
-                                schematicDropdown.setStatusMessage(downloadStatus);
-                            }
+                            onDownloadFailed(generation, "Could not convert schematic: " + failure);
                         });
                         return;
                     }
@@ -838,9 +898,11 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                 final String finalFileName = outputFile.getName();
                 final String finalPath = outputFile.getAbsolutePath();
                 client.execute(() -> {
-                    downloadStatus = "✓ Downloaded: " + finalFileName;
-                    if (schematicDropdown != null) {
-                        schematicDropdown.setStatusMessage(downloadStatus);
+                    if (generation != downloadGeneration) return;
+                    isDownloading = false;
+                    directDownload = false;
+                    if (downloadButton != null) {
+                        downloadButton.showSuccess("Downloaded");
                     }
                     System.out.println("Downloaded schematic to: " + finalPath);
                 });
@@ -849,27 +911,24 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                 client.execute(() -> {
                     String errorMsg;
                     if (e instanceof java.net.UnknownHostException) {
-                        errorMsg = "✗ Error: No internet connection";
+                        errorMsg = "Error: No internet connection";
                     } else if (e instanceof java.net.SocketTimeoutException) {
-                        errorMsg = "✗ Error: Connection timeout";
+                        errorMsg = "Error: Connection timeout";
                     } else if (e instanceof java.io.FileNotFoundException) {
-                        errorMsg = "✗ Error: File not found";
+                        errorMsg = "Error: File not found";
                     } else if (e instanceof java.io.IOException && e.getMessage().contains("Permission denied")) {
-                        errorMsg = "✗ Error: Cannot write to disk (permission denied)";
+                        errorMsg = "Error: Cannot write to disk (permission denied)";
                     } else if (e instanceof java.io.IOException && e.getMessage().contains("No space")) {
-                        errorMsg = "✗ Error: Not enough disk space";
+                        errorMsg = "Error: Not enough disk space";
                     } else {
                         String msg = e.getMessage();
                         if (msg != null && msg.length() > 40) {
                             msg = msg.substring(0, 37) + "...";
                         }
-                        errorMsg = "✗ Error: " + (msg != null ? msg : "Unknown error");
+                        errorMsg = "Error: " + (msg != null ? msg : "Unknown error");
                     }
 
-                    downloadStatus = errorMsg;
-                    if (schematicDropdown != null) {
-                        schematicDropdown.setStatusMessage(downloadStatus);
-                    }
+                    onDownloadFailed(generation, errorMsg);
                     System.err.println("Failed to download schematic: " + e.getMessage());
                     e.printStackTrace();
                 });
@@ -928,43 +987,20 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             renderMouseY = -1;
         }
 
-        context.fill(x, y, x + width, y + height, UITheme.Colors.PANEL_BG_SECONDARY);
-
-        context.fill(x, y, x + 1, y + height, UITheme.Colors.BUTTON_BORDER);
+        UIDraw.sidePanel(context, x, y, x + width, boxBottom());
+        renderDownloadButton(context, renderMouseX, renderMouseY, delta);
 
         if (postInfo == null) {
-            String text = "Select a schematic to view details";
-            int textWidth = client.font.width(text);
-            context.text(client.font, text,
-                    x + (width - textWidth) / 2, y + height / 2 - 4, UITheme.Colors.TEXT_SUBTITLE);
+            String text = UIDraw.ellipsize("Select a schematic to view details", width - PAD * 2);
+            UIDraw.centeredText(context, text, x + width / 2,
+                    y + (boxBottom() - y - UITheme.Typography.CAP_HEIGHT) / 2, UITheme.Colors.TEXT_MUTED);
             return;
         }
 
-        int downloadBtnSize = 20;
-        int downloadBtnX = x;
-        int downloadBtnY = y;
+        context.enableScissor(x + 1, contentTop(), x + width - 1, contentBottom());
 
-        if (downloadButton == null) {
-            downloadButton = new CustomButton(
-                    downloadBtnX,
-                    downloadBtnY,
-                    downloadBtnSize,
-                    downloadBtnSize,
-                    Component.literal("⬇️"),
-                    button -> onDownloadButtonClick());
-            downloadButton.setRenderAsDownloadIcon(true);
-        } else {
-            downloadButton.setX(downloadBtnX);
-            downloadButton.setY(downloadBtnY);
-            downloadButton.active = !isLoadingFiles;
-        }
-        downloadButton.extractRenderState(context, renderMouseX, renderMouseY, delta);
-
-        int contentStartY = y + downloadBtnSize;
-        context.enableScissor(x + 1, contentStartY, x + width, y + height);
-
-        int currentY = contentStartY + UITheme.Dimensions.PADDING - (int) scrollOffset;
-        contentHeight = 0;
+        int currentY = imageContainerY();
+        contentHeight = PAD;
 
         int containerWidth = getDisplayImageWidth();
         int containerHeight = getDisplayImageHeight();
@@ -972,32 +1008,26 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
         int actualImageWidth = getActualImageWidth();
         int actualImageHeight = getActualImageHeight();
 
-        int containerX = x + 1;
+        int containerX = x + PAD;
         int containerY = currentY;
 
         int imageX = containerX + (containerWidth - actualImageWidth) / 2;
         int imageY = containerY + (containerHeight - actualImageHeight) / 2;
 
+        UIDraw.panel(context, containerX - 1, containerY - 1, containerX + containerWidth + 1, containerY + containerHeight + 1,
+                UITheme.Colors.FIELD_BG, UITheme.Colors.FIELD_BORDER);
         if (isLoadingImage) {
-            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight,
-                    UITheme.Colors.CONTAINER_BG);
             imageLoadingSpinner.setPosition(
                     containerX + containerWidth / 2 - imageLoadingSpinner.getWidth() / 2,
                     containerY + containerHeight / 2 - imageLoadingSpinner.getHeight() / 2);
             imageLoadingSpinner.extractRenderState(context, mouseX, mouseY, delta);
         } else if (currentImageTexture != null) {
-            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight,
-                    UITheme.Colors.PANEL_BG);
             context.blit(currentImageTexture, imageX, imageY, imageX + actualImageWidth, imageY + actualImageHeight,
                     0.0f, 1.0f, 0.0f, 1.0f);
         } else {
-            context.fill(containerX, containerY, containerX + containerWidth, containerY + containerHeight,
-                    UITheme.Colors.CONTAINER_BG);
             String noImg = isCompactMode() ? "..." : "No image";
-            int tw = client.font.width(noImg);
-            context.text(client.font, noImg,
-                    containerX + (containerWidth - tw) / 2, containerY + containerHeight / 2 - 4,
-                    UITheme.Colors.TEXT_SUBTITLE);
+            UIDraw.centeredText(context, noImg, containerX + containerWidth / 2,
+                    containerY + (containerHeight - UITheme.Typography.CAP_HEIGHT) / 2, UITheme.Colors.TEXT_MUTED);
         }
 
         currentY += containerHeight + UITheme.Dimensions.PADDING;
@@ -1015,36 +1045,35 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                 prevImageButton.extractRenderState(context, renderMouseX, renderMouseY, delta);
             }
 
-            context.text(client.font, indicator, indicatorX, btnY + 4, UITheme.Colors.TEXT_SUBTITLE);
+            UIDraw.text(context, indicator, indicatorX, UIDraw.bevelContentY(btnY, CONTROL_H), UITheme.Colors.TEXT_SUBTITLE);
 
             if (nextImageButton != null) {
                 nextImageButton.extractRenderState(context, renderMouseX, renderMouseY, delta);
             }
 
-            currentY += 16 + UITheme.Dimensions.PADDING;
-            contentHeight += 16 + UITheme.Dimensions.PADDING;
+            currentY += CONTROL_H + PAD;
+            contentHeight += CONTROL_H + PAD;
         }
 
         String title = postInfo.title() != null ? postInfo.title() : "Untitled";
         drawWrappedText(context, title, x + UITheme.Dimensions.PADDING, currentY,
-                width - UITheme.Dimensions.PADDING * 2, UITheme.Colors.TEXT_PRIMARY);
+                width - UITheme.Dimensions.PADDING * 2, UITheme.Colors.TEXT_HIGHLIGHT);
         int titleHeight = getWrappedTextHeight(title, width - UITheme.Dimensions.PADDING * 2);
         currentY += titleHeight + 8;
         contentHeight += titleHeight + 8;
 
         String author = "By " + (postInfo.author() != null ? postInfo.author() : "Unknown");
-        context.text(client.font, author, x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+        UIDraw.text(context, UIDraw.ellipsize(author, width - PAD * 2), x + PAD, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 12;
         contentHeight += 12;
 
-        String downloads = "Downloads: " + postInfo.downloads();
-        context.text(client.font, downloads, x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+        UIDraw.iconText(context, UIIcon.DOWNLOAD, postInfo.downloads() + " downloads", x + PAD, currentY, UITheme.Colors.TEXT_SUBTITLE);
         currentY += 16;
         contentHeight += 16;
 
         String[] tags = postInfo.tags();
         if (tags != null && tags.length > 0) {
-            context.text(client.font, "Tags:", x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+            UIDraw.text(context, "Tags", x + PAD, currentY, UITheme.Colors.TEXT_MUTED);
             currentY += 12;
             contentHeight += 12;
 
@@ -1056,8 +1085,8 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                     currentY += 14;
                     contentHeight += 14;
                 }
-                context.fill(tagX, currentY, tagX + tagWidth, currentY + 12, TAG_BG_COLOR);
-                context.text(client.font, tag, tagX + 4, currentY + 2, UITheme.Colors.TEXT_TAG);
+                UIDraw.panel(context, tagX, currentY, tagX + tagWidth, currentY + 12, UITheme.Colors.SURFACE, UITheme.Colors.PANEL_BORDER);
+                UIDraw.text(context, tag, tagX + 4, UIDraw.flatContentY(currentY, 12), UITheme.Colors.TEXT_TAG);
                 tagX += tagWidth + 4;
             }
             currentY += 16;
@@ -1066,8 +1095,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
 
         String[] versions = postInfo.versions();
         if (versions != null && versions.length > 0) {
-            context.text(client.font, "Versions:", x + UITheme.Dimensions.PADDING, currentY,
-                    UITheme.Colors.TEXT_SUBTITLE);
+            UIDraw.text(context, "Versions", x + PAD, currentY, UITheme.Colors.TEXT_MUTED);
             currentY += 12;
             contentHeight += 12;
 
@@ -1080,8 +1108,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             if (versions.length > 5) {
                 versionText.append("... (+").append(versions.length - 5).append(" more)");
             }
-            context.text(client.font, versionText.toString(),
-                    x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_TAG);
+            UIDraw.text(context, UIDraw.ellipsize(versionText.toString(), width - PAD * 2), x + PAD, currentY, UITheme.Colors.TEXT_TAG);
             currentY += 16;
             contentHeight += 16;
         }
@@ -1089,8 +1116,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
         if (postDetail != null && postDetail.getDescription() != null && !postDetail.getDescription().isEmpty()) {
             currentY += 8;
             contentHeight += 8;
-            context.text(client.font, "Description:", x + UITheme.Dimensions.PADDING, currentY,
-                    UITheme.Colors.TEXT_SUBTITLE);
+            UIDraw.text(context, "Description", x + PAD, currentY, UITheme.Colors.TEXT_MUTED);
             currentY += 12;
             contentHeight += 12;
 
@@ -1107,8 +1133,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             contentHeight += descHeight;
         } else if (isLoadingDetails) {
             currentY += 8;
-            context.text(client.font, "Loading details...", x + UITheme.Dimensions.PADDING, currentY,
-                    UITheme.Colors.TEXT_SUBTITLE);
+            UIDraw.text(context, "Loading details...", x + PAD, currentY, UITheme.Colors.TEXT_MUTED);
             currentY += 20;
             contentHeight += 20;
         }
@@ -1118,16 +1143,17 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             currentY += 8;
             contentHeight += 8;
 
-            int btnWidth = 120;
-            int btnHeight = 20;
+            int btnWidth = Math.min(width - PAD * 2, UIDraw.font().width("View on website") + UIIcon.SIZE + 4 + 16);
+            int btnHeight = UITheme.Dimensions.BUTTON_HEIGHT;
             int btnX = x + UITheme.Dimensions.PADDING;
             int btnY = currentY;
 
             if (redirectLinkButton == null) {
                 redirectLinkButton = new CustomButton(
                         btnX, btnY, btnWidth, btnHeight,
-                        Component.literal("🔗 View on Website"),
+                        Component.literal("View on website"),
                         button -> showRedirectConfirmation());
+                redirectLinkButton.setIcon(UIIcon.EXTERNAL);
             } else {
                 redirectLinkButton.setX(btnX);
                 redirectLinkButton.setY(btnY);
@@ -1144,6 +1170,23 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
 
         context.disableScissor();
 
+        if (scrollOffset > maxScroll()) {
+            scrollOffset = maxScroll();
+        }
+        if (maxScroll() > 0) {
+            scrollBar.setScrollData(contentHeight, visibleHeight());
+            scrollBar.setScrollPercentage(scrollOffset / Math.max(1, maxScroll()));
+            if (scrollBar.updateAndRender(context, mouseX, mouseY, delta, 0L)) {
+                scrollOffset = scrollBar.getScrollPercentage() * maxScroll();
+            }
+            if (scrollOffset > 0) {
+                UIDraw.fadeTop(context, x + 1, contentTop(), x + width - 1, UITheme.Dimensions.FADE_HEIGHT, UITheme.Colors.PANEL_BG);
+            }
+            if (scrollOffset < maxScroll()) {
+                UIDraw.fadeBottom(context, x + 1, contentBottom(), x + width - 1, UITheme.Dimensions.FADE_HEIGHT, UITheme.Colors.PANEL_BG);
+            }
+        }
+
         if (schematicDropdown != null && schematicDropdown.isOpen()) {
             schematicDropdown.extractRenderState(context, mouseX, mouseY, delta);
         }
@@ -1152,21 +1195,22 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             confirmPopup.extractRenderState(context, mouseX, mouseY, delta);
         }
 
-        if (contentHeight > height) {
-            scrollBar.setScrollData(contentHeight, height);
-            scrollBar.setScrollPercentage(scrollOffset / Math.max(1, contentHeight - height));
+    }
 
-            if (client != null && client.getWindow() != null) {
-                long windowHandle = Minecraft.getInstance().getWindow().handle();
-                if (scrollBar.updateAndRender(context, mouseX, mouseY, delta, windowHandle)) {
-                    double maxScroll = Math.max(0, contentHeight - height);
-                    scrollOffset = scrollBar.getScrollPercentage() * maxScroll;
-                }
-            } else {
-                scrollBar.extractRenderState(context, mouseX, mouseY, delta);
-            }
+    private void renderDownloadButton(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        int footerY = y + height - CONTROL_H;
+        String label = width < 120 ? "" : (isLoadingFiles ? "Loading files..." : isDownloading ? "Downloading..." : "Download");
+        if (downloadButton == null) {
+            downloadButton = new CustomButton(x, footerY, width, CONTROL_H, Component.literal(label),
+                    button -> onDownloadButtonClick());
+            downloadButton.setIcon(UIIcon.DOWNLOAD).setStyle(ButtonStyle.PRIMARY);
         }
-
+        downloadButton.setX(x);
+        downloadButton.setY(footerY);
+        downloadButton.setWidth(width);
+        downloadButton.setMessage(Component.literal(label));
+        downloadButton.active = postInfo != null && !isLoadingFiles && !isDownloading;
+        downloadButton.extractRenderState(context, mouseX, mouseY, delta);
     }
 
     public boolean hasImageViewerOpen() {
@@ -1202,7 +1246,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                 int testWidth = client.font.width(testLine);
 
                 if (testWidth > maxWidth && !line.isEmpty()) {
-                    context.text(client.font, line.toString(), textX, lineY, color);
+                    UIDraw.text(context, line.toString(), textX, lineY, color);
                     line = new StringBuilder(word);
                     lineY += 10;
                 } else {
@@ -1211,7 +1255,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             }
 
             if (!line.isEmpty()) {
-                context.text(client.font, line.toString(), textX, lineY, color);
+                UIDraw.text(context, line.toString(), textX, lineY, color);
                 lineY += 10;
             }
         }
@@ -1283,6 +1327,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                     mouseY >= downloadButton.getY() &&
                     mouseY < downloadButton.getY() + downloadButton.getHeight();
             if (isOverDownload && downloadButton.active) {
+                UIDraw.playClick();
                 onDownloadButtonClick();
                 return true;
             }
@@ -1294,6 +1339,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                     mouseY >= redirectLinkButton.getY() &&
                     mouseY < redirectLinkButton.getY() + redirectLinkButton.getHeight();
             if (isOverRedirect) {
+                UIDraw.playClick();
                 showRedirectConfirmation();
                 return true;
             }
@@ -1305,23 +1351,22 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
         }
 
         if (button == InputConstants.MOUSE_BUTTON_LEFT && currentImageTexture != null && !isLoadingImage && postInfo != null) {
-            int downloadBtnSize = 20;
-            int contentStartY = y + downloadBtnSize;
-            int currentY = contentStartY + UITheme.Dimensions.PADDING - (int) scrollOffset;
+            int contentStartY = contentTop();
+            int currentY = imageContainerY();
 
             int containerWidth = getDisplayImageWidth();
             int containerHeight = getDisplayImageHeight();
             int actualImageWidth = getActualImageWidth();
             int actualImageHeight = getActualImageHeight();
 
-            int containerX = x + 1;
+            int containerX = x + PAD;
             int containerY = currentY;
             int imageX = containerX + (containerWidth - actualImageWidth) / 2;
             int imageY = containerY + (containerHeight - actualImageHeight) / 2;
 
             if (mouseX >= imageX && mouseX < imageX + actualImageWidth &&
                     mouseY >= imageY && mouseY < imageY + actualImageHeight &&
-                    mouseY >= contentStartY && mouseY < y + height) {
+                    mouseY >= contentStartY && mouseY < contentBottom()) {
                 openImageViewer();
                 return true;
             }
@@ -1337,6 +1382,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                         mouseY >= prevImageButton.getY() &&
                         mouseY < prevImageButton.getY() + prevImageButton.getHeight();
                 if (isOverPrev) {
+                    UIDraw.playClick();
                     System.out.println("[PostDetailPanel] Previous button clicked!");
                     previousImage();
                     return true;
@@ -1352,6 +1398,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                         mouseY >= nextImageButton.getY() &&
                         mouseY < nextImageButton.getY() + nextImageButton.getHeight();
                 if (isOverNext) {
+                    UIDraw.playClick();
                     System.out.println("[PostDetailPanel] Next button clicked!");
                     nextImage();
                     return true;
@@ -1422,8 +1469,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         if (scrollBar != null
                 && (scrollBar.isDragging() || scrollBar.mouseDragged(mouseX, mouseY, button, deltaX, deltaY))) {
-            double maxScroll = Math.max(0, contentHeight - height);
-            scrollOffset = scrollBar.getScrollPercentage() * maxScroll;
+            scrollOffset = scrollBar.getScrollPercentage() * maxScroll();
             return true;
         }
         return false;
@@ -1451,16 +1497,15 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             }
         }
 
-        if (mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height) {
-            double maxScroll = Math.max(0, contentHeight - height + UITheme.Dimensions.PADDING);
-            scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - verticalAmount * 20));
+        if (mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < boxBottom()) {
+            scrollOffset = Math.max(0, Math.min(maxScroll(), scrollOffset - verticalAmount * 20));
             return true;
         }
         return false;
     }
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (confirmPopup != null && keyCode == 256) { // ESC key
+        if (confirmPopup != null && keyCode == InputConstants.KEY_ESCAPE) {
             closeConfirmPopup();
             return true;
         }

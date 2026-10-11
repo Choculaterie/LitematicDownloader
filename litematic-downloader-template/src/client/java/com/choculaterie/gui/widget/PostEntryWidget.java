@@ -1,5 +1,7 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.models.MinemevPostInfo;
 import net.minecraft.client.Minecraft;
@@ -12,11 +14,10 @@ public class PostEntryWidget implements Renderable, GuiEventListener {
     private static final int MIN_ENTRY_HEIGHT = 70;
     private static final int LINE_HEIGHT = UITheme.Typography.LINE_HEIGHT;
     private static final int CONTENT_SPACING = 5;
-    private static final int ENTRY_BG_COLOR = UITheme.Colors.BUTTON_BG;
-    private static final int ENTRY_HOVER_COLOR = UITheme.Colors.BUTTON_BG_HOVER;
-    private static final int ENTRY_PRESSED_COLOR = UITheme.Colors.BUTTON_BG_DISABLED;
-    private static final int TEXT_COLOR = UITheme.Colors.TEXT_PRIMARY;
-    private static final int BORDER_COLOR = UITheme.Colors.BUTTON_BORDER;
+    private static final int ENTRY_BG_COLOR = UITheme.Colors.SURFACE;
+    private static final int ENTRY_HOVER_COLOR = UITheme.Colors.SURFACE_HOVER;
+    private static final int ENTRY_PRESSED_COLOR = UITheme.Colors.SURFACE_SELECTED;
+    private static final int TEXT_COLOR = UITheme.Colors.TEXT_HIGHLIGHT;
 
     private final MinemevPostInfo post;
     private int x;
@@ -26,6 +27,7 @@ public class PostEntryWidget implements Renderable, GuiEventListener {
     private final Runnable onClick;
     private boolean isHovered = false;
     private boolean isPressed = false;
+    private boolean selected = false;
     private int calculatedHeight = MIN_ENTRY_HEIGHT;
 
     public PostEntryWidget(MinemevPostInfo post, int x, int y, int width, Runnable onClick) {
@@ -104,7 +106,7 @@ public class PostEntryWidget implements Renderable, GuiEventListener {
             int testWidth = client.font.width(testLine);
 
             if (testWidth > maxWidth && !line.isEmpty()) {
-                context.text(client.font, line.toString(), textX, lineY, color);
+                UIDraw.text(context, line.toString(), textX, lineY, color);
                 line = new StringBuilder(word);
                 lineY += LINE_HEIGHT;
             } else {
@@ -113,7 +115,7 @@ public class PostEntryWidget implements Renderable, GuiEventListener {
         }
 
         if (!line.isEmpty()) {
-            context.text(client.font, line.toString(), textX, lineY, color);
+            UIDraw.text(context, line.toString(), textX, lineY, color);
         }
     }
 
@@ -146,16 +148,20 @@ public class PostEntryWidget implements Renderable, GuiEventListener {
         return ENTRY_BG_COLOR;
     }
 
+    public void setSelected(boolean selected) {
+        this.selected = selected;
+    }
+
     private void drawBackground(GuiGraphicsExtractor context, int bgColor) {
-        context.fill(x, y, x + width, y + calculatedHeight, bgColor);
+        context.fill(x, y, x + width, y + calculatedHeight, selected ? UITheme.Colors.SURFACE_SELECTED : bgColor);
     }
 
     private void drawBorder(GuiGraphicsExtractor context) {
-        int borderWidth = UITheme.Dimensions.BORDER_WIDTH;
-        context.fill(x, y, x + width, y + borderWidth, BORDER_COLOR);
-        context.fill(x, y + calculatedHeight - borderWidth, x + width, y + calculatedHeight, BORDER_COLOR);
-        context.fill(x, y, x + borderWidth, y + calculatedHeight, BORDER_COLOR);
-        context.fill(x + width - borderWidth, y, x + width, y + calculatedHeight, BORDER_COLOR);
+        int border = selected ? UITheme.Colors.ACCENT : (isHovered ? UITheme.Colors.SCROLLBAR_THUMB_HOVER : UITheme.Colors.PANEL_BORDER);
+        UIDraw.outline(context, x, y, x + width, y + calculatedHeight, border);
+        if (selected) {
+            context.fill(x + 1, y + 1, x + 3, y + calculatedHeight - 1, UITheme.Colors.ACCENT);
+        }
     }
 
     private void renderContent(GuiGraphicsExtractor context) {
@@ -177,12 +183,13 @@ public class PostEntryWidget implements Renderable, GuiEventListener {
     }
 
     private int renderInfo(GuiGraphicsExtractor context, int currentY) {
-        String author = post.author() != null ? post.author() : "Unknown";
-        String downloads = String.format("Downloads: %d", post.downloads());
-        String info = String.format("By %s | %s", author, downloads);
-
-        context.text(client.font, info,
+        String author = "By " + (post.author() != null ? post.author() : "Unknown");
+        String downloads = String.valueOf(post.downloads());
+        int downloadsWidth = UIIcon.SIZE + 4 + client.font.width(downloads);
+        int rightEdge = x + width - UITheme.Dimensions.PADDING;
+        UIDraw.text(context, UIDraw.ellipsize(author, rightEdge - downloadsWidth - 8 - (x + UITheme.Dimensions.PADDING)),
             x + UITheme.Dimensions.PADDING, currentY, UITheme.Colors.TEXT_SUBTITLE);
+        UIDraw.iconText(context, UIIcon.DOWNLOAD, downloads, rightEdge - downloadsWidth, currentY, UITheme.Colors.TEXT_MUTED);
         return currentY + LINE_HEIGHT + CONTENT_SPACING;
     }
 
@@ -193,7 +200,7 @@ public class PostEntryWidget implements Renderable, GuiEventListener {
                 if (i > 0) tags.append(", ");
                 tags.append(post.tags()[i]);
             }
-            drawWrappedText(context, tags.toString(), x + UITheme.Dimensions.PADDING, currentY, contentWidth, UITheme.Colors.TEXT_SUBTITLE);
+            drawWrappedText(context, tags.toString(), x + UITheme.Dimensions.PADDING, currentY, contentWidth, UITheme.Colors.TEXT_TAG);
         }
     }
 

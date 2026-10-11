@@ -1,8 +1,11 @@
 package com.choculaterie.gui.widget;
 
 import com.choculaterie.vanilib.gui.widget.CustomButton;
+import com.choculaterie.vanilib.gui.widget.LoadingSpinner;
 import com.choculaterie.vanilib.gui.widget.ScrollBar;
 
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.util.LitematicParser;
 import com.choculaterie.util.LitematicBlockReplacer;
@@ -34,6 +37,7 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
     private File litematicFile;
     private final Minecraft client;
 
+    private final LoadingSpinner loadingSpinner = new LoadingSpinner(0, 0);
     private CustomButton closeButton;
     private CustomButton toggleViewButton;
     private CustomButton cameraButton;
@@ -55,8 +59,8 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
     private final SchematicExportPanel exportPanel = new SchematicExportPanel(schematicRenderer);
     private boolean isExportPanelOpen = false;
 
-    private static final int ITEM_HEIGHT = 24;
-    private static final int HEADER_HEIGHT = 58;
+    private static final int ITEM_HEIGHT = 25;
+    private static final int HEADER_HEIGHT = 42;
 
     public LitematicDetailPanel(int x, int y, int width, int height) {
         this.x = x;
@@ -83,12 +87,17 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
         this.onClose = onClose;
     }
 
+    private static final int HEADER_INSET = 4;
+    private static final int HEADER_GAP = 2;
+
     private void updateButtons() {
-        int buttonSize = 20;
+        int buttonSize = UITheme.Dimensions.BUTTON_HEIGHT;
+        int buttonY = y + HEADER_INSET;
+        int right = x + width - HEADER_INSET;
 
         closeButton = new CustomButton(
-                x + width - buttonSize,
-                y,
+                right - buttonSize,
+                buttonY,
                 buttonSize,
                 buttonSize,
                 net.minecraft.network.chat.Component.literal("X"),
@@ -99,20 +108,22 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
         closeButton.setRenderAsXIcon(true);
 
         toggleViewButton = new CustomButton(
-                x + width - buttonSize * 2,
-                y,
+                right - buttonSize * 2 - HEADER_GAP,
+                buttonY,
                 buttonSize,
                 buttonSize,
-                net.minecraft.network.chat.Component.literal(isIn3DMode ? "☰" : "3D"),
+                net.minecraft.network.chat.Component.literal(""),
                 btn -> toggleView());
+        toggleViewButton.setIcon(isIn3DMode ? UIIcon.LIST : UIIcon.CUBE);
 
         cameraButton = new CustomButton(
-                x + width - buttonSize * 3,
-                y,
+                right - buttonSize * 3 - HEADER_GAP * 2,
+                buttonY,
                 buttonSize,
                 buttonSize,
-                net.minecraft.network.chat.Component.literal("📷"),
+                net.minecraft.network.chat.Component.literal(""),
                 btn -> toggleExportPanel());
+        cameraButton.setIcon(UIIcon.CAMERA);
     }
 
     private String truncateToWidth(String text, int maxWidth) {
@@ -257,11 +268,7 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
         int renderMouseX = replacementPopup != null ? -1 : mouseX;
         int renderMouseY = replacementPopup != null ? -1 : mouseY;
 
-        context.fill(x, y, x + width, y + height, UITheme.Colors.PANEL_BG);
-        context.fill(x, y, x + 1, y + height, UITheme.Colors.PANEL_BORDER);
-        context.fill(x, y, x + width, y + 1, UITheme.Colors.PANEL_BORDER);
-        context.fill(x + width - 1, y, x + width, y + height, UITheme.Colors.PANEL_BORDER);
-        context.fill(x, y + height - 1, x + width, y + height, UITheme.Colors.PANEL_BORDER);
+        UIDraw.sidePanel(context, x, y, x + width, y + height);
 
         if (closeButton != null) {
             closeButton.extractRenderState(context, renderMouseX, renderMouseY, delta);
@@ -274,23 +281,22 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
         }
 
         if (litematicFile == null) {
-            String emptyText = "Select a litematic file";
-            int textWidth = client.font.width(emptyText);
-            context.text(client.font, emptyText, x + (width - textWidth) / 2, y + height / 2 - 4, 0xFF888888);
+            UIDraw.centeredText(context, UIDraw.ellipsize("Select a litematic file", width - 20), x + width / 2,
+                    y + (height - UITheme.Typography.CAP_HEIGHT) / 2, UITheme.Colors.TEXT_MUTED);
             return;
         }
 
         int contentX = x + UITheme.Dimensions.PADDING;
-        int contentY = y + UITheme.Dimensions.PADDING;
+        int contentY = UIDraw.bevelContentY(y + HEADER_INSET, UITheme.Dimensions.BUTTON_HEIGHT);
 
         String fileName = litematicFile.getName();
         int buttonCount = (cameraButton != null && isIn3DMode) ? 3 : 2;
-        int maxTitleWidth = width - UITheme.Dimensions.PADDING * 2 - buttonCount * 20;
-        context.text(client.font, truncateToWidth(fileName, maxTitleWidth), contentX, contentY, 0xFFFFFFFF);
+        int maxTitleWidth = width - UITheme.Dimensions.PADDING - HEADER_INSET - buttonCount * (UITheme.Dimensions.BUTTON_HEIGHT + HEADER_GAP) - 4;
+        UIDraw.text(context, truncateToWidth(fileName, maxTitleWidth), contentX, contentY, UITheme.Colors.TEXT_HIGHLIGHT);
         contentY += 15;
 
         long sizeKB = litematicFile.length() / 1024;
-        context.text(client.font, "Size: " + sizeKB + " KB", contentX, contentY, 0xFFAAAAAA);
+        UIDraw.text(context, sizeKB + " KB", contentX, contentY, UITheme.Colors.TEXT_MUTED);
 
         if (isIn3DMode) {
             render3DView(context, renderMouseX, renderMouseY, delta);
@@ -309,31 +315,25 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
         int viewW = width - UITheme.Dimensions.PADDING * 2;
         int viewH = previewHeight();
 
-        context.fill(viewX, viewY, viewX + viewW, viewY + viewH, 0xFF111111);
+        UIDraw.panel(context, viewX - 1, viewY - 1, viewX + viewW + 1, viewY + viewH + 1, UITheme.Colors.FIELD_BG, UITheme.Colors.FIELD_BORDER);
 
         if (isParsingPositions || schematicRenderer.isBuilding()) {
-            String msg = "Loading 3D preview...";
-            context.text(client.font, msg,
-                    viewX + (viewW - client.font.width(msg)) / 2,
-                    viewY + viewH / 2 - 4, 0xFFFFAA00);
+            loadingSpinner.setPosition(viewX + (viewW - loadingSpinner.getWidth()) / 2, viewY + (viewH - loadingSpinner.getHeight()) / 2);
+            loadingSpinner.extractRenderState(context, mouseX, mouseY, delta);
         } else if (positionParseFailed) {
             String msg = "Failed to load 3D preview";
-            context.text(client.font, msg,
-                    viewX + (viewW - client.font.width(msg)) / 2,
-                    viewY + viewH / 2 - 4, 0xFFFF4444);
+            UIDraw.centeredText(context, msg, viewX + viewW / 2, viewY + (viewH - UITheme.Typography.CAP_HEIGHT) / 2, UITheme.Colors.ERROR_TEXT);
         } else if (schematicRenderer.isEmpty()) {
             String msg = "No blocks found";
-            context.text(client.font, msg,
-                    viewX + (viewW - client.font.width(msg)) / 2,
-                    viewY + viewH / 2 - 4, 0xFF888888);
+            UIDraw.centeredText(context, msg, viewX + viewW / 2, viewY + (viewH - UITheme.Typography.CAP_HEIGHT) / 2, UITheme.Colors.TEXT_MUTED);
         } else {
             schematicRenderer.render(context, viewX, viewY, viewW, viewH, mouseX, mouseY);
 
             if (!isExportPanelOpen) {
                 String hint;
                 String hintFull = "Drag: rotate  |  WASD: move  |  Scroll: zoom";
-                String hintShort = "Drag·Rotate  WASD·Move  Scroll·Zoom";
-                String hintMin = "Drag·Rot  WASD·Mov  Scrl·Zoom";
+                String hintShort = "Drag rotate, WASD move, Scroll zoom";
+                String hintMin = "Drag / WASD / Scroll";
                 if (client.font.width(hintFull) <= viewW - 4) {
                     hint = hintFull;
                 } else if (client.font.width(hintShort) <= viewW - 4) {
@@ -341,9 +341,7 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
                 } else {
                     hint = hintMin;
                 }
-                context.text(client.font, hint,
-                        viewX + (viewW - client.font.width(hint)) / 2,
-                        viewY + viewH - 12, 0xFF666666);
+                UIDraw.centeredText(context, hint, viewX + viewW / 2, viewY + viewH - 12, UITheme.Colors.TEXT_MUTED);
             }
         }
 
@@ -357,28 +355,28 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
         int contentY = y + HEADER_HEIGHT - 12;
 
         if (isParsing) {
-            context.text(client.font, "Parsing blocks...", contentX, contentY, 0xFFFFAA00);
+            UIDraw.text(context, "Parsing blocks...", contentX, contentY, UITheme.Colors.WARNING_TEXT);
             return;
         }
 
         if (parseFailed) {
-            context.text(client.font, "Failed to parse file", contentX, contentY, 0xFFFF0000);
+            UIDraw.text(context, "Failed to parse file", contentX, contentY, UITheme.Colors.ERROR_TEXT);
             return;
         }
 
         if (blockCounts.isEmpty()) {
-            context.text(client.font, "No blocks found", contentX, contentY, 0xFF888888);
+            UIDraw.text(context, "No blocks found", contentX, contentY, UITheme.Colors.TEXT_MUTED);
             return;
         }
 
-        context.text(client.font, "Blocks (" + blockCounts.size() + " types):", contentX, contentY, 0xFFAAAAAA);
+        UIDraw.text(context, "Blocks (" + blockCounts.size() + " types)", contentX, contentY, UITheme.Colors.TEXT_MUTED);
 
         int listY = y + HEADER_HEIGHT;
         int listHeight = height - HEADER_HEIGHT - UITheme.Dimensions.PADDING;
         int listRightEdge = x + width - UITheme.Dimensions.PADDING - UITheme.Dimensions.SCROLLBAR_WIDTH - 2;
 
-        context.fill(contentX, listY, listRightEdge, listY + listHeight, 0xFF151515);
-        context.enableScissor(contentX, listY, listRightEdge, listY + listHeight);
+        UIDraw.panel(context, contentX, listY, listRightEdge, listY + listHeight, UITheme.Colors.FIELD_BG, UITheme.Colors.FIELD_BORDER);
+        context.enableScissor(contentX + 1, listY + 1, listRightEdge - 1, listY + listHeight - 1);
 
         int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
         for (int i = scrollOffset; i < Math.min(blockCounts.size(), scrollOffset + maxVisibleItems); i++) {
@@ -387,17 +385,18 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
 
             boolean isHovered = mouseX >= contentX && mouseX < listRightEdge &&
                     mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
-            context.fill(contentX + 2, itemY + 2, listRightEdge - 2, itemY + ITEM_HEIGHT - 2,
-                    isHovered ? 0xFF2A2A2A : 0xFF1A1A1A);
+            if (isHovered) {
+                context.fill(contentX + 1, itemY, listRightEdge - 1, itemY + ITEM_HEIGHT, UITheme.Colors.SURFACE_HOVER);
+            }
 
             ItemStack itemStack = getItemStackForBlock(blockCount.blockId);
             if (itemStack != null && !itemStack.isEmpty()) {
-                context.item(itemStack, contentX + 4, itemY + 4);
+                context.item(itemStack, contentX + 4, itemY + (ITEM_HEIGHT - 16) / 2);
             }
 
             String blockName = LitematicParser.getSimpleBlockName(blockCount.blockId);
             int textX = contentX + 24;
-            int textY = itemY + 8;
+            int textY = UIDraw.flatContentY(itemY, ITEM_HEIGHT);
 
             int maxTextWidth = listRightEdge - textX - 70;
             if (client.font.width(blockName) > maxTextWidth) {
@@ -414,11 +413,11 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
                 blockName = truncated + ellipsis;
             }
 
-            context.text(client.font, blockName, textX, textY, 0xFFFFFFFF);
+            UIDraw.text(context, blockName, textX, textY, UITheme.Colors.TEXT_PRIMARY);
 
             String countText = "x" + blockCount.count;
             int countWidth = client.font.width(countText);
-            context.text(client.font, countText, listRightEdge - countWidth - 5, textY, UITheme.Colors.ACCENT_GREEN);
+            UIDraw.text(context, countText, listRightEdge - countWidth - 6, textY, UITheme.Colors.ACCENT);
         }
 
         context.disableScissor();
@@ -540,6 +539,11 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
             }
         }
         return false;
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {

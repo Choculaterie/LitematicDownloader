@@ -4,6 +4,9 @@ import com.choculaterie.config.DownloadSettings;
 import com.choculaterie.vanilib.util.file.FileOperationsManager;
 import com.choculaterie.gui.localfolder.LocalFolderSearchManager;
 import com.choculaterie.gui.localfolder.LocalFolderSelectionManager;
+import com.choculaterie.vanilib.gui.theme.ButtonStyle;
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.vanilib.gui.widget.ConfirmPopup;
 import com.choculaterie.vanilib.gui.widget.CustomButton;
@@ -30,7 +33,7 @@ import com.choculaterie.vanilib.util.MouseState;
 
 public class LocalFolderPage extends Screen {
     private static final int PADDING = 10;
-    private static final int BUTTON_HEIGHT = 20;
+    private static final int BUTTON_HEIGHT = 21;
     private static final int ITEM_HEIGHT = 25;
     private static final int SCROLLBAR_WIDTH = 8;
     private static final int SCROLLBAR_PADDING = 2;
@@ -244,7 +247,7 @@ public class LocalFolderPage extends Screen {
 
         this.addRenderableWidget(new CustomButton(
                 currentX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
-                Component.literal("←"), button -> goBack()));
+                Component.literal(""), button -> goBack()).setIcon(UIIcon.ARROW_LEFT));
         currentX += BUTTON_HEIGHT + PADDING;
 
         if (!showDetailPanel) {
@@ -253,19 +256,20 @@ public class LocalFolderPage extends Screen {
             int deleteWidth = isVeryCompact ? 25 : (isCompact ? 45 : 60);
             int openFolderWidth = isVeryCompact ? 25 : (isCompact ? 80 : 120);
 
-            String newFolderLabel = isVeryCompact ? "+" : (isCompact ? "+ New" : "+ New Folder");
-            String renameLabel = isVeryCompact ? "✏" : "Rename";
-            String deleteLabel = isVeryCompact ? "🗑" : "Delete";
-            String openFolderLabel = isVeryCompact ? "📁" : (isCompact ? "📁 Open" : "📁 Open Folder");
+            String newFolderLabel = isVeryCompact ? "" : (isCompact ? "New" : "New Folder");
+            String renameLabel = isVeryCompact ? "" : "Rename";
+            String deleteLabel = isVeryCompact ? "" : "Delete";
+            String openFolderLabel = isVeryCompact ? "" : (isCompact ? "Open" : "Open Folder");
 
             this.addRenderableWidget(new CustomButton(
                     currentX, PADDING, newFolderWidth, BUTTON_HEIGHT,
-                    Component.literal(newFolderLabel), button -> openNewFolderPopup()));
+                    Component.literal(newFolderLabel), button -> openNewFolderPopup()).setIcon(UIIcon.PLUS));
             currentX += newFolderWidth + PADDING;
 
             renameButton = new CustomButton(
                     currentX, PADDING, renameWidth, BUTTON_HEIGHT,
                     Component.literal(renameLabel), button -> openRenamePopup());
+            renameButton.setIcon(UIIcon.PENCIL);
             renameButton.active = false;
             this.addRenderableWidget(renameButton);
             currentX += renameWidth + PADDING;
@@ -273,25 +277,27 @@ public class LocalFolderPage extends Screen {
             deleteButton = new CustomButton(
                     currentX, PADDING, deleteWidth, BUTTON_HEIGHT,
                     Component.literal(deleteLabel), button -> handleDeleteClick());
+            deleteButton.setIcon(UIIcon.TRASH).setStyle(ButtonStyle.DANGER);
             deleteButton.active = false;
             this.addRenderableWidget(deleteButton);
             currentX += deleteWidth + PADDING;
 
             this.addRenderableWidget(new CustomButton(
                     currentX, PADDING, openFolderWidth, BUTTON_HEIGHT,
-                    Component.literal(openFolderLabel), button -> openInFileExplorer()));
+                    Component.literal(openFolderLabel), button -> openInFileExplorer()).setIcon(UIIcon.FOLDER));
             currentX += openFolderWidth + PADDING;
 
             int settingsX = this.width - PADDING - BUTTON_HEIGHT;
             this.addRenderableWidget(new CustomButton(
                     settingsX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
-                    Component.literal("⚙"), button -> openSettings()));
+                    Component.literal(""), button -> openSettings()).setIcon(UIIcon.GEAR));
 
             int searchWidth = settingsX - currentX - PADDING;
             if (this.minecraft != null && searchWidth > 30) {
                 searchField = new CustomTextField(this.minecraft, currentX, PADDING, searchWidth, BUTTON_HEIGHT,
                         Component.literal("Search"));
                 searchField.setPlaceholder(Component.literal("Search..."));
+                searchField.setIcon(UIIcon.SEARCH);
                 searchField.setOnChanged(this::onSearchChanged);
                 searchField.setOnClearPressed(this::onSearchCleared);
                 if (!previousSearchText.isEmpty()) {
@@ -305,6 +311,7 @@ public class LocalFolderPage extends Screen {
                 searchField = new CustomTextField(this.minecraft, currentX, PADDING, searchWidth, BUTTON_HEIGHT,
                         Component.literal("Search"));
                 searchField.setPlaceholder(Component.literal("Search..."));
+                searchField.setIcon(UIIcon.SEARCH);
                 searchField.setOnChanged(this::onSearchChanged);
                 searchField.setOnClearPressed(this::onSearchCleared);
                 if (!previousSearchText.isEmpty()) {
@@ -698,13 +705,13 @@ public class LocalFolderPage extends Screen {
                         if (entry.isDirectory) {
                             File[] subFiles = entry.file.listFiles();
                             boolean isEmpty = subFiles == null || subFiles.length == 0;
-                            messageBuilder.append(connector).append("📁 ").append(entry.file.getName()).append("/\n");
+                            messageBuilder.append(connector).append(entry.file.getName()).append("/\n");
                             if (!isEmpty) {
                                 String newIndent = isLast ? "    " : "│   ";
                                 buildDeleteTree(entry.file, messageBuilder, newIndent, false);
                             }
                         } else {
-                            messageBuilder.append(connector).append("📄 ").append(entry.file.getName()).append("\n");
+                            messageBuilder.append(connector).append(entry.file.getName()).append("\n");
                         }
                     }
                     message = messageBuilder.toString();
@@ -958,14 +965,14 @@ public class LocalFolderPage extends Screen {
             if (file.isDirectory()) {
                 File[] subFiles = file.listFiles();
                 boolean isEmpty = subFiles == null || subFiles.length == 0;
-                builder.append(indent).append(connector).append("📁 ").append(file.getName()).append("/\n");
+                builder.append(indent).append(connector).append(file.getName()).append("/\n");
 
                 if (!isEmpty && indent.length() < 12) {
                     String newIndent = indent + (isLast ? "    " : "│   ");
                     buildDeleteTree(file, builder, newIndent, false);
                 }
             } else {
-                builder.append(indent).append(connector).append("📄 ").append(file.getName()).append("\n");
+                builder.append(indent).append(connector).append(file.getName()).append("\n");
             }
             shown++;
         }
@@ -1130,6 +1137,10 @@ public class LocalFolderPage extends Screen {
     }
 
     private void loadEntries() {
+        java.util.Set<File> previouslySelected = new java.util.HashSet<>();
+        for (int idx : selectionManager.getSelectedIndices()) {
+            if (idx >= 0 && idx < entries.size()) previouslySelected.add(entries.get(idx).file);
+        }
         entries.clear();
         selectionManager.clearSelection();
 
@@ -1156,6 +1167,10 @@ public class LocalFolderPage extends Screen {
                     entries.add(new FileEntry(file));
                 }
             }
+        }
+
+        for (int idx = 0; idx < entries.size(); idx++) {
+            if (previouslySelected.contains(entries.get(idx).file)) selectionManager.toggleSelection(idx);
         }
 
         updateScrollBar();
@@ -1189,7 +1204,7 @@ public class LocalFolderPage extends Screen {
         int currentX = PADDING;
 
         String label = "Current: ";
-        context.text(this.font, label, currentX, breadcrumbY, 0xFFAAAAAA);
+        UIDraw.text(context, label, currentX, breadcrumbY, UITheme.Colors.TEXT_MUTED);
         currentX += this.font.width(label);
 
         List<File> pathSegments = new ArrayList<>();
@@ -1220,11 +1235,11 @@ public class LocalFolderPage extends Screen {
             } else {
                 if (i > 1) {
                     String separator = " / ";
-                    context.text(this.font, separator, currentX, breadcrumbY, 0xFF888888);
+                    UIDraw.text(context, separator, currentX, breadcrumbY, UITheme.Colors.TEXT_MUTED);
                     currentX += this.font.width(separator);
                 } else {
                     String space = " ";
-                    context.text(this.font, space, currentX, breadcrumbY, 0xFF888888);
+                    UIDraw.text(context, space, currentX, breadcrumbY, UITheme.Colors.TEXT_MUTED);
                     currentX += this.font.width(space);
                 }
                 segmentName = segment.getName();
@@ -1243,24 +1258,25 @@ public class LocalFolderPage extends Screen {
 
             int color;
             if (isDropTarget) {
-                color = UITheme.Colors.ACCENT_GREEN;
+                color = UITheme.Colors.ACCENT;
             } else if (isCurrent) {
-                color = 0xFFFFFFFF;
+                color = UITheme.Colors.TEXT_HIGHLIGHT;
             } else if (isHovered) {
-                color = 0xFF55AAFF;
+                color = UITheme.Colors.TEXT_LINK_HOVER;
             } else {
-                color = 0xFF88CCFF;
+                color = UITheme.Colors.TEXT_LINK;
             }
 
             if (isDropTarget) {
-                context.fill(currentX - 2, breadcrumbY - 2, currentX + segmentWidth + 2, breadcrumbY + 12, 0x88336633);
+                context.fill(currentX - 2, breadcrumbY - 2, currentX + segmentWidth + 2, breadcrumbY + 11, UITheme.Colors.SURFACE_SELECTED);
+                UIDraw.outline(context, currentX - 2, breadcrumbY - 2, currentX + segmentWidth + 2, breadcrumbY + 11, UITheme.Colors.ACCENT);
             }
 
             if (isHovered && !isCurrent) {
                 context.fill(currentX, breadcrumbY + 10, currentX + segmentWidth, breadcrumbY + 11, color);
             }
 
-            context.text(this.font, segmentName, currentX, breadcrumbY, color);
+            UIDraw.text(context, segmentName, currentX, breadcrumbY, color);
 
             if (!isCurrent) {
                 breadcrumbSegments.add(new BreadcrumbSegment(currentX, segmentWidth, segment));
@@ -1277,7 +1293,7 @@ public class LocalFolderPage extends Screen {
             init();
         }
 
-        context.fill(0, 0, this.width, this.height, 0xFF202020);
+        context.fill(0, 0, this.width, this.height, UITheme.Colors.BACKGROUND);
 
         if (this.minecraft != null && this.minecraft.getWindow() != null) {
             long windowHandle = Minecraft.getInstance().getWindow().handle();
@@ -1410,7 +1426,7 @@ public class LocalFolderPage extends Screen {
             int breadcrumbY = PADDING * 3 + BUTTON_HEIGHT + 18 - 14;
             String searchInfo = "Found " + entries.size() + " result" + (entries.size() != 1 ? "s" : "") + " for \""
                     + searchManager.getSearchQuery() + "\"";
-            context.text(this.font, searchInfo, PADDING, breadcrumbY, 0xFFAAAAFF);
+            UIDraw.iconText(context, UIIcon.SEARCH, searchInfo, PADDING, breadcrumbY, UITheme.Colors.TEXT_SUBTITLE);
         }
 
         int listY = PADDING * 3 + BUTTON_HEIGHT + 18;
@@ -1422,9 +1438,9 @@ public class LocalFolderPage extends Screen {
         boolean scrollBarShowing = scrollBar != null && scrollBar.isVisible();
         int panelRight = scrollBarShowing ? listRightEdge : leftPanelWidth - PADDING;
 
-        context.fill(PADDING, listY, panelRight, listY + listHeight, 0xFF151515);
+        UIDraw.panel(context, PADDING, listY, panelRight, listY + listHeight, UITheme.Colors.FIELD_BG, UITheme.Colors.FIELD_BORDER);
 
-        context.enableScissor(PADDING, listY, panelRight, listY + listHeight);
+        context.enableScissor(PADDING + 1, listY + 1, panelRight - 1, listY + listHeight - 1);
 
         quickShareButtons.clear();
 
@@ -1440,31 +1456,31 @@ public class LocalFolderPage extends Screen {
                     && !selectionManager.isSelected(i);
             boolean isBeingDragged = isDragging && selectionManager.isSelected(i);
 
-            int bgColor;
-            if (isDropTarget) {
-                bgColor = 0xFF336633;
-            } else if (isBeingDragged) {
-                bgColor = 0xFF505050;
-            } else if (isSelected) {
-                bgColor = 0xFF404040;
-            } else if (isHovered) {
-                bgColor = 0xFF2A2A2A;
-            } else {
-                bgColor = 0xFF1A1A1A;
+            int rowX1 = PADDING + 1;
+            int rowX2 = panelRight - 1;
+            boolean accentBar = isDropTarget || isSelected;
+            if (isDropTarget || isSelected) {
+                context.fill(rowX1, itemY, rowX2, itemY + ITEM_HEIGHT, UITheme.Colors.SURFACE_SELECTED);
+            } else if (isBeingDragged || isHovered) {
+                context.fill(rowX1, itemY, rowX2, itemY + ITEM_HEIGHT, UITheme.Colors.SURFACE_HOVER);
             }
-            context.fill(PADDING + 2, itemY + 2, panelRight - 2, itemY + ITEM_HEIGHT - 2, bgColor);
+            if (accentBar) {
+                context.fill(rowX1, itemY, rowX1 + 2, itemY + ITEM_HEIGHT, UITheme.Colors.ACCENT);
+            }
 
-            String icon = entry.isDirectory ? "📁" : "📄";
+            UIIcon icon = entry.isDirectory ? UIIcon.FOLDER : UIIcon.FILE;
             String fileName = entry.file.getName();
-            int textX = PADDING + 5;
-            int textY = itemY
-                    + (searchManager.isActive() && entry.relativePath != null && !entry.relativePath.isEmpty() ? 4 : 8);
+            boolean twoLine = searchManager.isActive() && entry.relativePath != null && !entry.relativePath.isEmpty();
+            int textX = PADDING + 7;
+            int textY = twoLine ? itemY + 4 : UIDraw.flatContentY(itemY, ITEM_HEIGHT);
+            int rowTextColor = isSelected || isDropTarget ? UITheme.Colors.TEXT_HIGHLIGHT : UITheme.Colors.TEXT_PRIMARY;
 
-            context.text(this.font, icon + " ", textX, textY, 0xFFFFFFFF);
-            textX += this.font.width(icon + " ");
+            icon.drawOnText(context, textX, textY, entry.isDirectory ? UITheme.Colors.ACCENT : UITheme.Colors.TEXT_MUTED);
+            textX += UIIcon.SIZE + 4;
+            int iconSpace = UIIcon.SIZE + 4;
 
             int buttonAreaWidth = (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic"))
-                    ? (showDetailPanel ? 25 : 80) + 10
+                    ? (showDetailPanel ? BUTTON_HEIGHT : 80) + 10
                     : 0;
             int maxTextWidth = listRightEdge - textX - buttonAreaWidth - 5;
 
@@ -1495,34 +1511,34 @@ public class LocalFolderPage extends Screen {
                         if (this.font.width(beforeMatch) > maxTextWidth) {
                             displayBefore = truncateText(beforeMatch, maxTextWidth);
                         }
-                        context.text(this.font, displayBefore, textX, textY, 0xFFFFFFFF);
+                        UIDraw.text(context, displayBefore, textX, textY, rowTextColor);
                         textX += this.font.width(displayBefore);
                     }
 
                     String queryLen = searchManager.getSearchQuery();
                     String matchText = fileName.substring(searchIndex, searchIndex + queryLen.length());
                     int matchWidth = this.font.width(matchText);
-                    context.fill(textX - 1, textY - 1, textX + matchWidth + 1, textY + 9, 0xFF4488FF);
-                    context.text(this.font, matchText, textX, textY, 0xFFFFFFFF);
+                    context.fill(textX - 1, textY - 1, textX + matchWidth + 1, textY + 9, UITheme.Colors.SELECTION_HIGHLIGHT);
+                    UIDraw.text(context, matchText, textX, textY, UITheme.Colors.TEXT_HIGHLIGHT);
                     textX += matchWidth;
 
                     String afterMatch = fileName.substring(searchIndex + queryLen.length());
                     if (!afterMatch.isEmpty()) {
                         int remainingWidth = maxTextWidth
-                                - (textX - PADDING - 5 - this.font.width(icon + " "));
+                                - (textX - PADDING - 7 - iconSpace);
                         String displayAfter = afterMatch;
                         if (this.font.width(afterMatch) > remainingWidth) {
                             displayAfter = truncateText(afterMatch, remainingWidth);
                         }
-                        context.text(this.font, displayAfter, textX, textY, 0xFFFFFFFF);
+                        UIDraw.text(context, displayAfter, textX, textY, rowTextColor);
                         textX += this.font.width(displayAfter);
                     }
                 } else {
-                    context.text(this.font, displayFileName, textX, textY, 0xFFFFFFFF);
+                    UIDraw.text(context, displayFileName, textX, textY, rowTextColor);
                     textX += this.font.width(displayFileName);
                 }
             } else {
-                context.text(this.font, displayFileName, textX, textY, 0xFFFFFFFF);
+                UIDraw.text(context, displayFileName, textX, textY, rowTextColor);
                 textX += this.font.width(displayFileName);
             }
 
@@ -1531,20 +1547,19 @@ public class LocalFolderPage extends Screen {
                 String sizeText = " (" + sizeKB + " KB)";
                 int remainingWidth = listRightEdge - textX - 5;
                 if (this.font.width(sizeText) <= remainingWidth) {
-                    context.text(this.font, sizeText, textX, textY, 0xFFAAAAAA);
+                    UIDraw.text(context, sizeText, textX, textY, UITheme.Colors.TEXT_MUTED);
                 }
             }
 
             if (searchManager.isActive() && entry.relativePath != null && !entry.relativePath.isEmpty()) {
-                String pathDisplay = "📍 " + entry.relativePath;
-                context.text(this.font, pathDisplay,
-                        PADDING + 5 + this.font.width(icon + " "), itemY + 15, 0xFF888888);
+                UIDraw.iconText(context, UIIcon.PIN, UIDraw.ellipsize(entry.relativePath, listRightEdge - (PADDING + 7 + iconSpace) - UIIcon.SIZE - 10),
+                        PADDING + 7 + iconSpace, itemY + 15, UITheme.Colors.TEXT_MUTED);
             }
 
             if (!entry.isDirectory && entry.file.getName().toLowerCase().endsWith(".litematic")) {
-                int buttonWidth = showDetailPanel ? 25 : 80;
-                int buttonHeight = 16;
-                int buttonX = panelRight - buttonWidth - 5;
+                int buttonWidth = showDetailPanel ? BUTTON_HEIGHT : 80;
+                int buttonHeight = BUTTON_HEIGHT;
+                int buttonX = panelRight - buttonWidth - 3;
                 int buttonY = itemY + (ITEM_HEIGHT - buttonHeight) / 2;
 
                 quickShareButtons.add(new QuickShareButton(buttonX, buttonY, buttonWidth, buttonHeight, i));
@@ -1560,38 +1575,14 @@ public class LocalFolderPage extends Screen {
                     copiedIndex = -1;
                 }
 
-                String buttonText;
-                int buttonBgColor;
-                int buttonTextColor = 0xFFFFFFFF;
-
-                if (i == uploadingIndex) {
-                    buttonText = showDetailPanel ? "..." : "Uploading...";
-                    buttonBgColor = 0xFF555555;
-                } else if (isCopied) {
-                    buttonText = showDetailPanel ? "✓" : "✓ Copied";
-                    buttonBgColor = UITheme.Colors.ACCENT_GREEN;
-                } else if (buttonHovered) {
-                    buttonText = showDetailPanel ? "📤" : "📤 Share";
-                    buttonBgColor = 0xFF4488FF;
-                } else {
-                    buttonText = showDetailPanel ? "📤" : "📤 Share";
-                    buttonBgColor = 0xFF3366CC;
+                boolean uploading = i == uploadingIndex;
+                ButtonStyle shareStyle = isCopied ? ButtonStyle.SUCCESS : ButtonStyle.PRIMARY;
+                UIIcon shareIcon = uploading ? null : (isCopied ? UIIcon.CHECK : UIIcon.SHARE);
+                String shareText = showDetailPanel ? (uploading ? "..." : "") : (uploading ? "Uploading..." : (isCopied ? "Copied" : "Share"));
+                UIDraw.drawButton(context, buttonX, buttonY, buttonWidth, buttonHeight, shareStyle, !uploading, buttonHovered, shareIcon, shareText);
+                if (isCopied) {
+                    UIDraw.successFlash(context, buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, copiedTimestamp);
                 }
-
-                context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, buttonBgColor);
-
-                int borderColor = buttonHovered ? 0xFF66AAFF : 0xFF4477DD;
-                context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + 1, borderColor);
-                context.fill(buttonX, buttonY + buttonHeight - 1, buttonX + buttonWidth, buttonY + buttonHeight,
-                        borderColor);
-                context.fill(buttonX, buttonY, buttonX + 1, buttonY + buttonHeight, borderColor);
-                context.fill(buttonX + buttonWidth - 1, buttonY, buttonX + buttonWidth, buttonY + buttonHeight,
-                        borderColor);
-
-                int btnTextWidth = this.font.width(buttonText);
-                int btnTextX = buttonX + (buttonWidth - btnTextWidth) / 2;
-                int btnTextY = buttonY + (buttonHeight - 8) / 2;
-                context.text(this.font, buttonText, btnTextX, btnTextY, buttonTextColor);
             }
         }
 
@@ -1628,17 +1619,9 @@ public class LocalFolderPage extends Screen {
             int cursorX = mouseX + 10;
             int cursorY = mouseY + 10;
 
-            context.fill(cursorX - 2, cursorY - 2, cursorX + textWidth + 2, cursorY + this.font.lineHeight + 2,
-                    0xCC000000);
-
-            context.fill(cursorX - 2, cursorY - 2, cursorX + textWidth + 2, cursorY - 1, 0xFF888888);
-            context.fill(cursorX - 2, cursorY + this.font.lineHeight + 1, cursorX + textWidth + 2,
-                    cursorY + this.font.lineHeight + 2, 0xFF888888);
-            context.fill(cursorX - 2, cursorY - 2, cursorX - 1, cursorY + this.font.lineHeight + 2, 0xFF888888);
-            context.fill(cursorX + textWidth + 1, cursorY - 2, cursorX + textWidth + 2,
-                    cursorY + this.font.lineHeight + 2, 0xFF888888);
-
-            context.text(this.font, dragText, cursorX, cursorY, 0xFFFFFFFF);
+            UIDraw.panel(context, cursorX - 4, cursorY - 4, cursorX + textWidth + 4, cursorY + UITheme.Typography.TEXT_HEIGHT + 4,
+                    UITheme.Colors.PANEL_BG, UITheme.Colors.ACCENT);
+            UIDraw.text(context, dragText, cursorX, cursorY, UITheme.Colors.TEXT_HIGHLIGHT);
         }
 
         if (toastManager != null) {
@@ -1720,6 +1703,7 @@ public class LocalFolderPage extends Screen {
             for (QuickShareButton qsButton : quickShareButtons) {
                 if (qsButton.isHovered(mouseX, mouseY)) {
                     if (button == InputConstants.MOUSE_BUTTON_LEFT && uploadingIndex == -1) {
+                        UIDraw.playClick();
                         handleQuickShare(qsButton.entryIndex);
                         return true;
                     }
@@ -1775,6 +1759,12 @@ public class LocalFolderPage extends Screen {
                             dragStartIndex = clickedIndex;
                             dragStartX = mouseX;
                             dragStartY = mouseY;
+
+                            if (showDetailPanel && detailPanel != null && !entry.isDirectory
+                                    && entry.file.getName().toLowerCase().endsWith(".litematic")
+                                    && !entry.file.equals(detailPanel.getFile())) {
+                                openDetailPanel(entry.file);
+                            }
                         }
                     }
                     updateSelectionButtons();
@@ -1816,7 +1806,7 @@ public class LocalFolderPage extends Screen {
             return true;
         }
 
-        if (showDetailPanel && detailPanel != null) {
+        if (showDetailPanel && detailPanel != null && detailPanel.isMouseOver(mouseX, mouseY)) {
             detailPanel.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
             return true;
         }

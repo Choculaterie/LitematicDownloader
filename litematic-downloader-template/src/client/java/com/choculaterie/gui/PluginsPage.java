@@ -3,6 +3,9 @@ package com.choculaterie.gui;
 import com.choculaterie.gui.widget.ToastManager;
 import com.choculaterie.plugin.PluginRegistry;
 import com.choculaterie.plugin.PluginSource;
+import com.choculaterie.vanilib.gui.theme.ButtonStyle;
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.vanilib.gui.widget.ConfirmPopup;
 import com.choculaterie.vanilib.gui.widget.CustomButton;
@@ -24,11 +27,11 @@ import com.mojang.blaze3d.platform.InputConstants;
 
 public class PluginsPage extends Screen {
     private static final int PADDING = 10;
-    private static final int BUTTON_SIZE = 20;
+    private static final int BUTTON_SIZE = 21;
     private static final int OPEN_FOLDER_WIDTH = 90;
     private static final int ITEM_HEIGHT = 30;
     private static final int SCROLLBAR_WIDTH = 8;
-    private static final int WARNING_COLOR = 0xFFFFC107;
+    private static final int WARNING_COLOR = UITheme.Colors.WARNING_TEXT;
 
     private static final int DELETE_WIDTH = 60;
     private static final int TOGGLE_WIDTH = 40;
@@ -108,12 +111,12 @@ public class PluginsPage extends Screen {
 
         this.addRenderableWidget(new CustomButton(
                 PADDING, PADDING, BUTTON_SIZE, BUTTON_SIZE,
-                Component.literal("←"), button -> goBack()));
+                Component.literal(""), button -> goBack()).setIcon(UIIcon.ARROW_LEFT));
 
         int reloadX = this.width - PADDING - BUTTON_SIZE;
         this.addRenderableWidget(new CustomButton(
                 reloadX, PADDING, BUTTON_SIZE, BUTTON_SIZE,
-                Component.literal("🔄"), button -> {
+                Component.literal(""), button -> {
             PluginRegistry.reload();
             scrollOffset = 0;
             this.rebuildWidgets();
@@ -121,7 +124,7 @@ public class PluginsPage extends Screen {
                 int count = PluginRegistry.all().size();
                 toastManager.showSuccess(count == 1 ? "1 plugin loaded" : count + " plugins loaded");
             }
-        }));
+        }).setIcon(UIIcon.REFRESH));
 
         int openFolderX = reloadX - PADDING - OPEN_FOLDER_WIDTH;
         this.addRenderableWidget(new CustomButton(
@@ -363,16 +366,13 @@ public class PluginsPage extends Screen {
         if (activePopup == null) {
             handleKeyShortcuts();
         }
-        context.fill(0, 0, this.width, this.height, 0xFF202020);
+        context.fill(0, 0, this.width, this.height, UITheme.Colors.BACKGROUND);
 
 
         int y = warningY();
-        context.text(this.font, "⚠ Plugins are community files, not reviewed by this mod.",
-                PADDING, y, WARNING_COLOR);
-        context.text(this.font, "An enabled plugin makes your game contact the sites and APIs listed",
-                PADDING, y + 11, UITheme.Colors.TEXT_MUTED);
-        context.text(this.font, "below it, from your IP address. Only enable plugins you trust.",
-                PADDING, y + 22, UITheme.Colors.TEXT_MUTED);
+        UIDraw.iconText(context, UIIcon.ALERT, "Plugins are community files, not reviewed by this mod.", PADDING, y, WARNING_COLOR);
+        UIDraw.text(context, "An enabled plugin makes your game contact the sites and APIs listed", PADDING, y + 11, UITheme.Colors.TEXT_MUTED);
+        UIDraw.text(context, "below it, from your IP address. Only enable plugins you trust.", PADDING, y + 22, UITheme.Colors.TEXT_MUTED);
 
         renderList(context, mouseX, mouseY, delta);
 
@@ -391,14 +391,14 @@ public class PluginsPage extends Screen {
         int listY = listY();
         int listHeight = listHeight();
 
-        context.fill(PADDING, listY, panelRight(), listY + listHeight, 0xFF151515);
+        UIDraw.panel(context, PADDING, listY, panelRight(), listY + listHeight, UITheme.Colors.FIELD_BG, UITheme.Colors.FIELD_BORDER);
 
         if (rows.isEmpty()) {
-            context.text(this.font, "No plugins installed.", PADDING + 6, listY + 8, UITheme.Colors.TEXT_MUTED);
+            UIDraw.text(context, "No plugins installed.", PADDING + 7, listY + 8, UITheme.Colors.TEXT_MUTED);
             return;
         }
 
-        context.enableScissor(PADDING, listY, panelRight(), listY + listHeight);
+        context.enableScissor(PADDING + 1, listY + 1, panelRight() - 1, listY + listHeight - 1);
         int visible = Math.min(rows.size() - scrollOffset, maxVisible() + 1);
         for (int i = 0; i < visible; i++) {
             int index = scrollOffset + i;
@@ -409,24 +409,27 @@ public class PluginsPage extends Screen {
             boolean hovered = mouseX >= PADDING && mouseX < panelRight()
                     && mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
             boolean selected = selectionManager.isSelected(index);
-            int bgColor = selected ? 0xFF404040 : hovered ? 0xFF2A2A2A : 0xFF1A1A1A;
-            context.fill(PADDING + 2, itemY + 2, panelRight() - 2, itemY + ITEM_HEIGHT - 2, bgColor);
+            if (selected) {
+                context.fill(PADDING + 1, itemY, panelRight() - 1, itemY + ITEM_HEIGHT, UITheme.Colors.SURFACE_SELECTED);
+                context.fill(PADDING + 1, itemY, PADDING + 3, itemY + ITEM_HEIGHT, UITheme.Colors.ACCENT);
+            } else if (hovered) {
+                context.fill(PADDING + 1, itemY, panelRight() - 1, itemY + ITEM_HEIGHT, UITheme.Colors.SURFACE_HOVER);
+            }
 
             Row row = rows.get(index);
             if (row.isError()) {
-                context.text(this.font, trim(row.errorFile(), listRightEdge() - PADDING - 40),
+                UIDraw.text(context, trim(row.errorFile(), listRightEdge() - PADDING - 40),
                         PADDING + 6, itemY + 5, UITheme.Colors.TOAST_ACCENT_ERROR);
-                context.text(this.font, trim(row.error(), listRightEdge() - PADDING - 40),
+                UIDraw.text(context, trim(row.error(), listRightEdge() - PADDING - 40),
                         PADDING + 6, itemY + 16, UITheme.Colors.TEXT_MUTED);
             } else {
                 PluginSource plugin = row.plugin();
                 boolean enabled = PluginRegistry.isEnabled(plugin.id());
-                context.text(this.font, plugin.manifest().displayName(), PADDING + 6, itemY + 5,
-                        enabled ? UITheme.Colors.ACCENT_GREEN : UITheme.Colors.TEXT_MUTED);
+                UIDraw.text(context, plugin.manifest().displayName(), PADDING + 6, itemY + 5,
+                        enabled ? UITheme.Colors.ACCENT : UITheme.Colors.TEXT_MUTED);
                 String hosts = String.join(", ", plugin.manifest().hosts);
                 boolean anywhere = plugin.manifest().downloadsAnywhere();
-                context.text(this.font,
-                        trim(hosts + (anywhere ? "  + downloads from any site" : ""),
+                UIDraw.text(context, trim(hosts + (anywhere ? "  + downloads from any site" : ""),
                                 listRightEdge() - PADDING - 90),
                         PADDING + 6, itemY + 16,
                         anywhere ? WARNING_COLOR : UITheme.Colors.TEXT_TAG);

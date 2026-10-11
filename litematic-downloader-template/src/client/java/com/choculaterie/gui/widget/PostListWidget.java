@@ -20,6 +20,7 @@ public class PostListWidget extends AbstractWidget {
     private final List<PostEntryButton> entries;
     private double scrollAmount = 0;
     private final OnPostClickListener onPostClick;
+    private MinemevPostInfo selectedPost;
     private ScrollBar scrollBar;
 
     public interface OnPostClickListener {
@@ -72,6 +73,7 @@ public class PostListWidget extends AbstractWidget {
         for (MinemevPostInfo post : posts) {
             int rowWidth = Math.max(0, width - UITheme.Dimensions.PADDING);
             Runnable clickAction = () -> {
+                selectedPost = post;
                 if (onPostClick != null) {
                     onPostClick.onPostClick(post);
                 }
@@ -118,13 +120,16 @@ public class PostListWidget extends AbstractWidget {
         int offsetY = (int) scrollAmount;
         int currentY = 0;
         int entryWidth = getEntryWidth();
+        boolean pointerInside = mouseX >= getX() && mouseX < getX() + width && mouseY >= getY() && mouseY < getY() + height;
+        int entryMouseY = pointerInside ? mouseY : Integer.MIN_VALUE / 2;
 
         for (PostEntryButton entry : entries) {
             int entryY = getY() + currentY - offsetY;
 
             if (isEntryVisible(entryY, entry.getRowHeight())) {
                 entry.updateBounds(getX(), entryY, entryWidth);
-                entry.extractRenderState(context, mouseX, mouseY, delta);
+                entry.visual.setSelected(selectedPost != null && entry.post == selectedPost);
+                entry.extractRenderState(context, mouseX, entryMouseY, delta);
             }
 
             currentY += entry.getRowHeight() + ENTRY_SPACING;
@@ -319,9 +324,6 @@ public class PostListWidget extends AbstractWidget {
         @Override
         public void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
             visual.extractRenderState(context, mouseX, mouseY, delta);
-            if (this.isHovered()) {
-                context.fill(getX(), getY(), getX() + this.width, getY() + this.height, 0x30FFFFFF);
-            }
         }
 
         @Override

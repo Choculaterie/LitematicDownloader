@@ -1,6 +1,9 @@
 package com.choculaterie.gui;
 
 import com.choculaterie.config.DownloadSettings;
+import com.choculaterie.vanilib.gui.theme.ButtonStyle;
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.vanilib.gui.widget.CustomButton;
 import com.choculaterie.vanilib.gui.widget.CustomTextField;
@@ -34,10 +37,10 @@ import net.minecraft.client.Minecraft;
 import com.mojang.blaze3d.platform.InputConstants;
 
 public class LitematicDownloaderScreen extends Screen {
-    private static final int SEARCH_BAR_HEIGHT = 20;
-    private static final int BUTTON_HEIGHT = 20;
+    private static final int SEARCH_BAR_HEIGHT = 21;
+    private static final int BUTTON_HEIGHT = 21;
     private static final int PADDING = 10;
-    private static final int CLIPBOARD_BANNER_HEIGHT = 16;
+    private static final int CLIPBOARD_BANNER_HEIGHT = 21;
     private static final Pattern QUICK_SHARE_PATTERN = Pattern.compile(
             "https?://(?:www\\.)?choculaterie\\.com/qs/([A-Za-z0-9_-]+)");
 
@@ -106,13 +109,14 @@ public class LitematicDownloaderScreen extends Screen {
 
         int searchButtonWidth = isVeryCompact ? 25 : (isCompact ? 40 : 70);
         int paginationButtonWidth = isVeryCompact ? 25 : (isCompact ? 50 : 80);
-        String searchLabel = isVeryCompact ? "🔍" : (isCompact ? "🔍" : "Search");
-        String prevLabel = isVeryCompact ? "◀" : (isCompact ? "◀" : "< Previous");
-        String nextLabel = isVeryCompact ? "▶" : (isCompact ? "▶" : "Next >");
+        String searchLabel = isCompact ? "" : "Search";
+        String prevLabel = isCompact ? "" : "Previous";
+        String nextLabel = isCompact ? "" : "Next";
 
         int searchBarWidth = Math.max(50, leftPanelWidth - (PADDING * 3) - searchButtonWidth);
 
-        loadingSpinner = new LoadingSpinner(leftPanelWidth / 2 - 16, this.height / 2 - 16);
+        loadingSpinner = new LoadingSpinner(0, 0);
+        loadingSpinner.setPosition(leftPanelWidth / 2 - loadingSpinner.getWidth() / 2, this.height / 2 - loadingSpinner.getHeight() / 2);
 
         if (this.minecraft != null) {
             searchField = new CustomTextField(
@@ -124,6 +128,7 @@ public class LitematicDownloaderScreen extends Screen {
                     Component.literal("Search")
             );
             searchField.setPlaceholder(Component.literal(isCompact ? "Search..." : "Search schematics..."));
+            searchField.setIcon(UIIcon.SEARCH);
             searchField.setOnEnterPressed(this::performSearch);
             searchField.setOnClearPressed(this::performSearch);
             if (!previousSearchText.isEmpty()) {
@@ -140,6 +145,7 @@ public class LitematicDownloaderScreen extends Screen {
                 Component.literal(searchLabel),
                 button -> performSearch()
         );
+        searchButton.setIcon(UIIcon.SEARCH).setStyle(ButtonStyle.PRIMARY);
         this.addRenderableWidget(searchButton);
 
         checkClipboardForQuickShare();
@@ -157,35 +163,38 @@ public class LitematicDownloaderScreen extends Screen {
         this.addRenderableWidget(postList);
 
         int rightPanelContentWidth = rightPanelWidth - PADDING;
-        int rightPanelContentHeight = this.height - PADDING * 2;
+        int rightPanelTop = PADDING + SEARCH_BAR_HEIGHT + PADDING;
+        int rightPanelContentHeight = this.height - rightPanelTop - PADDING;
 
         if (detailPanel == null) {
-            detailPanel = new PostDetailPanel(leftPanelWidth, PADDING, rightPanelContentWidth, rightPanelContentHeight);
+            detailPanel = new PostDetailPanel(leftPanelWidth, rightPanelTop, rightPanelContentWidth, rightPanelContentHeight);
         } else {
-            detailPanel.setDimensions(leftPanelWidth, PADDING, rightPanelContentWidth, rightPanelContentHeight);
+            detailPanel.setDimensions(leftPanelWidth, rightPanelTop, rightPanelContentWidth, rightPanelContentHeight);
         }
 
-        sortFilterPanel = new SortFilterPanel(leftPanelWidth, PADDING, rightPanelContentWidth, rightPanelContentHeight);
+        sortFilterPanel = new SortFilterPanel(leftPanelWidth, rightPanelTop, rightPanelContentWidth, rightPanelContentHeight);
         sortFilterPanel.setOnSettingsChanged(this::onFilterSettingsChanged);
 
-        int closeButtonSize = 20;
+        int closeButtonSize = UITheme.Dimensions.BUTTON_HEIGHT;
         folderButton = new CustomButton(
                 this.width - PADDING - closeButtonSize * 3,
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,
-                Component.literal("📁"),
+                Component.literal(""),
                 button -> openFolderPage()
         );
+        folderButton.setIcon(UIIcon.FOLDER);
 
         filterButton = new CustomButton(
                 this.width - PADDING - closeButtonSize * 2,
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,
-                Component.literal("⚙"),
+                Component.literal(""),
                 button -> toggleFilterPanel()
         );
+        filterButton.setIcon(UIIcon.FILTER);
 
         closeButton = new CustomButton(
                 this.width - PADDING - closeButtonSize,
@@ -207,6 +216,7 @@ public class LitematicDownloaderScreen extends Screen {
                 Component.literal(prevLabel),
                 button -> previousPage()
         );
+        prevPageButton.setIcon(UIIcon.ARROW_LEFT);
         prevPageButton.active = false;
         this.addRenderableWidget(prevPageButton);
 
@@ -218,6 +228,7 @@ public class LitematicDownloaderScreen extends Screen {
                 Component.literal(nextLabel),
                 button -> nextPage()
         );
+        nextPageButton.setIcon(UIIcon.ARROW_RIGHT).setIconAfterText(true);
         nextPageButton.active = false;
         this.addRenderableWidget(nextPageButton);
 
@@ -749,7 +760,7 @@ public class LitematicDownloaderScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         int leftPanelWidth = this.width / 2;
 
-        context.fill(0, 0, this.width, this.height, 0xFF202020);
+        context.fill(0, 0, this.width, this.height, UITheme.Colors.BACKGROUND);
 
         boolean imageViewerOpen = detailPanel != null && detailPanel.hasImageViewerOpen();
         boolean confirmPopupOpen = detailPanel != null && detailPanel.hasConfirmPopupOpen();
@@ -801,13 +812,9 @@ public class LitematicDownloaderScreen extends Screen {
 
             if (pageText != null) {
                 int textWidth = this.font.width(pageText);
-                context.text(
-                        this.font,
-                        pageText,
-                        (leftPanelWidth - textWidth) / 2,
-                        this.height - BUTTON_HEIGHT / 2 - 4 - PADDING,
-                        0xFFFFFFFF
-                );
+                UIDraw.text(context, pageText, (leftPanelWidth - textWidth) / 2,
+                        UIDraw.bevelContentY(this.height - BUTTON_HEIGHT - PADDING, BUTTON_HEIGHT),
+                        UITheme.Colors.TEXT_SUBTITLE);
             }
         }
 
@@ -826,50 +833,39 @@ public class LitematicDownloaderScreen extends Screen {
                 int bannerY = PADDING + SEARCH_BAR_HEIGHT + 2;
                 int leftPanelW = this.width / 2;
                 int bannerWidth = leftPanelW - PADDING * 2;
-                int textY2 = bannerY + (CLIPBOARD_BANNER_HEIGHT - 8) / 2;
 
-                if (bannerState == BannerState.SUCCESS) {
-                    context.fill(bannerX, bannerY, bannerX + bannerWidth, bannerY + CLIPBOARD_BANNER_HEIGHT, UITheme.Colors.ACCENT_GREEN_DARK);
-                    context.fill(bannerX, bannerY, bannerX + 2, bannerY + CLIPBOARD_BANNER_HEIGHT, UITheme.Colors.ACCENT_GREEN);
-                    String successText = "✓ Downloaded: " + bannerSuccessFilename;
-                    if (this.font.width(successText) > bannerWidth - 8) {
-                        successText = "✓ Downloaded";
-                    }
-                    context.text(this.font, successText, bannerX + 6, textY2, 0xFFFFFFFF);
+                boolean success = bannerState == BannerState.SUCCESS;
+                int accent = success ? UITheme.Colors.SUCCESS_TEXT : UITheme.Colors.ACCENT;
+                context.fill(bannerX, bannerY, bannerX + bannerWidth, bannerY + CLIPBOARD_BANNER_HEIGHT,
+                        success ? UITheme.Colors.TOAST_BG_SUCCESS : UITheme.Colors.SURFACE);
+                UIDraw.outline(context, bannerX, bannerY, bannerX + bannerWidth, bannerY + CLIPBOARD_BANNER_HEIGHT, UITheme.Colors.PANEL_BORDER);
+                context.fill(bannerX + 1, bannerY + 1, bannerX + 3, bannerY + CLIPBOARD_BANNER_HEIGHT - 1, accent);
+                int textY2Line = UIDraw.flatContentY(bannerY, CLIPBOARD_BANNER_HEIGHT);
+                int dismissSpace = bannerState == BannerState.DETECTED ? UIIcon.SIZE + 8 : 0;
+                String bannerText;
+                if (success) {
+                    bannerText = "Downloaded: " + bannerSuccessFilename;
+                } else if (bannerState == BannerState.DOWNLOADING) {
+                    bannerText = "Downloading quick-share...";
                 } else {
-                    context.fill(bannerX, bannerY, bannerX + bannerWidth, bannerY + CLIPBOARD_BANNER_HEIGHT, 0xFF2A3A5F);
-                    context.fill(bannerX, bannerY, bannerX + 2, bannerY + CLIPBOARD_BANNER_HEIGHT, 0xFF4488FF);
-                    String bannerText;
-                    if (bannerState == BannerState.DOWNLOADING) {
-                        bannerText = "📋 Downloading quick-share...";
-                    } else {
-                        bannerText = "📋 Quick-share link detected, click to download";
-                        if (this.font.width(bannerText) > bannerWidth - 20) {
-                            bannerText = "📋 Quick-share, click to download";
-                        }
+                    bannerText = "Quick-share link detected, click to download";
+                    if (this.font.width(bannerText) > bannerWidth - 26 - dismissSpace) {
+                        bannerText = "Quick-share, click to download";
                     }
-                    context.text(this.font, bannerText, bannerX + 6, textY2, 0xFFFFFFFF);
-                    if (bannerState == BannerState.DETECTED) {
-                        String dismissText = "✕";
-                        int dismissX = bannerX + bannerWidth - this.font.width(dismissText) - 4;
-                        boolean hoverDismiss = mouseX >= dismissX && mouseX < bannerX + bannerWidth
-                                && mouseY >= bannerY && mouseY < bannerY + CLIPBOARD_BANNER_HEIGHT;
-                        context.text(this.font, dismissText, dismissX, textY2, hoverDismiss ? 0xFFFFFFFF : 0xFFAAAAAA);
-                    }
+                }
+                bannerText = UIDraw.ellipsize(bannerText, bannerWidth - 26 - dismissSpace);
+                UIDraw.iconText(context, success ? UIIcon.CHECK : UIIcon.CLIPBOARD, bannerText, bannerX + 8, textY2Line, UITheme.Colors.TEXT_PRIMARY);
+                if (bannerState == BannerState.DETECTED) {
+                    int dismissX = bannerX + bannerWidth - UIIcon.SIZE - 6;
+                    boolean hoverDismiss = mouseX >= dismissX - 3 && mouseX < bannerX + bannerWidth
+                            && mouseY >= bannerY && mouseY < bannerY + CLIPBOARD_BANNER_HEIGHT;
+                    UIIcon.CLOSE.drawOnText(context, dismissX, textY2Line, hoverDismiss ? UITheme.Colors.TEXT_HIGHLIGHT : UITheme.Colors.TEXT_MUTED);
                 }
             }
         }
 
         if (noResultsFound && !isLoading) {
-            String noResultsText = "No results found :(";
-            int textWidth = this.font.width(noResultsText);
-            context.text(
-                    this.font,
-                    noResultsText,
-                    (leftPanelWidth - textWidth) / 2,
-                    this.height / 2 + 10,
-                    0xFFFFFFFF
-            );
+            UIDraw.centeredText(context, "No results found", leftPanelWidth / 2, this.height / 2 + 10, UITheme.Colors.TEXT_MUTED);
         }
 
         if (folderButton != null) {
@@ -926,16 +922,22 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         if (button == InputConstants.MOUSE_BUTTON_LEFT && isMouseOverButton(closeButton, mouseX, mouseY)) {
+
+            UIDraw.playClick();
             this.onClose();
             return true;
         }
 
         if (button == InputConstants.MOUSE_BUTTON_LEFT && isMouseOverButton(filterButton, mouseX, mouseY)) {
+
+            UIDraw.playClick();
             toggleFilterPanel();
             return true;
         }
 
         if (button == InputConstants.MOUSE_BUTTON_LEFT && isMouseOverButton(folderButton, mouseX, mouseY)) {
+
+            UIDraw.playClick();
             openFolderPage();
             return true;
         }
@@ -957,14 +959,15 @@ public class LitematicDownloaderScreen extends Screen {
             int bannerWidth = leftPanelW - PADDING * 2;
             if (mouseX >= bannerX && mouseX < bannerX + bannerWidth
                     && mouseY >= bannerY && mouseY < bannerY + CLIPBOARD_BANNER_HEIGHT) {
-                String dismissText = "✕";
-                int dismissX = bannerX + bannerWidth - this.font.width(dismissText) - 4;
+                UIDraw.playClick();
+                int dismissX = bannerX + bannerWidth - UIIcon.SIZE - 9;
                 if (mouseX >= dismissX) {
                     DownloadSettings.getInstance().dismissQuickShareLink(clipboardQuickShareUrl);
                     bannerState = BannerState.NONE;
                     clipboardBannerDismissed = true;
                     updateListPosition();
                 } else {
+                    DownloadSettings.getInstance().dismissQuickShareLink(clipboardQuickShareUrl);
                     bannerState = BannerState.DOWNLOADING;
                     searchField.setValue(clipboardQuickShareUrl);
                     clearClipboard();

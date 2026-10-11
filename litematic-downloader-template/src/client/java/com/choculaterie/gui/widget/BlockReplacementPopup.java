@@ -4,6 +4,9 @@ import com.choculaterie.vanilib.gui.widget.CustomButton;
 import com.choculaterie.vanilib.gui.widget.CustomTextField;
 import com.choculaterie.vanilib.gui.widget.ScrollBar;
 
+import com.choculaterie.vanilib.gui.theme.ButtonStyle;
+import com.choculaterie.vanilib.gui.theme.UIDraw;
+import com.choculaterie.vanilib.gui.theme.UIIcon;
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.client.Minecraft;
@@ -39,7 +42,7 @@ public class BlockReplacementPopup implements Renderable {
     private BiConsumer<String, String> onBlockSelected;
     private Runnable onCancel;
 
-    private static final int ITEM_HEIGHT = 24;
+    private static final int ITEM_HEIGHT = 25;
     private static final int HEADER_HEIGHT = 90;
 
     public BlockReplacementPopup(int screenWidth, int screenHeight, String originalBlockId) {
@@ -64,6 +67,7 @@ public class BlockReplacementPopup implements Renderable {
                     UITheme.Dimensions.BUTTON_HEIGHT,
                     Component.literal("Search"));
             searchField.setPlaceholder(Component.literal("Search blocks..."));
+            searchField.setIcon(UIIcon.SEARCH);
             searchField.setOnChanged(() -> onSearchChanged(searchField.getValue()));
             searchField.setFocused(true);
         }
@@ -96,6 +100,7 @@ public class BlockReplacementPopup implements Renderable {
                         }
                     }
                 });
+        replaceButton.setStyle(ButtonStyle.PRIMARY);
 
         updateScrollBar();
     }
@@ -163,25 +168,9 @@ public class BlockReplacementPopup implements Renderable {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, client.getWindow().getGuiScaledWidth(), client.getWindow().getGuiScaledHeight(),
-                UITheme.Colors.OVERLAY_BG);
-
-        context.fill(x, y, x + width, y + height, UITheme.Colors.BUTTON_BG_DISABLED);
-
-        context.fill(x, y, x + width, y + UITheme.Dimensions.BORDER_WIDTH, UITheme.Colors.BUTTON_BORDER);
-        context.fill(x, y + height - UITheme.Dimensions.BORDER_WIDTH, x + width, y + height,
-                UITheme.Colors.BUTTON_BORDER);
-        context.fill(x, y, x + UITheme.Dimensions.BORDER_WIDTH, y + height, UITheme.Colors.BUTTON_BORDER);
-        context.fill(x + width - UITheme.Dimensions.BORDER_WIDTH, y, x + width, y + height,
-                UITheme.Colors.BUTTON_BORDER);
-
-        String title = "Replace: " + getSimpleBlockName(originalBlockId);
-        context.centeredText(
-                client.font,
-                title,
-                x + width / 2,
-                y + UITheme.Dimensions.PADDING,
-                UITheme.Colors.TEXT_PRIMARY);
+        UIDraw.overlay(context);
+        UIDraw.modalFrame(context, x, y, width, height);
+        UIDraw.modalTitle(context, "Replace: " + getSimpleBlockName(originalBlockId), x, y + UITheme.Dimensions.PADDING, width);
 
         if (searchField != null) {
             searchField.extractRenderState(context, mouseX, mouseY, delta);
@@ -192,8 +181,8 @@ public class BlockReplacementPopup implements Renderable {
                 - UITheme.Dimensions.PADDING;
         int listRightEdge = x + width - UITheme.Dimensions.PADDING - UITheme.Dimensions.SCROLLBAR_WIDTH - 2;
 
-        context.fill(x + UITheme.Dimensions.PADDING, listY, listRightEdge, listY + listHeight, UITheme.Colors.PANEL_BG);
-        context.enableScissor(x + UITheme.Dimensions.PADDING, listY, listRightEdge, listY + listHeight);
+        UIDraw.panel(context, x + UITheme.Dimensions.PADDING, listY, listRightEdge, listY + listHeight, UITheme.Colors.FIELD_BG, UITheme.Colors.FIELD_BORDER);
+        context.enableScissor(x + UITheme.Dimensions.PADDING + 1, listY + 1, listRightEdge - 1, listY + listHeight - 1);
 
         int maxVisibleItems = (listHeight / ITEM_HEIGHT) + 1;
         for (int i = scrollOffset; i < Math.min(filteredBlocks.size(), scrollOffset + maxVisibleItems); i++) {
@@ -204,22 +193,22 @@ public class BlockReplacementPopup implements Renderable {
             boolean isHovered = mouseX >= x + UITheme.Dimensions.PADDING && mouseX < listRightEdge &&
                     mouseY >= itemY && mouseY < itemY + ITEM_HEIGHT;
 
-            int bgColor;
+            int rowX1 = x + UITheme.Dimensions.PADDING + 1;
+            int rowX2 = listRightEdge - 1;
             if (isSelected) {
-                bgColor = 0xFF505050;
+                context.fill(rowX1, itemY, rowX2, itemY + ITEM_HEIGHT, UITheme.Colors.SURFACE_SELECTED);
+                context.fill(rowX1, itemY, rowX1 + 2, itemY + ITEM_HEIGHT, UITheme.Colors.ACCENT);
             } else if (isHovered) {
-                bgColor = 0xFF404040;
-            } else {
-                bgColor = UITheme.Colors.PANEL_BG;
+                context.fill(rowX1, itemY, rowX2, itemY + ITEM_HEIGHT, UITheme.Colors.SURFACE_HOVER);
             }
-            context.fill(x + UITheme.Dimensions.PADDING + 2, itemY, listRightEdge - 2, itemY + ITEM_HEIGHT, bgColor);
 
             ItemStack itemStack = new ItemStack(block.asItem());
-            context.item(itemStack, x + UITheme.Dimensions.PADDING + 4, itemY + 4);
+            context.item(itemStack, x + UITheme.Dimensions.PADDING + 5, itemY + (ITEM_HEIGHT - 16) / 2);
 
             String blockName = getSimpleBlockName(BuiltInRegistries.BLOCK.getKey(block).toString());
-            context.text(client.font, blockName, x + UITheme.Dimensions.PADDING + 24, itemY + 8,
-                    UITheme.Colors.TEXT_PRIMARY);
+            UIDraw.text(context, UIDraw.ellipsize(blockName, rowX2 - (x + UITheme.Dimensions.PADDING + 26) - 4),
+                    x + UITheme.Dimensions.PADDING + 26, UIDraw.flatContentY(itemY, ITEM_HEIGHT),
+                    isSelected ? UITheme.Colors.TEXT_HIGHLIGHT : UITheme.Colors.TEXT_PRIMARY);
         }
 
         context.disableScissor();
@@ -288,6 +277,7 @@ public class BlockReplacementPopup implements Renderable {
                     mouseY >= cancelButton.getY() &&
                     mouseY < cancelButton.getY() + cancelButton.getHeight();
             if (isOverCancel) {
+                UIDraw.playClick();
                 if (onCancel != null) {
                     onCancel.run();
                 }
@@ -301,6 +291,7 @@ public class BlockReplacementPopup implements Renderable {
                     mouseY >= replaceButton.getY() &&
                     mouseY < replaceButton.getY() + replaceButton.getHeight();
             if (isOverReplace) {
+                UIDraw.playClick();
                 if (selectedIndex >= 0 && selectedIndex < filteredBlocks.size()) {
                     Block selectedBlock = filteredBlocks.get(selectedIndex);
                     String newBlockId = BuiltInRegistries.BLOCK.getKey(selectedBlock).toString();
