@@ -4,7 +4,7 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
 import com.mojang.blaze3d.platform.InputConstants;
 
-public final class ModKeybindings {
+public final class LitematicDownloaderKeybindings {
 	public static KeyMapping OPEN_MENU_KEY_BINDING;
 
 	public static void initialize() {
@@ -17,5 +17,5 @@ public final class ModKeybindings {
 		);
 	}
 
-	private ModKeybindings() {}
+	private LitematicDownloaderKeybindings() {}
 }

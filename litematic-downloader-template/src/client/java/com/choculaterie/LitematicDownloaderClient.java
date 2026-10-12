@@ -1,7 +1,7 @@
 package com.choculaterie;
 
 import com.choculaterie.gui.LitematicDownloaderScreen;
-import com.choculaterie.keybind.ModKeybindings;
+import com.choculaterie.keybind.LitematicDownloaderKeybindings;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
@@ -10,13 +10,13 @@ public class LitematicDownloaderClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
-		ModKeybindings.initialize();
+		LitematicDownloaderKeybindings.initialize();
 		registerScreenToggleHandler();
 	}
 
 	private static void registerScreenToggleHandler() {
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			while (ModKeybindings.OPEN_MENU_KEY_BINDING.consumeClick()) {
+			while (LitematicDownloaderKeybindings.OPEN_MENU_KEY_BINDING.consumeClick()) {
 				toggleLitematicDownloaderScreen(client);
 			}
 		});

@@ -2,7 +2,7 @@ package com.choculaterie.network;
 
 import com.choculaterie.vanilib.models.ModMessage;
 import com.choculaterie.models.QuickShareDownloadResult;
-import com.choculaterie.models.QuickShareResponse;
+import com.choculaterie.models.QuickShareLinkResponse;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
@@ -72,7 +72,7 @@ public class ChoculaterieNetworkManager {
 		});
 	}
 
-	public static CompletableFuture<QuickShareResponse> uploadLitematic(File file) {
+	public static CompletableFuture<QuickShareLinkResponse> uploadLitematic(File file) {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				validateFile(file);
@@ -180,12 +180,12 @@ public class ChoculaterieNetworkManager {
 		return response.toString();
 	}
 
-	private static QuickShareResponse parseQuickShareResponse(String json) {
+	private static QuickShareLinkResponse parseQuickShareResponse(String json) {
 		JsonObject root = GSON.fromJson(json, JsonObject.class);
 		if (!root.has("shortUrl")) {
 			throw new RuntimeException("Response does not contain shortUrl");
 		}
-		return new QuickShareResponse(root.get("shortUrl").getAsString());
+		return new QuickShareLinkResponse(root.get("shortUrl").getAsString());
 	}
 
 	private static ModMessage parseModMessage(String json) {
