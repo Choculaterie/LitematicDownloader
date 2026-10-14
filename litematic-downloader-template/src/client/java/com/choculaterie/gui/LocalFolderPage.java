@@ -290,7 +290,7 @@ public class LocalFolderPage extends Screen {
             int settingsX = this.width - PADDING - BUTTON_HEIGHT;
             this.addRenderableWidget(new CustomButton(
                     settingsX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
-                    Component.literal(""), button -> openSettings()).setIcon(UIIcon.GEAR));
+                    Component.literal(""), button -> openSettings()).setIcon(UIIcon.SLIDERS));
 
             int searchWidth = settingsX - currentX - PADDING;
             if (this.minecraft != null && searchWidth > 30) {

@@ -201,10 +201,10 @@ public class LitematicDownloaderScreen extends Screen {
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,
-                Component.literal("X"),
+                Component.empty(),
                 button -> this.onClose()
         );
-        closeButton.setRenderAsXIcon(true);
+        closeButton.setIcon(UIIcon.CLOSE);
 
         int bottomY = this.height - BUTTON_HEIGHT - PADDING;
 

@@ -100,12 +100,12 @@ public class LitematicDetailPanel implements Renderable, GuiEventListener {
                 buttonY,
                 buttonSize,
                 buttonSize,
-                net.minecraft.network.chat.Component.literal("X"),
+                net.minecraft.network.chat.Component.empty(),
                 btn -> {
                     if (onClose != null)
                         onClose.run();
                 });
-        closeButton.setRenderAsXIcon(true);
+        closeButton.setIcon(UIIcon.CLOSE);
 
         toggleViewButton = new CustomButton(
                 right - buttonSize * 2 - HEADER_GAP,
