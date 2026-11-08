@@ -40,6 +40,7 @@ public class LitematicDownloaderScreen extends Screen {
     private static final int SEARCH_BAR_HEIGHT = 21;
     private static final int BUTTON_HEIGHT = 21;
     private static final int PADDING = 10;
+    private static final int BUTTON_GAP = UiSpacing.HEADER_BUTTON_GAP;
     private static final int CLIPBOARD_BANNER_HEIGHT = 21;
     private static final Pattern QUICK_SHARE_PATTERN = Pattern.compile(
             "https?://(?:www\\.)?choculaterie\\.com/qs/([A-Za-z0-9_-]+)");
@@ -113,7 +114,7 @@ public class LitematicDownloaderScreen extends Screen {
         String prevLabel = isCompact ? "" : "Previous";
         String nextLabel = isCompact ? "" : "Next";
 
-        int searchBarWidth = Math.max(50, leftPanelWidth - (PADDING * 3) - searchButtonWidth);
+        int searchBarWidth = Math.max(50, leftPanelWidth - (PADDING * 2) - BUTTON_GAP - searchButtonWidth);
 
         loadingSpinner = new LoadingSpinner(0, 0);
         loadingSpinner.setPosition(leftPanelWidth / 2 - loadingSpinner.getWidth() / 2, this.height / 2 - loadingSpinner.getHeight() / 2);
@@ -138,7 +139,7 @@ public class LitematicDownloaderScreen extends Screen {
         }
 
         searchButton = new CustomButton(
-                PADDING + searchBarWidth + PADDING,
+                PADDING + searchBarWidth + BUTTON_GAP,
                 PADDING,
                 searchButtonWidth,
                 SEARCH_BAR_HEIGHT,
@@ -177,7 +178,7 @@ public class LitematicDownloaderScreen extends Screen {
 
         int closeButtonSize = UITheme.Dimensions.BUTTON_HEIGHT;
         folderButton = new CustomButton(
-                this.width - PADDING - closeButtonSize * 3,
+                this.width - PADDING - closeButtonSize * 3 - BUTTON_GAP * 2,
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,
@@ -187,7 +188,7 @@ public class LitematicDownloaderScreen extends Screen {
         folderButton.setIcon(UIIcon.FOLDER);
 
         filterButton = new CustomButton(
-                this.width - PADDING - closeButtonSize * 2,
+                this.width - PADDING - closeButtonSize * 2 - BUTTON_GAP,
                 PADDING,
                 closeButtonSize,
                 closeButtonSize,

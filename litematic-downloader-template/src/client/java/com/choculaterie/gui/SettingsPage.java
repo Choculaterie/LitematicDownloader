@@ -85,8 +85,8 @@ public class SettingsPage extends Screen {
 
         int setButtonSize = TEXT_FIELD_HEIGHT;
         int setButtonX = this.width - PADDING * 2 - setButtonSize;
-        int browseButtonX = setButtonX - PADDING - browseButtonWidth;
-        int fieldWidth = Math.max(100, browseButtonX - PADDING * 3);
+        int browseButtonX = setButtonX - UiSpacing.BUTTON_GAP - browseButtonWidth;
+        int fieldWidth = Math.max(100, browseButtonX - PADDING * 2 - UiSpacing.BUTTON_GAP);
 
         if (this.minecraft != null) {
             downloadPathField = new CustomTextField(

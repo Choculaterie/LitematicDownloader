@@ -1,5 +1,6 @@
 package com.choculaterie.gui.widget;
 
+import com.choculaterie.util.ScaledImageCache;
 import com.choculaterie.vanilib.gui.widget.ConfirmPopup;
 import com.choculaterie.vanilib.gui.widget.CustomButton;
 import com.choculaterie.vanilib.gui.widget.DropdownWidget;
@@ -106,6 +107,9 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
     private String downloadStatus = "";
 
     private ImageViewerWidget imageViewer;
+    private static final ScaledImageCache SCALED_IMAGES = new ScaledImageCache();
+    private boolean viewerWaitingForImage = false;
+    private static final int VIEWER_NAV_AREA = 40;
 
     private CustomButton redirectLinkButton;
     private ConfirmPopup confirmPopup;
@@ -441,6 +445,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
         System.out.println("[IMG] Raw bytes: " + imageData.length);
 
         byte[] pngBytes = convertImageToPng(imageData);
+        final BufferedImage sourceImage = ImageIO.read(new ByteArrayInputStream(pngBytes));
         NativeImage nativeImage = NativeImage.read(pngBytes);
 
         int imgWidth = nativeImage.getWidth();
@@ -471,6 +476,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                 client.getTextureManager().register(texId, tex);
                 tex.upload();
                 imageCache.put(imageUrl, texId);
+                SCALED_IMAGES.putSource(texId, sourceImage);
                 if (imageUrl.equals(loadingImageUrl)) {
                     currentImageTexture = texId;
                     int[] dims = imageDimensionsCache.get(imageUrl);
@@ -1022,8 +1028,11 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                     containerY + containerHeight / 2 - imageLoadingSpinner.getHeight() / 2);
             imageLoadingSpinner.extractRenderState(context, mouseX, mouseY, delta);
         } else if (currentImageTexture != null) {
-            context.blit(currentImageTexture, imageX, imageY, imageX + actualImageWidth, imageY + actualImageHeight,
-                    0.0f, 1.0f, 0.0f, 1.0f);
+            double guiScale = client != null ? client.getWindow().getGuiScale() : 1.0;
+            Identifier exact = SCALED_IMAGES.get(currentImageTexture,
+                    (int) Math.round(actualImageWidth * guiScale), (int) Math.round(actualImageHeight * guiScale));
+            context.blit(exact != null ? exact : currentImageTexture, imageX, imageY, imageX + actualImageWidth,
+                    imageY + actualImageHeight, 0.0f, 1.0f, 0.0f, 1.0f);
         } else {
             String noImg = isCompactMode() ? "..." : "No image";
             UIDraw.centeredText(context, noImg, containerX + containerWidth / 2,
@@ -1218,8 +1227,24 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
     }
 
     public void renderImageViewer(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        if (imageViewer != null) {
-            imageViewer.render(context, mouseX, mouseY, delta);
+        if (imageViewer == null) return;
+        if (viewerWaitingForImage && !isLoadingImage) {
+            viewerWaitingForImage = false;
+            imageViewer = null;
+            openImageViewer();
+            if (imageViewer == null) return;
+        }
+        imageViewer.render(context, mouseX, mouseY, delta);
+        if (viewerWaitingForImage && client != null && client.getWindow() != null) {
+            int screenWidth = client.getWindow().getGuiScaledWidth();
+            int screenHeight = client.getWindow().getGuiScaledHeight();
+            int top = UITheme.Dimensions.PADDING * 2 + UITheme.Dimensions.BUTTON_HEIGHT;
+            int bottom = screenHeight - VIEWER_NAV_AREA - 2;
+            context.fill(0, top, screenWidth, bottom, UITheme.Colors.BACKGROUND);
+            imageLoadingSpinner.setPosition(
+                    screenWidth / 2 - imageLoadingSpinner.getWidth() / 2,
+                    (top + bottom) / 2 - imageLoadingSpinner.getHeight() / 2);
+            imageLoadingSpinner.extractRenderState(context, mouseX, mouseY, delta);
         }
     }
 
@@ -1440,6 +1465,8 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
                     this::previousImageInViewer,
                     this::nextImageInViewer,
                     this::closeImageViewer);
+            Identifier viewerTexture = currentImageTexture;
+            imageViewer.setTextureSource((w, h) -> SCALED_IMAGES.get(viewerTexture, w, h));
             imageViewer.updateLayout(screenWidth, screenHeight);
         }
     }
@@ -1450,6 +1477,7 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             loadImage(imageUrls[currentImageIndex]);
             closeImageViewer();
             openImageViewer();
+            viewerWaitingForImage = isLoadingImage;
         }
     }
 
@@ -1459,11 +1487,13 @@ public class PostDetailPanel implements Renderable, GuiEventListener {
             loadImage(imageUrls[currentImageIndex]);
             closeImageViewer();
             openImageViewer();
+            viewerWaitingForImage = isLoadingImage;
         }
     }
 
     private void closeImageViewer() {
         imageViewer = null;
+        viewerWaitingForImage = false;
     }
 
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {

@@ -126,14 +126,14 @@ public class PluginsPage extends Screen {
             }
         }).setIcon(UIIcon.REFRESH));
 
-        int openFolderX = reloadX - PADDING - OPEN_FOLDER_WIDTH;
+        int openFolderX = reloadX - UiSpacing.HEADER_BUTTON_GAP - OPEN_FOLDER_WIDTH;
         this.addRenderableWidget(new CustomButton(
                 openFolderX, PADDING, OPEN_FOLDER_WIDTH, BUTTON_SIZE,
                 Component.literal("Open folder"), button ->
                 Blaze3D.openPath(PluginRegistry.directory())));
 
         this.addRenderableWidget(new CustomButton(
-                PADDING + BUTTON_SIZE + PADDING, PADDING, 90, BUTTON_SIZE,
+                PADDING + BUTTON_SIZE + UiSpacing.HEADER_BUTTON_GAP, PADDING, 90, BUTTON_SIZE,
                 Component.literal("Get plugins"), button -> {
             if (this.minecraft != null) {
                 this.minecraft.gui.setScreen(new PluginBrowsePage(this));
@@ -141,7 +141,7 @@ public class PluginsPage extends Screen {
         }));
 
         deleteButton = new CustomButton(
-                openFolderX - PADDING - DELETE_WIDTH, PADDING, DELETE_WIDTH, BUTTON_SIZE,
+                openFolderX - UiSpacing.HEADER_BUTTON_GAP - DELETE_WIDTH, PADDING, DELETE_WIDTH, BUTTON_SIZE,
                 Component.literal("Delete"), button -> handleDeleteClick());
         deleteButton.active = selectionManager.hasSelection();
         this.addRenderableWidget(deleteButton);

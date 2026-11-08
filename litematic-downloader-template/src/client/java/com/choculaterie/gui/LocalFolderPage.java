@@ -1,6 +1,7 @@
 package com.choculaterie.gui;
 
 import com.choculaterie.config.DownloadSettings;
+import com.choculaterie.util.LitematicaBridge;
 import com.choculaterie.vanilib.util.file.FileOperationsManager;
 import com.choculaterie.gui.localfolder.LocalFolderSearchManager;
 import com.choculaterie.gui.localfolder.LocalFolderSelectionManager;
@@ -33,6 +34,7 @@ import com.choculaterie.vanilib.util.MouseState;
 
 public class LocalFolderPage extends Screen {
     private static final int PADDING = 10;
+    private static final int BUTTON_GAP = UiSpacing.HEADER_BUTTON_GAP;
     private static final int BUTTON_HEIGHT = 21;
     private static final int ITEM_HEIGHT = 25;
     private static final int SCROLLBAR_WIDTH = 8;
@@ -248,23 +250,26 @@ public class LocalFolderPage extends Screen {
         this.addRenderableWidget(new CustomButton(
                 currentX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
                 Component.literal(""), button -> goBack()).setIcon(UIIcon.ARROW_LEFT));
-        currentX += BUTTON_HEIGHT + PADDING;
+        currentX += BUTTON_HEIGHT + BUTTON_GAP;
 
         if (!showDetailPanel) {
             int newFolderWidth = isVeryCompact ? 25 : (isCompact ? 70 : 100);
             int renameWidth = isVeryCompact ? 25 : (isCompact ? 50 : 70);
             int deleteWidth = isVeryCompact ? 25 : (isCompact ? 45 : 60);
-            int openFolderWidth = isVeryCompact ? 25 : (isCompact ? 80 : 120);
+            boolean shrinkOpenFolder = LitematicaBridge.isAvailable();
+            boolean openFolderIconOnly = isVeryCompact || (shrinkOpenFolder && isCompact);
+            boolean openFolderShort = isCompact || shrinkOpenFolder;
+            int openFolderWidth = openFolderIconOnly ? 25 : (openFolderShort ? 80 : 120);
 
             String newFolderLabel = isVeryCompact ? "" : (isCompact ? "New" : "New Folder");
             String renameLabel = isVeryCompact ? "" : "Rename";
             String deleteLabel = isVeryCompact ? "" : "Delete";
-            String openFolderLabel = isVeryCompact ? "" : (isCompact ? "Open" : "Open Folder");
+            String openFolderLabel = openFolderIconOnly ? "" : (openFolderShort ? "Open" : "Open Folder");
 
             this.addRenderableWidget(new CustomButton(
                     currentX, PADDING, newFolderWidth, BUTTON_HEIGHT,
                     Component.literal(newFolderLabel), button -> openNewFolderPopup()).setIcon(UIIcon.PLUS));
-            currentX += newFolderWidth + PADDING;
+            currentX += newFolderWidth + BUTTON_GAP;
 
             renameButton = new CustomButton(
                     currentX, PADDING, renameWidth, BUTTON_HEIGHT,
@@ -272,7 +277,7 @@ public class LocalFolderPage extends Screen {
             renameButton.setIcon(UIIcon.PENCIL);
             renameButton.active = false;
             this.addRenderableWidget(renameButton);
-            currentX += renameWidth + PADDING;
+            currentX += renameWidth + BUTTON_GAP;
 
             deleteButton = new CustomButton(
                     currentX, PADDING, deleteWidth, BUTTON_HEIGHT,
@@ -280,19 +285,28 @@ public class LocalFolderPage extends Screen {
             deleteButton.setIcon(UIIcon.TRASH).setStyle(ButtonStyle.DANGER);
             deleteButton.active = false;
             this.addRenderableWidget(deleteButton);
-            currentX += deleteWidth + PADDING;
+            currentX += deleteWidth + BUTTON_GAP;
 
             this.addRenderableWidget(new CustomButton(
                     currentX, PADDING, openFolderWidth, BUTTON_HEIGHT,
                     Component.literal(openFolderLabel), button -> openInFileExplorer()).setIcon(UIIcon.FOLDER));
-            currentX += openFolderWidth + PADDING;
+            currentX += openFolderWidth + BUTTON_GAP;
 
             int settingsX = this.width - PADDING - BUTTON_HEIGHT;
             this.addRenderableWidget(new CustomButton(
                     settingsX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
                     Component.literal(""), button -> openSettings()).setIcon(UIIcon.SLIDERS));
 
-            int searchWidth = settingsX - currentX - PADDING;
+            int searchEndX = settingsX;
+            if (LitematicaBridge.isAvailable()) {
+                searchEndX = settingsX - BUTTON_GAP - BUTTON_HEIGHT;
+                this.addRenderableWidget(new CustomButton(
+                        searchEndX, PADDING, BUTTON_HEIGHT, BUTTON_HEIGHT,
+                        Component.literal(""),
+                        button -> LitematicaBridge.openMainMenu(this.minecraft)).setIcon(UIIcon.CUBE));
+            }
+
+            int searchWidth = searchEndX - currentX - BUTTON_GAP;
             if (this.minecraft != null && searchWidth > 30) {
                 searchField = new CustomTextField(this.minecraft, currentX, PADDING, searchWidth, BUTTON_HEIGHT,
                         Component.literal("Search"));
