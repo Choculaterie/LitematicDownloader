@@ -1,23 +1,35 @@
 package com.choculaterie.network;
 
 import com.choculaterie.vanilib.models.ModMessage;
+import com.choculaterie.models.PromotionInfo;
 import com.choculaterie.models.QuickShareDownloadResult;
 import com.choculaterie.models.QuickShareLinkResponse;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.net.URLEncoder;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public class ChoculaterieNetworkManager {
 	private static final String BASE_URL = "https://api.choculaterie.com/api/LitematicDownloaderModAPI";
 	private static final String UPLOAD_ENDPOINT = BASE_URL + "/upload";
 	private static final String MESSAGE_ENDPOINT = BASE_URL + "/GetModMessage";
+	private static final String PROMOTIONS_ENDPOINT = BASE_URL + "/promotions";
+	private static final String PROMO_CLICK_BASE = "https://backend.choculaterie.com/api/Promo/";
 	private static final String QS_BACKEND_BASE = "https://backend.choculaterie.com/qs/";
+	private static final long PROMOTIONS_TTL_MS = 10 * 60 * 1000;
+
+	private static volatile List<PromotionInfo> cachedPromotions;
+	private static volatile long promotionsFetchedAt;
 
 	private static final Gson GSON = new Gson();
 	private static final int TIMEOUT_STANDARD = 10000;
@@ -88,10 +100,50 @@ public class ChoculaterieNetworkManager {
 	public static CompletableFuture<ModMessage> getModMessage() {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
-				String jsonResponse = makeGetRequest();
+				String jsonResponse = makeGetRequest(MESSAGE_ENDPOINT);
 				return parseModMessage(jsonResponse);
 			} catch (Exception e) {
 				return new ModMessage(false, null, null, null);
+			}
+		});
+	}
+
+	public static CompletableFuture<List<PromotionInfo>> getPromotions() {
+		List<PromotionInfo> cached = cachedPromotions;
+		if (cached != null && System.currentTimeMillis() - promotionsFetchedAt < PROMOTIONS_TTL_MS) {
+			return CompletableFuture.completedFuture(cached);
+		}
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				List<PromotionInfo> promotions = parsePromotions(makeGetRequest(PROMOTIONS_ENDPOINT));
+				cachedPromotions = promotions;
+				promotionsFetchedAt = System.currentTimeMillis();
+				return promotions;
+			} catch (Exception e) {
+				return List.of();
+			}
+		});
+	}
+
+	public static void recordPromotionClick(String key) {
+		if (key == null || key.isEmpty()) return;
+		CompletableFuture.runAsync(() -> {
+			try {
+				URL url = new URL(PROMO_CLICK_BASE + URLEncoder.encode(key, StandardCharsets.UTF_8) + "/click");
+				HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+				try {
+					conn.setRequestMethod("POST");
+					conn.setDoOutput(true);
+					conn.setConnectTimeout(TIMEOUT_STANDARD);
+					conn.setReadTimeout(TIMEOUT_STANDARD);
+					conn.setRequestProperty("User-Agent", "LitematicDownloader/1.0");
+					conn.setFixedLengthStreamingMode(0);
+					conn.getOutputStream().close();
+					conn.getResponseCode();
+				} finally {
+					conn.disconnect();
+				}
+			} catch (IOException ignored) {
 			}
 		});
 	}
@@ -145,8 +197,8 @@ public class ChoculaterieNetworkManager {
 		}
 	}
 
-	private static String makeGetRequest() throws IOException {
-		URL url = new URL(ChoculaterieNetworkManager.MESSAGE_ENDPOINT);
+	private static String makeGetRequest(String endpoint) throws IOException {
+		URL url = new URL(endpoint);
 		HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
 		try {
@@ -202,6 +254,23 @@ public class ChoculaterieNetworkManager {
 			getString(root, "message"),
 			getString(root, "type")
 		);
+	}
+
+	private static List<PromotionInfo> parsePromotions(String json) {
+		List<PromotionInfo> promotions = new ArrayList<>();
+		JsonArray array = GSON.fromJson(json, JsonArray.class);
+		if (array == null) return promotions;
+		for (JsonElement element : array) {
+			if (!element.isJsonObject()) continue;
+			JsonObject obj = element.getAsJsonObject();
+			String key = getString(obj, "key");
+			String title = getString(obj, "title");
+			String linkUrl = getString(obj, "linkUrl");
+			if (key == null || title == null || linkUrl == null) continue;
+			promotions.add(new PromotionInfo(key, getString(obj, "kicker"), title, getString(obj, "description"),
+				linkUrl, getString(obj, "ctaText"), getString(obj, "imageUrl")));
+		}
+		return List.copyOf(promotions);
 	}
 
 	private static String getString(JsonObject obj, String key) {

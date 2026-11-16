@@ -10,7 +10,7 @@ import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import com.mojang.blaze3d.platform.InputConstants;
 
-public class PostEntryWidget implements Renderable, GuiEventListener {
+public class PostEntryWidget implements Renderable, GuiEventListener, ListEntryVisual {
     private static final int MIN_ENTRY_HEIGHT = 70;
     private static final int LINE_HEIGHT = UITheme.Typography.LINE_HEIGHT;
     private static final int CONTENT_SPACING = 5;

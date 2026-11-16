@@ -239,6 +239,7 @@ public class LitematicDownloaderScreen extends Screen {
         if (!initialized) {
             initialized = true;
             fetchModMessage();
+            fetchPromotions();
             performSearch();
         } else {
             updatePaginationButtons();
@@ -282,6 +283,18 @@ public class LitematicDownloaderScreen extends Screen {
             Minecraft.getInstance().keyboardHandler.setClipboard("");
         } catch (Exception ignored) {
         }
+    }
+
+    private void fetchPromotions() {
+        ChoculaterieNetworkManager.getPromotions().thenAccept(promotions -> {
+            if (this.minecraft != null) {
+                this.minecraft.execute(() -> {
+                    if (postList != null) {
+                        postList.setPromotions(promotions);
+                    }
+                });
+            }
+        });
     }
 
     private void fetchModMessage() {

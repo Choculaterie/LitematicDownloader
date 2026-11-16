@@ -4,13 +4,18 @@ import com.choculaterie.vanilib.gui.widget.ScrollBar;
 
 import com.choculaterie.vanilib.gui.theme.UITheme;
 import com.choculaterie.models.MinemevPostInfo;
+import com.choculaterie.models.PromotionInfo;
+import com.choculaterie.network.ChoculaterieNetworkManager;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import com.mojang.blaze3d.platform.InputConstants;
 
 public class PostListWidget extends AbstractWidget {
@@ -22,6 +27,10 @@ public class PostListWidget extends AbstractWidget {
     private final OnPostClickListener onPostClick;
     private MinemevPostInfo selectedPost;
     private ScrollBar scrollBar;
+    private MinemevPostInfo[] posts = new MinemevPostInfo[0];
+    private List<PromotionInfo> promotions = List.of();
+    private PromotionInfo shownPromotion;
+    private int promotionIndex = -1;
 
     public interface OnPostClickListener {
         void onPostClick(MinemevPostInfo post);
@@ -56,45 +65,89 @@ public class PostListWidget extends AbstractWidget {
     }
 
     private void rebuildEntries() {
-        List<MinemevPostInfo> posts = new ArrayList<>();
-        for (PostEntryButton entry : entries) {
-            posts.add(entry.getPost());
-        }
-        if (!posts.isEmpty()) {
-            setPosts(posts.toArray(new MinemevPostInfo[0]));
+        if (posts.length > 0) {
+            buildEntries();
         }
     }
 
     public void setPosts(MinemevPostInfo[] posts) {
-        this.entries.clear();
+        this.posts = posts;
         this.scrollAmount = 0;
+        pickPromotion();
+        buildEntries();
+        updateScrollBar();
+    }
 
-        int currentY = 0;
-        for (MinemevPostInfo post : posts) {
-            int rowWidth = Math.max(0, width - UITheme.Dimensions.PADDING);
+    public void setPromotions(List<PromotionInfo> promotions) {
+        this.promotions = promotions != null ? promotions : List.of();
+        if (shownPromotion == null && posts.length > 0) {
+            double savedScroll = scrollAmount;
+            pickPromotion();
+            buildEntries();
+            scrollAmount = savedScroll;
+            updateScrollBar();
+        }
+    }
+
+    private void pickPromotion() {
+        if (promotions.isEmpty() || posts.length == 0) {
+            shownPromotion = null;
+            promotionIndex = -1;
+            return;
+        }
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        shownPromotion = promotions.get(random.nextInt(promotions.size()));
+        promotionIndex = posts.length == 1 ? 1 : 1 + random.nextInt(posts.length);
+    }
+
+    private void buildEntries() {
+        this.entries.clear();
+        int rowWidth = Math.max(0, width - UITheme.Dimensions.PADDING);
+        for (int i = 0; i < posts.length; i++) {
+            if (i == promotionIndex) {
+                addPromotionEntry(rowWidth);
+            }
+            MinemevPostInfo post = posts[i];
             Runnable clickAction = () -> {
                 selectedPost = post;
                 if (onPostClick != null) {
                     onPostClick.onPostClick(post);
                 }
             };
-            PostEntryWidget visual = new PostEntryWidget(
-                post,
-                getX(),
-                getY() + currentY,
-                rowWidth,
-                clickAction
-            );
-            PostEntryButton button = new PostEntryButton(visual, clickAction);
-            entries.add(button);
-            currentY += button.getRowHeight() + ENTRY_SPACING;
+            PostEntryWidget visual = new PostEntryWidget(post, getX(), getY(), rowWidth, clickAction);
+            entries.add(new PostEntryButton(visual, post, clickAction));
         }
+        if (promotionIndex >= posts.length) {
+            addPromotionEntry(rowWidth);
+        }
+    }
 
-        updateScrollBar();
+    private void addPromotionEntry(int rowWidth) {
+        PromotionInfo promotion = shownPromotion;
+        if (promotion == null) return;
+        Runnable clickAction = () -> openPromotion(promotion);
+        PromotionEntryWidget visual = new PromotionEntryWidget(promotion, getX(), getY(), rowWidth);
+        entries.add(new PostEntryButton(visual, null, clickAction));
+    }
+
+    private static void openPromotion(PromotionInfo promotion) {
+        URI uri;
+        try {
+            uri = URI.create(promotion.linkUrl());
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        if (!"https".equalsIgnoreCase(uri.getScheme()) && !"http".equalsIgnoreCase(uri.getScheme())) return;
+        ChoculaterieNetworkManager.recordPromotionClick(promotion.key());
+        Minecraft client = Minecraft.getInstance();
+        ConfirmLinkScreen.confirmLinkNow(client.gui.screen(), uri);
     }
 
     public void clear() {
         this.entries.clear();
+        this.posts = new MinemevPostInfo[0];
+        this.shownPromotion = null;
+        this.promotionIndex = -1;
         this.scrollAmount = 0;
         updateScrollBar();
     }
@@ -128,7 +181,7 @@ public class PostListWidget extends AbstractWidget {
 
             if (isEntryVisible(entryY, entry.getRowHeight())) {
                 entry.updateBounds(getX(), entryY, entryWidth);
-                entry.visual.setSelected(selectedPost != null && entry.post == selectedPost);
+                entry.visual.setSelected(selectedPost != null && entry.post != null && entry.post == selectedPost);
                 entry.extractRenderState(context, mouseX, entryMouseY, delta);
             }
 
@@ -260,15 +313,15 @@ public class PostListWidget extends AbstractWidget {
     }
 
     private static final class PostEntryButton extends AbstractWidget {
-        private final PostEntryWidget visual;
+        private final ListEntryVisual visual;
         private final MinemevPostInfo post;
         private final Runnable clickAction;
         private boolean pressed;
 
-        private PostEntryButton(PostEntryWidget visual, Runnable clickAction) {
+        private PostEntryButton(ListEntryVisual visual, MinemevPostInfo post, Runnable clickAction) {
             super(visual.getX(), visual.getY(), visual.getWidth(), visual.getHeight(), Component.empty());
             this.visual = visual;
-            this.post = visual.getPost();
+            this.post = post;
             this.clickAction = clickAction;
         }
 
@@ -284,10 +337,6 @@ public class PostListWidget extends AbstractWidget {
 
         private int getRowHeight() {
             return visual.getHeight();
-        }
-
-        private MinemevPostInfo getPost() {
-            return post;
         }
 
         private boolean handlePress(double mouseX, double mouseY, int button) {
