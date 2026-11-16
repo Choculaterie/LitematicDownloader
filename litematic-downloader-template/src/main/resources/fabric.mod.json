@@ -15,7 +15,7 @@
 		"sources": "https://github.com/Choculaterie/LitematicDownloader",
 		"issues": "https://github.com/Choculaterie/LitematicDownloader/issues"
 	},
-	"license": "MIT",
+	"license": "AGPL-3.0-only",
 	"icon": "assets/litematic-downloader/icon.png",
 	"environment": "client",
 	"entrypoints": {
